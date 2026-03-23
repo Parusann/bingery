@@ -1,0 +1,26 @@
+databases:
+  - name: bingery-db
+    plan: free
+    databaseName: bingery
+    user: bingery
+
+services:
+  - type: web
+    name: bingery
+    runtime: python
+    plan: free
+    buildCommand: pip install -r requirements.txt && python seed.py && python -m utils.anilist --mode popular --pages 2
+    startCommand: gunicorn app:app --bind 0.0.0.0:$PORT --workers 2 --timeout 120
+    envVars:
+      - key: DATABASE_URL
+        fromDatabase:
+          name: bingery-db
+          property: connectionString
+      - key: SECRET_KEY
+        generateValue: true
+      - key: JWT_SECRET_KEY
+        generateValue: true
+      - key: ANTHROPIC_API_KEY
+        sync: false
+      - key: PYTHON_VERSION
+        value: 3.11.6

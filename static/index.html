@@ -1,0 +1,655 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Bingery — AI Anime Discovery</title>
+<link href="https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,300;0,9..40,500;0,9..40,700;0,9..40,800;1,9..40,400&family=Instrument+Serif:ital@0;1&display=swap" rel="stylesheet">
+<style>
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+:root{--bg:#08080c;--card:#111118;--surface:#1a1a24;--border:rgba(255,255,255,0.06);--text:#e8e8ed;--muted:rgba(232,232,237,0.45);--accent:#f97316;--green:#22c55e}
+body{background:var(--bg);color:var(--text);font-family:'DM Sans','Helvetica Neue',sans-serif;min-height:100vh}
+input:focus,textarea:focus{outline:none}
+*{scrollbar-width:thin;scrollbar-color:rgba(255,255,255,0.06) transparent}
+@keyframes fadeUp{from{opacity:0;transform:translateY(16px)}to{opacity:1;transform:translateY(0)}}
+@keyframes fadeIn{from{opacity:0}to{opacity:1}}
+@keyframes scaleUp{from{opacity:0;transform:scale(.96)}to{opacity:1;transform:scale(1)}}
+@keyframes pulse{0%,100%{opacity:.4}50%{opacity:1}}
+@keyframes float{0%,100%{transform:translateY(0)}50%{transform:translateY(-10px)}}
+@keyframes glow{0%,100%{opacity:.4}50%{opacity:.9}}
+@keyframes shimmer{0%{background-position:-200% 0}100%{background-position:200% 0}}
+@keyframes typing{0%{opacity:.3}50%{opacity:1}100%{opacity:.3}}
+.shimmer-line{height:14px;border-radius:4px;background:linear-gradient(90deg,var(--surface) 25%,rgba(255,255,255,0.06) 50%,var(--surface) 75%);background-size:200% 100%;animation:shimmer 1.5s infinite}
+</style>
+</head>
+<body>
+<div id="root"></div>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.production.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.23.9/babel.min.js"></script>
+<script type="text/babel">
+const {useState,useEffect,useRef,useCallback}=React;
+// Auto-detect API URL: same origin when deployed, localhost when developing
+const API=(window.location.hostname==="localhost"||window.location.hostname==="127.0.0.1")
+  ?"http://127.0.0.1:5000/api"
+  :window.location.origin+"/api";
+
+// Simple hash router
+function useHashRoute(){
+  const[route,setRoute]=useState(window.location.hash||"#/");
+  useEffect(()=>{const h=()=>setRoute(window.location.hash||"#/");window.addEventListener("hashchange",h);return()=>window.removeEventListener("hashchange",h)},[]);
+  return route;
+}
+function navigate(hash){window.location.hash=hash}
+const GC={Action:"#ef4444",Adventure:"#f59e0b",Comedy:"#22c55e",Drama:"#8b5cf6",Fantasy:"#ec4899",Horror:"#991b1b",Mystery:"#6366f1",Romance:"#f43f5e","Sci-Fi":"#06b6d4","Slice of Life":"#84cc16",Supernatural:"#a855f7",Thriller:"#f97316",Shounen:"#3b82f6",Seinen:"#64748b",Isekai:"#10b981",Psychological:"#7c3aed","Dark Fantasy":"#881337"};
+const ALL_FAN_GENRES={standard:["Action","Adventure","Comedy","Drama","Fantasy","Horror","Mystery","Romance","Sci-Fi","Slice of Life","Supernatural","Thriller","Sports","Music"],demographic:["Shounen","Shoujo","Seinen","Josei","Kodomomuke"],thematic:["Isekai","Mecha","Magical Girl","Harem","Reverse Harem","Martial Arts","Military","Psychological","Ecchi","Gore","Survival","Post-Apocalyptic","Cyberpunk","Steampunk","Historical","Samurai","Vampire","Zombie","Demons","Dark Fantasy","Mythology","Reincarnation","Time Travel","Virtual Reality","Game","Cooking","Medical","Detective"],tone:["Wholesome","Feel-Good","Tearjerker","Mind-Bending","Slow Burn","Fast-Paced","Episodic","Satirical","Coming of Age","Tragic"],setting:["School","Workplace","Space","Underworld","Urban","Rural","Kingdom","Tournament","Dungeon"]};
+const FGENRES=["Action","Adventure","Comedy","Drama","Fantasy","Horror","Mystery","Romance","Sci-Fi","Slice of Life","Supernatural","Thriller","Shounen","Seinen","Isekai"];
+
+// ═══ API ═══
+const api={
+  token:null,
+  setToken(t){this.token=t;if(t)localStorage.setItem("bingery_token",t);else localStorage.removeItem("bingery_token")},
+  getToken(){if(!this.token)this.token=localStorage.getItem("bingery_token");return this.token},
+  async _f(p,o={}){const h={"Content-Type":"application/json",...(o.headers||{})};const t=this.getToken();if(t)h["Authorization"]="Bearer "+t;const r=await fetch(API+p,{...o,headers:h});const d=await r.json();if(!r.ok)throw new Error(d.error||"Request failed");return d},
+  register(d){return this._f("/auth/register",{method:"POST",body:JSON.stringify(d)})},
+  login(d){return this._f("/auth/login",{method:"POST",body:JSON.stringify(d)})},
+  getMe(){return this._f("/auth/me")},
+  getAnime(p=""){return this._f("/anime"+p)},
+  getAnimeDetail(id){return this._f("/anime/"+id)},
+  submitReview(id,d){return this._f("/anime/"+id+"/review",{method:"POST",body:JSON.stringify(d)})},
+  getMyRatings(){return this._f("/me/ratings")},
+  getRecs(){return this._f("/recommend/for-me")},
+  getSimilar(id){return this._f("/recommend/similar/"+id)},
+  getTaste(){return this._f("/recommend/taste-profile")},
+  getOnboarding(){return this._f("/recommend/onboarding")},
+  chatMessage(d){return this._f("/chat/message",{method:"POST",body:JSON.stringify(d)})},
+  quickRec(p=""){return this._f("/chat/quick-recommend"+p)},
+  health(){return this._f("/health")},
+  // Watchlist
+  getWatchlist(p=""){return this._f("/watchlist"+p)},
+  getWatchlistStats(){return this._f("/watchlist/stats")},
+  setWatchStatus(id,d){return this._f("/watchlist/anime/"+id,{method:"POST",body:JSON.stringify(d)})},
+  getWatchStatus(id){return this._f("/watchlist/anime/"+id)},
+  removeFromWatchlist(id){return this._f("/watchlist/anime/"+id,{method:"DELETE"})},
+  toggleFavorite(id){return this._f("/watchlist/anime/"+id+"/favorite",{method:"POST"})},
+  // Search
+  autocomplete(q){return this._f("/search/autocomplete?q="+encodeURIComponent(q))},
+  fullSearch(p=""){return this._f("/search/full"+p)},
+};
+
+// ═══ COMPONENTS ═══
+function StarRating10({rating=0,onRate,size=20}){
+  const[hv,setHv]=useState(0);const ref=useRef(null);
+  const handle=(e,click)=>{if(!onRate)return;const r=ref.current.getBoundingClientRect();const v=Math.max(1,Math.min(10,Math.ceil((e.clientX-r.left)/(r.width/10))));if(click)onRate(v);else setHv(v)};
+  const dv=hv||rating;
+  return <div ref={ref} onMouseMove={e=>handle(e)} onClick={e=>handle(e,true)} onMouseLeave={()=>setHv(0)} style={{display:"inline-flex",gap:2,cursor:onRate?"pointer":"default",userSelect:"none"}}>
+    {[1,2,3,4,5,6,7,8,9,10].map(i=><div key={i} style={{width:size,height:size,borderRadius:3,display:"flex",alignItems:"center",justifyContent:"center",background:i<=dv?(i<=3?"#ef4444":i<=5?"#f97316":i<=7?"#f59e0b":"#22c55e"):"var(--surface)",transition:"all 0.1s",transform:hv===i?"scale(1.15)":"scale(1)",border:"1px solid "+(i<=dv?"transparent":"var(--border)")}}>
+      <span style={{fontSize:size*.48,fontWeight:700,color:i<=dv?"#fff":"var(--muted)"}}>{i}</span></div>)}
+  </div>;
+}
+function FanGenreBar({genre,maxVotes}){const w=maxVotes>0?(genre.votes/maxVotes)*100:0;const c=GC[genre.genre]||"#6366f1";
+  return <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:5}}><span style={{fontSize:12,fontWeight:600,color:"var(--text)",minWidth:110,textAlign:"right"}}>{genre.genre}</span><div style={{flex:1,height:20,background:"var(--surface)",borderRadius:4,overflow:"hidden",position:"relative"}}><div style={{width:w+"%",height:"100%",background:c+"40",borderRadius:4,transition:"width 0.5s"}}/><span style={{position:"absolute",right:6,top:"50%",transform:"translateY(-50%)",fontSize:10,fontWeight:600,color:"var(--muted)"}}>{genre.votes} ({genre.percentage}%)</span></div></div>;
+}
+
+// ═══ WATCH STATUS SELECTOR ═══
+const STATUSES=[{key:"watching",label:"Watching",icon:"▶",color:"#3b82f6"},{key:"completed",label:"Completed",icon:"✓",color:"#22c55e"},{key:"plan_to_watch",label:"Plan to Watch",icon:"◷",color:"#f59e0b"},{key:"on_hold",label:"On Hold",icon:"⏸",color:"#8b5cf6"},{key:"dropped",label:"Dropped",icon:"✕",color:"#ef4444"}];
+function WatchStatusSelector({animeId,currentStatus,onUpdate,user}){
+  const[open,setOpen]=useState(false);const[saving,setSaving]=useState(false);const[isFav,setIsFav]=useState(false);
+  const current=STATUSES.find(s=>s.key===currentStatus);
+  const setStatus=async(status)=>{if(!user)return;setSaving(true);try{const r=await api.setWatchStatus(animeId,{status});onUpdate?.(r.entry);setOpen(false)}catch(e){alert(e.message)}setSaving(false)};
+  const remove=async()=>{try{await api.removeFromWatchlist(animeId);onUpdate?.(null);setOpen(false)}catch{}};
+  const toggleFav=async()=>{try{const r=await api.toggleFavorite(animeId);setIsFav(r.is_favorite);onUpdate?.(r.entry)}catch{}};
+  if(!user)return null;
+  return <div style={{position:"relative"}}>
+    <div style={{display:"flex",gap:6}}>
+      <button onClick={()=>setOpen(!open)} style={{flex:1,padding:"9px 14px",borderRadius:9,border:"1px solid "+(current?current.color+"40":"var(--border)"),background:current?current.color+"12":"var(--surface)",color:current?current.color:"var(--muted)",fontWeight:600,fontSize:13,cursor:"pointer",fontFamily:"inherit",display:"flex",alignItems:"center",gap:6,justifyContent:"center",transition:"all .15s"}}>
+        {current?<><span>{current.icon}</span>{current.label}</>:<><span>+</span>Add to List</>}
+        <span style={{marginLeft:"auto",fontSize:10,opacity:.6}}>▾</span>
+      </button>
+      {currentStatus&&<button onClick={toggleFav} style={{width:38,height:38,borderRadius:9,border:"1px solid var(--border)",background:isFav?"rgba(249,115,22,.12)":"var(--surface)",color:isFav?"var(--accent)":"var(--muted)",fontSize:16,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",transition:"all .15s"}} title="Favorite">{isFav?"★":"☆"}</button>}
+    </div>
+    {open&&<div style={{position:"absolute",top:"100%",left:0,right:0,marginTop:4,background:"var(--card)",border:"1px solid var(--border)",borderRadius:10,overflow:"hidden",zIndex:20,boxShadow:"0 12px 24px rgba(0,0,0,.4)"}}>
+      {STATUSES.map(s=><button key={s.key} onClick={()=>setStatus(s.key)} style={{width:"100%",padding:"9px 14px",border:"none",background:currentStatus===s.key?s.color+"15":"transparent",color:currentStatus===s.key?s.color:"var(--text)",fontSize:12,fontWeight:600,cursor:"pointer",fontFamily:"inherit",display:"flex",alignItems:"center",gap:8,transition:"background .1s"}} onMouseEnter={e=>e.target.style.background=s.color+"10"} onMouseLeave={e=>e.target.style.background=currentStatus===s.key?s.color+"15":"transparent"}>
+        <span style={{width:18,textAlign:"center"}}>{s.icon}</span>{s.label}</button>)}
+      {currentStatus&&<button onClick={remove} style={{width:"100%",padding:"9px 14px",border:"none",borderTop:"1px solid var(--border)",background:"transparent",color:"#ef4444",fontSize:12,fontWeight:600,cursor:"pointer",fontFamily:"inherit",textAlign:"left",paddingLeft:40}}>Remove from list</button>}
+    </div>}
+  </div>;
+}
+
+// ═══ SEARCH AUTOCOMPLETE ═══
+function SearchAutocomplete({onSelect,onSearch}){
+  const[q,setQ]=useState("");const[results,setResults]=useState([]);const[show,setShow]=useState(false);const[loading,setLoading]=useState(false);const timer=useRef(null);const wrapRef=useRef(null);
+  useEffect(()=>{const handler=e=>{if(wrapRef.current&&!wrapRef.current.contains(e.target))setShow(false)};document.addEventListener("mousedown",handler);return()=>document.removeEventListener("mousedown",handler)},[]);
+  const doSearch=val=>{setQ(val);if(val.length<2){setResults([]);setShow(false);return}clearTimeout(timer.current);timer.current=setTimeout(async()=>{setLoading(true);try{const r=await api.autocomplete(val);setResults(r.results||[]);setShow(true)}catch{}setLoading(false)},250)};
+  const pick=a=>{setShow(false);setQ("");onSelect(a)};
+  const submitSearch=()=>{if(q.trim()){setShow(false);onSearch?.(q.trim())}};
+  return <div ref={wrapRef} style={{position:"relative",flex:"1 1 300px",maxWidth:440}}>
+    <div style={{display:"flex",gap:8}}>
+      <div style={{position:"relative",flex:1}}>
+        <input value={q} onChange={e=>doSearch(e.target.value)} onKeyDown={e=>{if(e.key==="Enter")submitSearch()}} onFocus={()=>{if(results.length)setShow(true)}} placeholder="Search anime..." style={{width:"100%",padding:"10px 14px 10px 38px",borderRadius:10,border:"1px solid var(--border)",background:"var(--surface)",color:"var(--text)",fontSize:14,fontFamily:"inherit"}}/>
+        <span style={{position:"absolute",left:13,top:"50%",transform:"translateY(-50%)",fontSize:16,opacity:.3}}>⌕</span>
+        {loading&&<span style={{position:"absolute",right:12,top:"50%",transform:"translateY(-50%)",fontSize:11,color:"var(--accent)"}}>...</span>}
+      </div>
+      <button onClick={submitSearch} style={{padding:"10px 18px",borderRadius:10,background:"var(--accent)",border:"none",color:"#fff",fontWeight:600,fontSize:13,cursor:"pointer",fontFamily:"inherit"}}>Search</button>
+    </div>
+    {show&&results.length>0&&<div style={{position:"absolute",top:"100%",left:0,right:0,marginTop:4,background:"var(--card)",border:"1px solid var(--border)",borderRadius:10,overflow:"hidden",zIndex:50,boxShadow:"0 16px 32px rgba(0,0,0,.5)",maxHeight:360,overflowY:"auto"}}>
+      {results.map(a=><div key={a.id} onClick={()=>pick(a)} style={{display:"flex",gap:10,padding:"8px 12px",cursor:"pointer",borderBottom:"1px solid var(--border)",transition:"background .1s"}} onMouseEnter={e=>e.currentTarget.style.background="var(--surface)"} onMouseLeave={e=>e.currentTarget.style.background="transparent"}>
+        <div style={{width:36,height:48,borderRadius:4,overflow:"hidden",flexShrink:0,background:"var(--surface)"}}>{a.image_url&&<img src={a.image_url} alt="" style={{width:"100%",height:"100%",objectFit:"cover"}}/>}</div>
+        <div style={{flex:1,minWidth:0}}>
+          <div style={{fontSize:13,fontWeight:600,color:"var(--text)",whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{a.title_english||a.title}</div>
+          <div style={{display:"flex",gap:6,marginTop:2}}>
+            {a.api_score&&<span style={{fontSize:11,color:"#f59e0b"}}>★ {a.api_score.toFixed(1)}</span>}
+            {a.year&&<span style={{fontSize:11,color:"var(--muted)"}}>{a.year}</span>}
+            {a.episodes&&<span style={{fontSize:11,color:"var(--muted)"}}>{a.episodes} eps</span>}
+          </div>
+          <div style={{display:"flex",gap:3,marginTop:3}}>{(a.genres||[]).map(g=><span key={g} style={{fontSize:9,fontWeight:600,padding:"1px 4px",borderRadius:2,background:(GC[g]||"#666")+"18",color:GC[g]||"#888"}}>{g}</span>)}</div>
+        </div></div>)}
+    </div>}
+  </div>;
+}
+
+function AnimeCard({anime,onSelect,index=0,compact}){
+  const[h,setH]=useState(false);const[ie,setIe]=useState(false);const img=anime.image_url;const score=anime.community_score||anime.api_score;const genres=(anime.official_genres||anime.genres||[]).map(g=>g.name||g);
+  return <div onClick={()=>onSelect(anime)} onMouseEnter={()=>setH(true)} onMouseLeave={()=>setH(false)} style={{background:"var(--card)",border:"1px solid var(--border)",borderRadius:compact?10:12,overflow:"hidden",cursor:"pointer",transition:"all 0.3s cubic-bezier(0.22,1,0.36,1)",transform:h?"translateY(-4px) scale(1.01)":"none",boxShadow:h?"0 14px 28px rgba(0,0,0,0.3)":"0 2px 8px rgba(0,0,0,0.15)",animation:"fadeUp 0.4s ease "+(index*.04)+"s both"}}>
+    <div style={{position:"relative",aspectRatio:"3/4",background:"var(--surface)",overflow:"hidden"}}>
+      {!ie&&img?<img src={img} alt="" onError={()=>setIe(true)} loading="lazy" style={{width:"100%",height:"100%",objectFit:"cover",transition:"transform 0.4s",transform:h?"scale(1.06)":"scale(1)"}}/>:<div style={{width:"100%",height:"100%",display:"flex",alignItems:"center",justifyContent:"center"}}><span style={{fontSize:compact?28:40,opacity:.15}}>🎬</span></div>}
+      {score>0&&<div style={{position:"absolute",top:6,right:6,background:"rgba(0,0,0,.75)",backdropFilter:"blur(8px)",borderRadius:5,padding:"2px 7px",display:"flex",alignItems:"center",gap:3}}><span style={{color:"#f59e0b",fontSize:11}}>★</span><span style={{color:"#fff",fontSize:11,fontWeight:700}}>{typeof score==="number"?score.toFixed(1):score}</span></div>}
+    </div>
+    <div style={{padding:compact?"8px 10px 10px":"10px 12px 12px"}}><h3 style={{margin:0,fontSize:compact?11.5:13,fontWeight:700,color:"var(--text)",lineHeight:1.3,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{anime.title_english||anime.title}</h3>
+      <div style={{display:"flex",alignItems:"center",gap:4,marginTop:3}}><span style={{fontSize:10.5,color:"var(--muted)"}}>{anime.year}</span>{anime.episodes&&<><span style={{width:2.5,height:2.5,borderRadius:"50%",background:"var(--muted)",opacity:.4}}/><span style={{fontSize:10.5,color:"var(--muted)"}}>{anime.episodes} eps</span></>}</div>
+      {!compact&&<div style={{display:"flex",flexWrap:"wrap",gap:3,marginTop:4}}>{genres.slice(0,2).map(n=><span key={n} style={{fontSize:9.5,fontWeight:600,padding:"2px 5px",borderRadius:3,background:(GC[n]||"#666")+"18",color:GC[n]||"#888"}}>{n}</span>)}</div>}
+    </div></div>;
+}
+
+// ═══ ANIME CARD (for chat — inline, horizontal) ═══
+function ChatAnimeCard({anime,onSelect}){
+  const[ie,setIe]=useState(false);
+  return <div onClick={()=>onSelect&&onSelect(anime)} style={{background:"var(--card)",border:"1px solid var(--border)",borderRadius:10,overflow:"hidden",cursor:"pointer",display:"flex",gap:10,transition:"all 0.2s",minWidth:260,maxWidth:300,flexShrink:0}} onMouseEnter={e=>e.currentTarget.style.borderColor="var(--accent)"} onMouseLeave={e=>e.currentTarget.style.borderColor="var(--border)"}>
+    <div style={{width:70,flexShrink:0,overflow:"hidden"}}>{!ie&&anime.image_url?<img src={anime.image_url} alt="" onError={()=>setIe(true)} style={{width:"100%",height:"100%",objectFit:"cover",minHeight:95}}/>:<div style={{width:"100%",height:95,background:"var(--surface)",display:"flex",alignItems:"center",justifyContent:"center"}}><span style={{fontSize:22,opacity:.2}}>🎬</span></div>}</div>
+    <div style={{padding:"10px 10px 10px 0",flex:1,minWidth:0}}>
+      <div style={{fontSize:13,fontWeight:700,color:"var(--text)",lineHeight:1.3,display:"-webkit-box",WebkitLineClamp:2,WebkitBoxOrient:"vertical",overflow:"hidden"}}>{anime.title_english||anime.title}</div>
+      <div style={{display:"flex",alignItems:"center",gap:5,marginTop:4}}>
+        {anime.api_score>0&&<span style={{fontSize:11,color:"#f59e0b",fontWeight:600}}>★ {anime.api_score?.toFixed?.(1)}</span>}
+        {anime.year&&<span style={{fontSize:11,color:"var(--muted)"}}>{anime.year}</span>}
+      </div>
+      <div style={{display:"flex",flexWrap:"wrap",gap:3,marginTop:5}}>{(anime.genres||[]).slice(0,3).map((g,i)=>{const n=typeof g==="string"?g:g.name;return <span key={i} style={{fontSize:9,fontWeight:600,padding:"1px 5px",borderRadius:3,background:(GC[n]||"#666")+"18",color:GC[n]||"#888"}}>{n}</span>})}</div>
+      <div style={{fontSize:10,color:"var(--accent)",marginTop:5,fontWeight:600}}>View Details →</div>
+    </div></div>;
+}
+
+// ═══ AUTH MODAL ═══
+function AuthModal({onClose,onAuth}){
+  const[mode,setMode]=useState("login");const[form,setForm]=useState({username:"",email:"",password:""});const[error,setError]=useState("");const[loading,setLoading]=useState(false);
+  const submit=async()=>{setError("");setLoading(true);try{const d=mode==="login"?await api.login({email:form.email,password:form.password}):await api.register(form);api.setToken(d.token);onAuth(d.user,d.token);onClose()}catch(e){setError(e.message)}setLoading(false)};
+  return <div onClick={onClose} style={{position:"fixed",inset:0,background:"rgba(0,0,0,.8)",backdropFilter:"blur(10px)",zIndex:1100,display:"flex",alignItems:"center",justifyContent:"center",padding:20}}>
+    <div onClick={e=>e.stopPropagation()} style={{background:"var(--card)",borderRadius:16,padding:32,width:380,border:"1px solid var(--border)"}}>
+      <h2 style={{margin:"0 0 20px",fontSize:22,fontWeight:800}}>{mode==="login"?"Welcome back":"Create account"}</h2>
+      {error&&<div style={{padding:"8px 12px",borderRadius:8,background:"#ef44441a",color:"#ef4444",fontSize:13,marginBottom:14}}>{error}</div>}
+      {mode==="register"&&<input value={form.username} onChange={e=>setForm(p=>({...p,username:e.target.value}))} placeholder="Username" style={{width:"100%",padding:"11px 14px",borderRadius:10,border:"1px solid var(--border)",background:"var(--surface)",color:"var(--text)",fontSize:14,fontFamily:"inherit",marginBottom:10}}/>}
+      <input type="email" value={form.email} onChange={e=>setForm(p=>({...p,email:e.target.value}))} placeholder="Email" style={{width:"100%",padding:"11px 14px",borderRadius:10,border:"1px solid var(--border)",background:"var(--surface)",color:"var(--text)",fontSize:14,fontFamily:"inherit",marginBottom:10}}/>
+      <input type="password" value={form.password} onChange={e=>setForm(p=>({...p,password:e.target.value}))} placeholder="Password" onKeyDown={e=>e.key==="Enter"&&submit()} style={{width:"100%",padding:"11px 14px",borderRadius:10,border:"1px solid var(--border)",background:"var(--surface)",color:"var(--text)",fontSize:14,fontFamily:"inherit",marginBottom:16}}/>
+      <button onClick={submit} disabled={loading} style={{width:"100%",padding:"12px",borderRadius:10,background:"var(--accent)",border:"none",color:"#fff",fontWeight:700,fontSize:14,cursor:"pointer",fontFamily:"inherit"}}>{loading?"...":mode==="login"?"Sign In":"Create Account"}</button>
+      <div style={{textAlign:"center",marginTop:14}}><button onClick={()=>{setMode(mode==="login"?"register":"login");setError("")}} style={{background:"none",border:"none",color:"var(--accent)",fontSize:13,cursor:"pointer",fontFamily:"inherit"}}>{mode==="login"?"Don't have an account? Sign up":"Already have an account? Sign in"}</button></div>
+      <div style={{textAlign:"center",marginTop:8,fontSize:11,color:"var(--muted)"}}>Demo: demo@bingery.app / demo123</div>
+    </div></div>;
+}
+
+// ═══ ANIME DETAIL MODAL ═══
+function AnimeDetailModal({anime,onClose,user,onUpdate}){
+  const[d,setD]=useState(anime);const[loading,setLoading]=useState(true);const[myScore,setMyScore]=useState(0);const[myReview,setMyReview]=useState("");const[myFG,setMyFG]=useState([]);const[saving,setSaving]=useState(false);const[saved,setSaved]=useState(false);const[tab,setTab]=useState("info");const[ie,setIe]=useState(false);
+  const[aiRating,setAiRating]=useState(false);const[aiConv,setAiConv]=useState([]);const[aiInput,setAiInput]=useState("");const[aiLoading,setAiLoading]=useState(false);
+  const[watchStatus,setWatchStatus]=useState(null);const[similar,setSimilar]=useState([]);
+
+  useEffect(()=>{(async()=>{try{if(anime.id){const r=await api.getAnimeDetail(anime.id);setD(r.anime);if(r.anime.user_rating){setMyScore(r.anime.user_rating.score);setMyReview(r.anime.user_rating.review||"")}if(r.anime.user_genre_votes)setMyFG(r.anime.user_genre_votes);if(r.anime.user_watch_status)setWatchStatus(r.anime.user_watch_status.status);
+        // Fetch similar anime
+        try{const s=await api.getSimilar(anime.id);setSimilar((s.similar||[]).slice(0,6))}catch{}
+      }}catch{setD(anime)}setLoading(false)})()},[anime]);
+  const submit=async()=>{if(!user||!d?.id||myScore===0)return;setSaving(true);try{const r=await api.submitReview(d.id,{score:myScore,review:myReview,genres:myFG});setD(p=>({...p,community_score:r.community_score,rating_count:r.rating_count,fan_genres:r.fan_genres}));setSaved(true);setTimeout(()=>setSaved(false),2000);onUpdate?.()}catch(e){alert("Error: "+e.message)}setSaving(false)};
+  const toggleFG=g=>{setMyFG(p=>p.includes(g)?p.filter(x=>x!==g):p.length<15?[...p,g]:p);setSaved(false)};
+
+  // AI Rating Assistant
+  const startAiRating=()=>{setAiRating(true);setTab("rate");const title=d.title_english||d.title;setAiConv([{role:"ai",text:"Let's rate **"+title+"** together! First off — what did you think of it overall? Did you love it, like it, or was it just okay? And what stood out most — the story, the characters, the animation, or the emotional impact?"}])};
+  const sendAiRate=async()=>{if(!aiInput.trim()||aiLoading)return;const msg=aiInput;setAiInput("");setAiConv(p=>[...p,{role:"user",text:msg}]);setAiLoading(true);
+    try{const r=await api.chatMessage({message:msg,conversation:aiConv.map(m=>({role:m.role==="ai"?"assistant":"user",content:m.text})),mode:"rate"});setAiConv(p=>[...p,{role:"ai",text:r.response}]);
+      // Try to extract suggested score from AI response
+      const scoreMatch=r.response.match(/(\d+)\/10/);if(scoreMatch&&!myScore)setMyScore(parseInt(scoreMatch[1]));
+    }catch(e){setAiConv(p=>[...p,{role:"ai",text:"Sorry, I couldn't connect to the AI service. Try rating manually!"}])}setAiLoading(false)};
+
+  const genres=(d.official_genres||[]).map(g=>g.name||g);const fg=d.fan_genres||[];const mx=fg.length>0?fg[0].votes:0;
+  return <div onClick={onClose} style={{position:"fixed",inset:0,background:"rgba(0,0,0,.8)",backdropFilter:"blur(10px)",zIndex:1000,display:"flex",alignItems:"center",justifyContent:"center",padding:16,animation:"fadeIn 0.2s"}}>
+    <div onClick={e=>e.stopPropagation()} style={{background:"var(--card)",borderRadius:16,maxWidth:780,width:"100%",maxHeight:"90vh",overflow:"auto",border:"1px solid var(--border)",animation:"scaleUp 0.25s cubic-bezier(0.22,1,0.36,1)"}}>
+      {loading?<div style={{padding:60,textAlign:"center",color:"var(--muted)"}}>Loading...</div>:<>
+        <div style={{display:"flex",gap:20,padding:"22px 22px 0"}}>
+          <div style={{flexShrink:0,width:160,borderRadius:10,overflow:"hidden"}}>{!ie&&d.image_url?<img src={d.image_url} alt="" onError={()=>setIe(true)} style={{width:"100%",aspectRatio:"3/4",objectFit:"cover"}}/>:<div style={{width:"100%",aspectRatio:"3/4",background:"var(--surface)",display:"flex",alignItems:"center",justifyContent:"center"}}><span style={{fontSize:40,opacity:.15}}>🎬</span></div>}</div>
+          <div style={{flex:1,minWidth:0}}>
+            <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start"}}><div><h2 style={{margin:0,fontSize:22,fontWeight:800,lineHeight:1.2}}>{d.title_english||d.title}</h2>{d.title_english&&d.title!==d.title_english&&<div style={{fontSize:12,color:"var(--muted)",marginTop:3}}>{d.title}</div>}</div>
+              <button onClick={onClose} style={{background:"var(--surface)",border:"none",borderRadius:8,width:32,height:32,cursor:"pointer",color:"var(--muted)",fontSize:18,display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}>✕</button></div>
+            <div style={{display:"flex",alignItems:"center",gap:10,marginTop:10,flexWrap:"wrap"}}>
+              {d.api_score>0&&<div style={{display:"flex",alignItems:"center",gap:3}}><span style={{color:"#f59e0b",fontSize:14}}>★</span><span style={{fontWeight:700,fontSize:14}}>{d.api_score?.toFixed(1)}</span><span style={{fontSize:10,color:"var(--muted)"}}>AniList</span></div>}
+              {d.community_score&&<div style={{display:"flex",alignItems:"center",gap:3}}><span style={{color:"#22c55e",fontSize:14}}>★</span><span style={{fontWeight:700,fontSize:14}}>{d.community_score}</span><span style={{fontSize:10,color:"var(--muted)"}}>Bingery ({d.rating_count})</span></div>}
+              {d.year&&<span style={{color:"var(--muted)",fontSize:13}}>{d.year}</span>}{d.episodes&&<span style={{color:"var(--muted)",fontSize:13}}>{d.episodes} eps</span>}{d.studio&&<span style={{color:"var(--muted)",fontSize:13}}>{d.studio}</span>}
+            </div>
+            <div style={{display:"flex",flexWrap:"wrap",gap:4,marginTop:8}}>{genres.map(n=><span key={n} style={{fontSize:11,fontWeight:600,padding:"3px 8px",borderRadius:5,background:(GC[n]||"#666")+"18",color:GC[n]||"#888"}}>{n}</span>)}</div>
+            <p style={{color:"var(--muted)",fontSize:13,lineHeight:1.65,marginTop:10,maxHeight:80,overflow:"auto"}}>{d.synopsis||"No synopsis available."}</p>
+            {/* Watch Status */}
+            <div style={{marginTop:12}}><WatchStatusSelector animeId={d.id} currentStatus={watchStatus} user={user} onUpdate={e=>{if(e)setWatchStatus(e.status);else setWatchStatus(null);onUpdate?.()}}/></div>
+          </div></div>
+
+        {/* Tabs */}
+        <div style={{display:"flex",gap:2,padding:"14px 22px 0",borderBottom:"1px solid var(--border)"}}>
+          {[{k:"info",l:"Fan Genres"},{k:"rate",l:"Rate & Tag"},{k:"similar",l:"Similar"}].map(t=><button key={t.k} onClick={()=>setTab(t.k)} style={{padding:"8px 16px",border:"none",borderBottom:tab===t.k?"2px solid var(--accent)":"2px solid transparent",background:"none",color:tab===t.k?"var(--accent)":"var(--muted)",fontWeight:600,fontSize:13,cursor:"pointer",fontFamily:"inherit"}}>{t.l}</button>)}
+        </div>
+        <div style={{padding:22}}>
+          {tab==="info"&&<div><h3 style={{margin:"0 0 12px",fontSize:15,fontWeight:700}}>Fan Genre Categories</h3>
+            {fg.length>0?fg.slice(0,12).map(f=><FanGenreBar key={f.genre} genre={f} maxVotes={mx}/>):<div style={{padding:24,textAlign:"center",color:"var(--muted)",background:"var(--surface)",borderRadius:10,fontSize:13}}>No fan genre votes yet</div>}</div>}
+
+          {tab==="rate"&&(!user?<div style={{padding:30,textAlign:"center",color:"var(--muted)",background:"var(--surface)",borderRadius:10,fontSize:14,fontWeight:600}}>Sign in to rate anime</div>:<>
+            {/* AI Rating Assistant button */}
+            {!aiRating&&<button onClick={startAiRating} style={{width:"100%",padding:"12px",borderRadius:10,border:"1px dashed rgba(249,115,22,0.3)",background:"rgba(249,115,22,0.05)",color:"var(--accent)",fontWeight:600,fontSize:13,cursor:"pointer",fontFamily:"inherit",marginBottom:18,display:"flex",alignItems:"center",justifyContent:"center",gap:8}}>
+              <span style={{fontSize:16}}>🤖</span> Let AI help me rate this anime
+            </button>}
+
+            {/* AI Rating Chat */}
+            {aiRating&&<div style={{background:"var(--surface)",borderRadius:10,padding:14,marginBottom:18,maxHeight:200,overflow:"auto"}}>
+              {aiConv.map((m,i)=><div key={i} style={{marginBottom:10}}><div style={{fontSize:11,fontWeight:600,color:m.role==="ai"?"var(--accent)":"var(--text)",marginBottom:3}}>{m.role==="ai"?"Bingery AI":"You"}</div><div style={{fontSize:12.5,lineHeight:1.5,color:"var(--text)"}}>{m.text}</div></div>)}
+              {aiLoading&&<div style={{display:"flex",gap:3,padding:8}}>{[0,1,2].map(i=><div key={i} style={{width:5,height:5,borderRadius:"50%",background:"var(--accent)",animation:"typing 1s infinite "+(i*.2)+"s"}}/>)}</div>}
+              <div style={{display:"flex",gap:6,marginTop:8}}>
+                <input value={aiInput} onChange={e=>setAiInput(e.target.value)} onKeyDown={e=>e.key==="Enter"&&sendAiRate()} placeholder="Tell the AI what you thought..." style={{flex:1,padding:"8px 12px",borderRadius:8,border:"1px solid var(--border)",background:"var(--bg)",color:"var(--text)",fontSize:12,fontFamily:"inherit"}}/>
+                <button onClick={sendAiRate} style={{padding:"8px 14px",borderRadius:8,background:"var(--accent)",border:"none",color:"#fff",fontWeight:600,fontSize:12,cursor:"pointer",fontFamily:"inherit"}}>Send</button>
+              </div></div>}
+
+            {/* Manual Rating */}
+            <div style={{marginBottom:18}}><label style={{fontSize:13,fontWeight:700,display:"block",marginBottom:8}}>Your Score {myScore>0&&<span style={{fontWeight:400,color:"var(--accent)"}}>— {myScore}/10</span>}</label><StarRating10 rating={myScore} onRate={v=>{setMyScore(v);setSaved(false)}} size={28}/></div>
+            <div style={{marginBottom:18}}><label style={{fontSize:13,fontWeight:700,display:"block",marginBottom:8}}>Short Review (optional)</label><textarea value={myReview} onChange={e=>{setMyReview(e.target.value);setSaved(false)}} placeholder="What did you think?" style={{width:"100%",padding:"10px 14px",borderRadius:10,border:"1px solid var(--border)",background:"var(--surface)",color:"var(--text)",fontSize:13,fontFamily:"inherit",resize:"vertical",minHeight:60}}/></div>
+            <div style={{marginBottom:18}}><label style={{fontSize:13,fontWeight:700,display:"block",marginBottom:4}}>Tag Genres <span style={{fontWeight:400,color:"var(--muted)"}}>({myFG.length}/15)</span></label>
+              {Object.entries(ALL_FAN_GENRES).map(([cat,items])=><div key={cat} style={{marginTop:10}}><div style={{fontSize:10,fontWeight:700,color:"var(--muted)",textTransform:"uppercase",letterSpacing:.5,marginBottom:5}}>{cat}</div><div style={{display:"flex",flexWrap:"wrap",gap:4}}>{items.map(g=><button key={g} onClick={()=>toggleFG(g)} style={{padding:"3px 9px",borderRadius:14,cursor:"pointer",fontFamily:"inherit",fontSize:11,fontWeight:600,transition:"all .12s",border:"1px solid "+(myFG.includes(g)?(GC[g]||"var(--accent)"):"var(--border)"),background:myFG.includes(g)?(GC[g]||"var(--accent)")+"20":"transparent",color:myFG.includes(g)?(GC[g]||"var(--accent)"):"var(--muted)"}}>{g}</button>)}</div></div>)}</div>
+            <button onClick={submit} disabled={myScore===0||saving} style={{width:"100%",padding:"12px",borderRadius:10,border:"none",fontFamily:"inherit",fontWeight:700,fontSize:14,cursor:myScore===0?"default":"pointer",transition:"all .2s",background:saved?"#22c55e":myScore===0?"var(--surface)":"var(--accent)",color:myScore===0?"var(--muted)":"#fff"}}>{saving?"Saving...":saved?"Saved!":myScore===0?"Select a score":"Submit Rating & Genre Tags"}</button>
+          </>)}
+
+          {/* Similar anime tab */}
+          {tab==="similar"&&<div>
+            <h3 style={{margin:"0 0 14px",fontSize:15,fontWeight:700}}>Similar Anime</h3>
+            {similar.length>0?<div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(130px,1fr))",gap:10}}>
+              {similar.map((a,i)=><AnimeCard key={a.id} anime={a} index={i} compact onSelect={sa=>{setD(sa);setTab("info");setLoading(true);(async()=>{try{const r=await api.getAnimeDetail(sa.id);setD(r.anime);if(r.anime.user_watch_status)setWatchStatus(r.anime.user_watch_status.status);else setWatchStatus(null);setMyScore(r.anime.user_rating?r.anime.user_rating.score:0);setMyReview(r.anime.user_rating?r.anime.user_rating.review||"":"");setMyFG(r.anime.user_genre_votes||[]);const s=await api.getSimilar(sa.id);setSimilar((s.similar||[]).slice(0,6))}catch{setD(sa)}setLoading(false)})()}}/>)}
+            </div>:<div style={{padding:24,textAlign:"center",color:"var(--muted)",fontSize:13}}>No similar anime found in the database yet</div>}
+          </div>}
+
+        </div></>}
+    </div></div>;
+}
+
+// ═══ FULL ANIME PAGE ═══
+function AnimePage({animeId,user,onUpdate,onSelectAnime}){
+  const[d,setD]=useState(null);const[loading,setLoading]=useState(true);const[ie,setIe]=useState(false);
+  const[myScore,setMyScore]=useState(0);const[myReview,setMyReview]=useState("");const[myFG,setMyFG]=useState([]);
+  const[saving,setSaving]=useState(false);const[saved,setSaved]=useState(false);const[watchStatus,setWatchStatus]=useState(null);
+  const[similar,setSimilar]=useState([]);const[tab,setTab]=useState("overview");
+  const[aiRating,setAiRating]=useState(false);const[aiConv,setAiConv]=useState([]);const[aiInput,setAiInput]=useState("");const[aiLoading,setAiLoading]=useState(false);
+
+  useEffect(()=>{setLoading(true);setTab("overview");setAiRating(false);window.scrollTo(0,0);(async()=>{
+    try{const r=await api.getAnimeDetail(animeId);setD(r.anime);
+      if(r.anime.user_rating){setMyScore(r.anime.user_rating.score);setMyReview(r.anime.user_rating.review||"")}else{setMyScore(0);setMyReview("")}
+      if(r.anime.user_genre_votes)setMyFG(r.anime.user_genre_votes);else setMyFG([]);
+      if(r.anime.user_watch_status)setWatchStatus(r.anime.user_watch_status.status);else setWatchStatus(null);
+      try{const s=await api.getSimilar(animeId);setSimilar((s.similar||[]).slice(0,8))}catch{}
+    }catch(e){console.error(e)}setLoading(false)})()},[animeId]);
+
+  const submit=async()=>{if(!user||!d?.id||myScore===0)return;setSaving(true);try{const r=await api.submitReview(d.id,{score:myScore,review:myReview,genres:myFG});setD(p=>({...p,community_score:r.community_score,rating_count:r.rating_count,fan_genres:r.fan_genres}));setSaved(true);setTimeout(()=>setSaved(false),2000);onUpdate?.()}catch(e){alert(e.message)}setSaving(false)};
+  const toggleFG=g=>{setMyFG(p=>p.includes(g)?p.filter(x=>x!==g):p.length<15?[...p,g]:p);setSaved(false)};
+  const startAiRating=()=>{setAiRating(true);setTab("rate");const title=d.title_english||d.title;setAiConv([{role:"ai",text:"Let's rate **"+title+"** together! What did you think overall? What stood out — story, characters, animation, or emotional impact?"}])};
+  const sendAiRate=async()=>{if(!aiInput.trim()||aiLoading)return;const msg=aiInput;setAiInput("");setAiConv(p=>[...p,{role:"user",text:msg}]);setAiLoading(true);try{const r=await api.chatMessage({message:msg,conversation:aiConv.map(m=>({role:m.role==="ai"?"assistant":"user",content:m.text})),mode:"rate"});setAiConv(p=>[...p,{role:"ai",text:r.response}]);const sm=r.response.match(/(\d+)\/10/);if(sm&&!myScore)setMyScore(parseInt(sm[1]))}catch{setAiConv(p=>[...p,{role:"ai",text:"Couldn't connect to AI. Try rating manually!"}])}setAiLoading(false)};
+
+  if(loading)return <div style={{maxWidth:1000,margin:"0 auto",padding:"40px 20px"}}><div style={{display:"flex",gap:24}}><div style={{width:220,aspectRatio:"3/4",borderRadius:12,overflow:"hidden"}}><div className="shimmer-line" style={{height:"100%",borderRadius:0}}/></div><div style={{flex:1}}><div className="shimmer-line" style={{width:"60%",height:28,marginBottom:16}}/><div className="shimmer-line" style={{width:"40%",marginBottom:10}}/><div className="shimmer-line" style={{width:"80%",marginBottom:10}}/><div className="shimmer-line" style={{width:"90%"}}/></div></div></div>;
+  if(!d)return <div style={{textAlign:"center",padding:80,color:"var(--muted)"}}><div style={{fontSize:40,opacity:.2}}>😿</div><div style={{fontSize:17,fontWeight:600,marginTop:12}}>Anime not found</div><button onClick={()=>navigate("#/")} style={{marginTop:16,padding:"10px 22px",borderRadius:10,background:"var(--accent)",border:"none",color:"#fff",fontWeight:600,fontSize:14,cursor:"pointer",fontFamily:"inherit"}}>Back to Browse</button></div>;
+
+  const genres=(d.official_genres||[]).map(g=>g.name||g);const fg=d.fan_genres||[];const mx=fg.length>0?fg[0].votes:0;
+
+  return <div style={{maxWidth:1000,margin:"0 auto",padding:"24px 20px",animation:"fadeIn .3s"}}>
+    {/* Back button */}
+    <button onClick={()=>window.history.back()} style={{background:"none",border:"none",color:"var(--accent)",fontSize:13,fontWeight:600,cursor:"pointer",fontFamily:"inherit",marginBottom:16,display:"flex",alignItems:"center",gap:4}}>← Back</button>
+
+    {/* Hero section */}
+    <div style={{display:"flex",gap:28,marginBottom:28}}>
+      {/* Banner/cover */}
+      <div style={{flexShrink:0,width:220}}>
+        <div style={{borderRadius:12,overflow:"hidden",boxShadow:"0 8px 32px rgba(0,0,0,.4)"}}>
+          {!ie&&d.image_url?<img src={d.image_url} alt="" onError={()=>setIe(true)} style={{width:"100%",aspectRatio:"3/4",objectFit:"cover",display:"block"}}/>
+            :<div style={{width:"100%",aspectRatio:"3/4",background:"var(--surface)",display:"flex",alignItems:"center",justifyContent:"center"}}><span style={{fontSize:48,opacity:.15}}>🎬</span></div>}
+        </div>
+        {/* Watch status */}
+        <div style={{marginTop:12}}><WatchStatusSelector animeId={d.id} currentStatus={watchStatus} user={user} onUpdate={e=>{if(e)setWatchStatus(e.status);else setWatchStatus(null);onUpdate?.()}}/></div>
+      </div>
+
+      {/* Info */}
+      <div style={{flex:1,minWidth:0}}>
+        <h1 style={{fontSize:28,fontWeight:800,lineHeight:1.2,margin:0}}>{d.title_english||d.title}</h1>
+        {d.title_english&&d.title!==d.title_english&&<div style={{fontSize:14,color:"var(--muted)",marginTop:4}}>{d.title}</div>}
+        {d.title_japanese&&<div style={{fontSize:13,color:"var(--muted)",marginTop:2,opacity:.7}}>{d.title_japanese}</div>}
+
+        <div style={{display:"flex",alignItems:"center",gap:14,marginTop:14,flexWrap:"wrap"}}>
+          {d.api_score>0&&<div style={{display:"flex",alignItems:"center",gap:4,background:"var(--surface)",padding:"6px 12px",borderRadius:8}}><span style={{color:"#f59e0b",fontSize:16}}>★</span><span style={{fontWeight:700,fontSize:16}}>{d.api_score?.toFixed(1)}</span><span style={{fontSize:11,color:"var(--muted)"}}>AniList</span></div>}
+          {d.community_score&&<div style={{display:"flex",alignItems:"center",gap:4,background:"var(--surface)",padding:"6px 12px",borderRadius:8}}><span style={{color:"#22c55e",fontSize:16}}>★</span><span style={{fontWeight:700,fontSize:16}}>{d.community_score}</span><span style={{fontSize:11,color:"var(--muted)"}}>Bingery ({d.rating_count})</span></div>}
+        </div>
+
+        <div style={{display:"flex",flexWrap:"wrap",gap:6,marginTop:14}}>
+          {genres.map(n=><span key={n} style={{fontSize:12,fontWeight:600,padding:"4px 10px",borderRadius:6,background:(GC[n]||"#666")+"18",color:GC[n]||"#888"}}>{n}</span>)}
+        </div>
+
+        <div style={{display:"flex",gap:16,marginTop:14,fontSize:13,color:"var(--muted)",flexWrap:"wrap"}}>
+          {d.year&&<span>{d.year}</span>}{d.episodes&&<span>{d.episodes} episodes</span>}{d.studio&&<span>{d.studio}</span>}{d.source&&<span>{d.source}</span>}{d.status&&<span>{d.status}</span>}
+        </div>
+
+        <p style={{color:"var(--muted)",fontSize:14,lineHeight:1.7,marginTop:16}}>{d.synopsis||"No synopsis available."}</p>
+      </div>
+    </div>
+
+    {/* Tabs */}
+    <div style={{display:"flex",gap:4,borderBottom:"1px solid var(--border)",marginBottom:20}}>
+      {[{k:"overview",l:"Fan Genres"},{k:"rate",l:"Rate & Tag"},{k:"similar",l:"Similar Anime"}].map(t=>
+        <button key={t.k} onClick={()=>setTab(t.k)} style={{padding:"10px 20px",border:"none",borderBottom:tab===t.k?"2px solid var(--accent)":"2px solid transparent",background:"none",color:tab===t.k?"var(--accent)":"var(--muted)",fontWeight:600,fontSize:14,cursor:"pointer",fontFamily:"inherit"}}>{t.l}</button>
+      )}
+    </div>
+
+    {/* Tab content */}
+    {tab==="overview"&&<div style={{maxWidth:600}}>
+      <h3 style={{margin:"0 0 14px",fontSize:16,fontWeight:700}}>Fan Genre Categories</h3>
+      {fg.length>0?fg.slice(0,15).map(f=><FanGenreBar key={f.genre} genre={f} maxVotes={mx}/>)
+        :<div style={{padding:28,textAlign:"center",color:"var(--muted)",background:"var(--surface)",borderRadius:10,fontSize:13}}>No fan genre votes yet — be the first to tag this anime!</div>}
+    </div>}
+
+    {tab==="rate"&&(!user?<div style={{padding:40,textAlign:"center",color:"var(--muted)",background:"var(--surface)",borderRadius:12,fontSize:15,fontWeight:600,maxWidth:500}}>Sign in to rate and tag anime</div>:<div style={{maxWidth:600}}>
+      {!aiRating&&<button onClick={startAiRating} style={{width:"100%",padding:"14px",borderRadius:10,border:"1px dashed rgba(249,115,22,.3)",background:"rgba(249,115,22,.05)",color:"var(--accent)",fontWeight:600,fontSize:14,cursor:"pointer",fontFamily:"inherit",marginBottom:20,display:"flex",alignItems:"center",justifyContent:"center",gap:8}}><span style={{fontSize:18}}>🤖</span> Let AI help me rate this anime</button>}
+      {aiRating&&<div style={{background:"var(--surface)",borderRadius:10,padding:16,marginBottom:20,maxHeight:220,overflow:"auto"}}>{aiConv.map((m,i)=><div key={i} style={{marginBottom:10}}><div style={{fontSize:11,fontWeight:600,color:m.role==="ai"?"var(--accent)":"var(--text)",marginBottom:3}}>{m.role==="ai"?"Bingery AI":"You"}</div><div style={{fontSize:13,lineHeight:1.55,color:"var(--text)"}}>{m.text}</div></div>)}
+        {aiLoading&&<div style={{display:"flex",gap:3,padding:8}}>{[0,1,2].map(i=><div key={i} style={{width:5,height:5,borderRadius:"50%",background:"var(--accent)",animation:"typing 1s infinite "+(i*.2)+"s"}}/>)}</div>}
+        <div style={{display:"flex",gap:6,marginTop:8}}><input value={aiInput} onChange={e=>setAiInput(e.target.value)} onKeyDown={e=>e.key==="Enter"&&sendAiRate()} placeholder="Tell the AI what you thought..." style={{flex:1,padding:"9px 13px",borderRadius:8,border:"1px solid var(--border)",background:"var(--bg)",color:"var(--text)",fontSize:13,fontFamily:"inherit"}}/><button onClick={sendAiRate} style={{padding:"9px 15px",borderRadius:8,background:"var(--accent)",border:"none",color:"#fff",fontWeight:600,fontSize:12,cursor:"pointer",fontFamily:"inherit"}}>Send</button></div>
+      </div>}
+      <div style={{marginBottom:20}}><label style={{fontSize:14,fontWeight:700,display:"block",marginBottom:8}}>Your Score {myScore>0&&<span style={{fontWeight:400,color:"var(--accent)"}}>— {myScore}/10</span>}</label><StarRating10 rating={myScore} onRate={v=>{setMyScore(v);setSaved(false)}} size={30}/></div>
+      <div style={{marginBottom:20}}><label style={{fontSize:14,fontWeight:700,display:"block",marginBottom:8}}>Review (optional)</label><textarea value={myReview} onChange={e=>{setMyReview(e.target.value);setSaved(false)}} placeholder="What did you think?" style={{width:"100%",padding:"12px 16px",borderRadius:10,border:"1px solid var(--border)",background:"var(--surface)",color:"var(--text)",fontSize:14,fontFamily:"inherit",resize:"vertical",minHeight:70}}/></div>
+      <div style={{marginBottom:20}}><label style={{fontSize:14,fontWeight:700,display:"block",marginBottom:6}}>Tag Genres <span style={{fontWeight:400,color:"var(--muted)"}}>({myFG.length}/15)</span></label>
+        {Object.entries(ALL_FAN_GENRES).map(([cat,items])=><div key={cat} style={{marginTop:10}}><div style={{fontSize:11,fontWeight:700,color:"var(--muted)",textTransform:"uppercase",letterSpacing:.5,marginBottom:5}}>{cat}</div><div style={{display:"flex",flexWrap:"wrap",gap:4}}>{items.map(g=><button key={g} onClick={()=>toggleFG(g)} style={{padding:"4px 10px",borderRadius:14,cursor:"pointer",fontFamily:"inherit",fontSize:12,fontWeight:600,transition:"all .12s",border:"1px solid "+(myFG.includes(g)?(GC[g]||"var(--accent)"):"var(--border)"),background:myFG.includes(g)?(GC[g]||"var(--accent)")+"20":"transparent",color:myFG.includes(g)?(GC[g]||"var(--accent)"):"var(--muted)"}}>{g}</button>)}</div></div>)}</div>
+      <button onClick={submit} disabled={myScore===0||saving} style={{width:"100%",padding:"13px",borderRadius:10,border:"none",fontFamily:"inherit",fontWeight:700,fontSize:15,cursor:myScore===0?"default":"pointer",transition:"all .2s",background:saved?"#22c55e":myScore===0?"var(--surface)":"var(--accent)",color:myScore===0?"var(--muted)":"#fff"}}>{saving?"Saving...":saved?"Saved!":myScore===0?"Select a score":"Submit Rating & Genre Tags"}</button>
+    </div>)}
+
+    {tab==="similar"&&<div>
+      {similar.length>0?<div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(155px,1fr))",gap:14}}>{similar.map((a,i)=><AnimeCard key={a.id} anime={a} index={i} onSelect={sa=>navigate("#/anime/"+sa.id)}/>)}</div>
+        :<div style={{padding:28,textAlign:"center",color:"var(--muted)",fontSize:13}}>No similar anime found yet</div>}
+    </div>}
+  </div>;
+}
+
+// ═══ AI CHAT ═══
+function AIChatPanel({user,onSelectAnime}){
+  const[msgs,setMsgs]=useState([{role:"ai",text:"Hey there! I'm Bingery AI — your personal anime scout. I don't just give generic lists. I dig into what makes each anime special and match it to what *you'll* love.\n\nWhat kind of anime are you in the mood for? Or if you're not sure, just tell me the last anime you really enjoyed and I'll work from there!",cards:[]}]);
+  const[input,setInput]=useState("");const[loading,setLoading]=useState(false);const endRef=useRef(null);
+  useEffect(()=>{endRef.current?.scrollIntoView({behavior:"smooth"})},[msgs,loading]);
+
+  const send=async(text)=>{
+    const msg=text||input;if(!msg.trim()||loading)return;setInput("");setMsgs(p=>[...p,{role:"user",text:msg}]);setLoading(true);
+    try{
+      const conv=msgs.filter(m=>m.role).map(m=>({role:m.role==="ai"?"assistant":"user",content:m.text}));
+      const r=await api.chatMessage({message:msg,conversation:conv,mode:"recommend"});
+      setMsgs(p=>[...p,{role:"ai",text:r.response,cards:r.anime_cards||[]}]);
+    }catch(e){
+      // Fallback if AI service unavailable
+      setMsgs(p=>[...p,{role:"ai",text:"I'm having trouble connecting to my AI brain right now. In the meantime, try browsing the Recommended tab for personalized picks, or search the catalog!",cards:[]}]);
+    }
+    setLoading(false);
+  };
+
+  const quickPrompts=["I want something dark and psychological","What's the best anime of the last 3 years?","Recommend based on my watchlist","I just finished a long series, need something short","Something with incredible animation"];
+
+  return <div style={{maxWidth:740,margin:"0 auto",padding:"16px 20px",height:"calc(100vh - 56px)",display:"flex",flexDirection:"column"}}>
+    <div style={{marginBottom:12,display:"flex",alignItems:"center",gap:10}}>
+      <div style={{width:36,height:36,borderRadius:10,background:"linear-gradient(135deg,var(--accent),#f59e0b)",display:"flex",alignItems:"center",justifyContent:"center",fontWeight:800,fontSize:16,color:"#fff",flexShrink:0}}>B</div>
+      <div><h1 style={{fontSize:20,margin:0,fontFamily:"'Instrument Serif',Georgia,serif",fontWeight:400}}>Bingery <em style={{fontStyle:"italic",color:"var(--accent)"}}>AI</em></h1><p style={{color:"var(--muted)",fontSize:11,margin:0}}>Powered by Claude — personalized anime recommendations</p></div>
+    </div>
+
+    {/* Messages */}
+    <div style={{flex:1,overflow:"auto",paddingRight:4}}>
+      {msgs.map((m,i)=>m.role==="user"?
+        <div key={i} style={{display:"flex",justifyContent:"flex-end",marginBottom:14,animation:"fadeUp 0.3s ease"}}><div style={{background:"var(--accent)",color:"#fff",padding:"10px 15px",borderRadius:"13px 13px 3px 13px",maxWidth:"75%",fontSize:13,lineHeight:1.55}}>{m.text}</div></div>
+        :<div key={i} style={{marginBottom:20,animation:"fadeUp 0.3s ease"}}>
+          <div style={{display:"flex",gap:10,alignItems:"flex-start"}}>
+            <div style={{width:28,height:28,borderRadius:7,background:"linear-gradient(135deg,var(--accent),#f59e0b)",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0,fontSize:12,fontWeight:800,color:"#fff"}}>B</div>
+            <div style={{flex:1}}>
+              <div style={{background:"var(--surface)",padding:"12px 16px",borderRadius:"3px 13px 13px 13px",fontSize:13,lineHeight:1.65,color:"var(--text)",whiteSpace:"pre-wrap"}}>{m.text}</div>
+              {/* Anime cards */}
+              {m.cards&&m.cards.length>0&&<div style={{display:"flex",gap:10,marginTop:10,overflowX:"auto",paddingBottom:6}}>
+                {m.cards.map((c,j)=><ChatAnimeCard key={j} anime={c} onSelect={onSelectAnime}/>)}
+              </div>}
+            </div>
+          </div>
+        </div>
+      )}
+      {loading&&<div style={{display:"flex",gap:10,alignItems:"flex-start",marginBottom:14}}>
+        <div style={{width:28,height:28,borderRadius:7,background:"linear-gradient(135deg,var(--accent),#f59e0b)",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0,fontSize:12,fontWeight:800,color:"#fff"}}>B</div>
+        <div style={{background:"var(--surface)",padding:"14px 18px",borderRadius:"3px 13px 13px 13px"}}>
+          <div style={{display:"flex",gap:3,alignItems:"center"}}><span style={{fontSize:12,color:"var(--muted)",marginRight:6}}>Researching</span>{[0,1,2].map(i=><div key={i} style={{width:5,height:5,borderRadius:"50%",background:"var(--accent)",animation:"typing 1s infinite "+(i*.2)+"s"}}/>)}</div>
+        </div></div>}
+      <div ref={endRef}/>
+    </div>
+
+    {/* Quick prompts */}
+    {msgs.length<=2&&<div style={{display:"flex",flexWrap:"wrap",gap:5,marginBottom:8}}>
+      {quickPrompts.map(s=><button key={s} onClick={()=>send(s)} style={{padding:"5px 11px",borderRadius:8,border:"1px solid var(--border)",background:"transparent",color:"var(--muted)",fontSize:11,cursor:"pointer",fontFamily:"inherit",transition:"all .15s",whiteSpace:"nowrap"}} onMouseEnter={e=>{e.target.style.borderColor="var(--accent)";e.target.style.color="var(--accent)"}} onMouseLeave={e=>{e.target.style.borderColor="var(--border)";e.target.style.color="var(--muted)"}}>{s}</button>)}
+    </div>}
+
+    <div style={{display:"flex",gap:8}}>
+      <input value={input} onChange={e=>setInput(e.target.value)} onKeyDown={e=>e.key==="Enter"&&send()} placeholder="Ask for anime recommendations..."
+        style={{flex:1,padding:"11px 16px",borderRadius:11,border:"1px solid var(--border)",background:"var(--surface)",color:"var(--text)",fontSize:14,fontFamily:"inherit"}} onFocus={e=>e.target.style.borderColor="var(--accent)"} onBlur={e=>e.target.style.borderColor="var(--border)"}/>
+      <button onClick={()=>send()} disabled={loading} style={{padding:"11px 20px",borderRadius:11,border:"none",fontWeight:700,fontSize:14,cursor:"pointer",fontFamily:"inherit",background:input.trim()?"var(--accent)":"var(--surface)",color:input.trim()?"#fff":"var(--muted)",transition:"all .15s"}}>Send</button>
+    </div>
+  </div>;
+}
+
+// ═══ RECOMMENDED TAB ═══
+function RecommendedPanel({user,onSelectAnime,onShowAuth}){
+  const[recs,setRecs]=useState([]);const[taste,setTaste]=useState(null);const[loading,setLoading]=useState(true);
+  useEffect(()=>{(async()=>{if(!user){setLoading(false);return}try{const r=await api.getRecs();setRecs(r.recommendations||[]);setTaste(r.taste_profile)}catch(e){console.error(e)}setLoading(false)})()},[user]);
+
+  if(!user)return <div style={{maxWidth:700,margin:"0 auto",padding:"60px 20px",textAlign:"center",animation:"fadeIn .3s"}}>
+    <div style={{fontSize:48,marginBottom:16,opacity:.2}}>🎯</div>
+    <h2 style={{fontSize:22,fontWeight:700,marginBottom:10}}>Personalized Recommendations</h2>
+    <p style={{color:"var(--muted)",fontSize:14,marginBottom:20,lineHeight:1.6}}>Sign in and rate some anime to get AI-powered recommendations tailored to your taste.</p>
+    <button onClick={onShowAuth} style={{padding:"12px 28px",borderRadius:10,background:"var(--accent)",border:"none",color:"#fff",fontWeight:700,fontSize:15,cursor:"pointer",fontFamily:"inherit"}}>Sign In to Get Started</button>
+  </div>;
+
+  return <div style={{maxWidth:1200,margin:"0 auto",padding:20,animation:"fadeIn .3s"}}>
+    <h1 style={{fontSize:26,margin:"0 0 6px",fontFamily:"'Instrument Serif',Georgia,serif",fontWeight:400}}>Recommended <em style={{fontStyle:"italic",color:"var(--accent)"}}>For You</em></h1>
+
+    {/* Taste profile summary */}
+    {taste&&<div style={{background:"var(--surface)",borderRadius:12,padding:"14px 18px",marginBottom:20,display:"flex",alignItems:"center",gap:16,flexWrap:"wrap"}}>
+      <div style={{fontSize:12,color:"var(--muted)"}}><strong style={{color:"var(--text)"}}>{taste.total_rated}</strong> anime rated</div>
+      <div style={{fontSize:12,color:"var(--muted)"}}>avg score: <strong style={{color:"var(--text)"}}>{taste.avg_score}/10</strong></div>
+      <div style={{display:"flex",gap:4,flexWrap:"wrap"}}>{(taste.top_genres||[]).slice(0,5).map(([g,s])=><span key={g} style={{fontSize:10,fontWeight:600,padding:"2px 8px",borderRadius:10,background:(GC[g]||"#666")+"20",color:GC[g]||"#999"}}>{g}</span>)}</div>
+    </div>}
+
+    {loading?<div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(170px,1fr))",gap:16}}>{[...Array(8)].map((_,i)=><div key={i} style={{background:"var(--card)",borderRadius:12,overflow:"hidden"}}><div style={{aspectRatio:"3/4",background:"var(--surface)"}}><div className="shimmer-line" style={{height:"100%",borderRadius:0}}/></div><div style={{padding:12}}><div className="shimmer-line" style={{width:"70%",marginBottom:6}}/><div className="shimmer-line" style={{width:"50%"}}/></div></div>)}</div>
+      :recs.length===0?<div style={{textAlign:"center",padding:60,color:"var(--muted)"}}><div style={{fontSize:40,marginBottom:12,opacity:.2}}>📊</div><div style={{fontSize:16,fontWeight:600,marginBottom:6}}>Rate more anime to get recommendations</div><div style={{fontSize:13,opacity:.7}}>The more you rate, the better your recommendations become</div></div>
+      :<div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(170px,1fr))",gap:16}}>{recs.map((a,i)=><AnimeCard key={a.id} anime={a} index={i} onSelect={onSelectAnime}/>)}</div>}
+  </div>;
+}
+
+// ═══ ONBOARDING ═══
+function OnboardingFlow({onComplete,onAuth}){
+  const[step,setStep]=useState(0);const[chatMsgs,setChatMsgs]=useState([{role:"ai",text:"Welcome to Bingery! 🎬 I'm your anime guide, and I'm going to help you set up your taste profile so I can give you amazing personalized recommendations.\n\nLet's start with a fun question: **What's the anime that first got you hooked?** The one that made you realize anime was something special."}]);
+  const[input,setInput]=useState("");const[loading,setLoading]=useState(false);const[showSignup,setShowSignup]=useState(false);const endRef=useRef(null);
+  useEffect(()=>{endRef.current?.scrollIntoView({behavior:"smooth"})},[chatMsgs,loading]);
+
+  const send=async(text)=>{
+    const msg=text||input;if(!msg.trim()||loading)return;setInput("");setChatMsgs(p=>[...p,{role:"user",text:msg}]);setLoading(true);
+    try{
+      const conv=chatMsgs.map(m=>({role:m.role==="ai"?"assistant":"user",content:m.text}));
+      const r=await api.chatMessage({message:msg,conversation:conv,mode:"onboard"});
+      setChatMsgs(p=>[...p,{role:"ai",text:r.response,cards:r.anime_cards||[]}]);setStep(s=>s+1);
+    }catch{
+      const fallback=step===0?"Great choice! Now tell me — do you prefer anime with lots of action and fights, or do you lean more towards deep stories and mysteries?":"Thanks for sharing! Based on what you've told me, I think you'd love some of the anime in our catalog. Let's get you signed up so I can start tracking your taste!";
+      setChatMsgs(p=>[...p,{role:"ai",text:fallback}]);setStep(s=>s+1);
+    }
+    setLoading(false);if(step>=2)setTimeout(()=>setShowSignup(true),1500);
+  };
+
+  return <div style={{maxWidth:600,margin:"0 auto",padding:"40px 20px",animation:"fadeUp .5s ease"}}>
+    <div style={{textAlign:"center",marginBottom:30}}>
+      <div style={{width:56,height:56,borderRadius:14,background:"linear-gradient(135deg,#f97316,#ea580c)",display:"inline-flex",alignItems:"center",justifyContent:"center",fontWeight:800,fontSize:26,color:"#fff",marginBottom:12}}>B</div>
+      <h1 style={{fontSize:28,fontFamily:"'Instrument Serif',Georgia,serif",fontWeight:400}}>Welcome to <em style={{fontStyle:"italic",color:"var(--accent)"}}>Bingery</em></h1>
+      <p style={{color:"var(--muted)",fontSize:14,marginTop:6}}>Let's discover your anime taste</p>
+    </div>
+    <div style={{background:"var(--card)",borderRadius:16,border:"1px solid var(--border)",overflow:"hidden"}}>
+      <div style={{maxHeight:400,overflow:"auto",padding:"20px 20px 12px"}}>
+        {chatMsgs.map((m,i)=>m.role==="user"?
+          <div key={i} style={{display:"flex",justifyContent:"flex-end",marginBottom:14}}><div style={{background:"var(--accent)",color:"#fff",padding:"10px 15px",borderRadius:"13px 13px 3px 13px",maxWidth:"80%",fontSize:13,lineHeight:1.55}}>{m.text}</div></div>
+          :<div key={i} style={{marginBottom:16,display:"flex",gap:10,alignItems:"flex-start"}}><div style={{width:28,height:28,borderRadius:7,background:"linear-gradient(135deg,var(--accent),#f59e0b)",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0,fontSize:12,fontWeight:800,color:"#fff"}}>B</div>
+            <div style={{flex:1}}><div style={{background:"var(--surface)",padding:"12px 16px",borderRadius:"3px 13px 13px 13px",fontSize:13,lineHeight:1.65,whiteSpace:"pre-wrap"}}>{m.text}</div>
+              {m.cards?.length>0&&<div style={{display:"flex",gap:8,marginTop:8,overflowX:"auto"}}>{m.cards.map((c,j)=><ChatAnimeCard key={j} anime={c}/>)}</div>}
+            </div></div>
+        )}
+        {loading&&<div style={{display:"flex",gap:10,alignItems:"flex-start",marginBottom:14}}><div style={{width:28,height:28,borderRadius:7,background:"linear-gradient(135deg,var(--accent),#f59e0b)",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0,fontSize:12,fontWeight:800,color:"#fff"}}>B</div><div style={{background:"var(--surface)",padding:"12px 16px",borderRadius:"3px 13px 13px 13px",display:"flex",gap:3}}>{[0,1,2].map(i=><div key={i} style={{width:5,height:5,borderRadius:"50%",background:"var(--accent)",animation:"typing 1s infinite "+(i*.2)+"s"}}/>)}</div></div>}
+        <div ref={endRef}/>
+      </div>
+      {!showSignup?<div style={{padding:"12px 20px 20px",borderTop:"1px solid var(--border)"}}>
+        {step===0&&<div style={{display:"flex",flexWrap:"wrap",gap:5,marginBottom:8}}>{["Death Note","Attack on Titan","Naruto","Dragon Ball","One Piece","Fullmetal Alchemist"].map(s=><button key={s} onClick={()=>send(s)} style={{padding:"4px 10px",borderRadius:7,border:"1px solid var(--border)",background:"transparent",color:"var(--muted)",fontSize:11,cursor:"pointer",fontFamily:"inherit"}} onMouseEnter={e=>{e.target.style.borderColor="var(--accent)";e.target.style.color="var(--accent)"}} onMouseLeave={e=>{e.target.style.borderColor="var(--border)";e.target.style.color="var(--muted)"}}>{s}</button>)}</div>}
+        <div style={{display:"flex",gap:8}}><input value={input} onChange={e=>setInput(e.target.value)} onKeyDown={e=>e.key==="Enter"&&send()} placeholder="Type your answer..." style={{flex:1,padding:"10px 14px",borderRadius:10,border:"1px solid var(--border)",background:"var(--surface)",color:"var(--text)",fontSize:13,fontFamily:"inherit"}}/>
+          <button onClick={()=>send()} style={{padding:"10px 16px",borderRadius:10,background:"var(--accent)",border:"none",color:"#fff",fontWeight:700,fontSize:13,cursor:"pointer",fontFamily:"inherit"}}>Send</button></div>
+      </div>:<div style={{padding:"16px 20px 20px",borderTop:"1px solid var(--border)",textAlign:"center"}}>
+        <p style={{fontSize:13,color:"var(--muted)",marginBottom:12}}>Create an account to save your preferences and get personalized recommendations!</p>
+        <div style={{display:"flex",gap:10,justifyContent:"center"}}><button onClick={()=>{onComplete();setTimeout(()=>onAuth(),100)}} style={{padding:"10px 22px",borderRadius:10,background:"var(--accent)",border:"none",color:"#fff",fontWeight:700,fontSize:13,cursor:"pointer",fontFamily:"inherit"}}>Create Account</button>
+          <button onClick={onComplete} style={{padding:"10px 22px",borderRadius:10,background:"var(--surface)",border:"1px solid var(--border)",color:"var(--muted)",fontWeight:600,fontSize:13,cursor:"pointer",fontFamily:"inherit"}}>Skip for now</button></div>
+      </div>}
+    </div></div>;
+}
+
+// ═══ MAIN APP ═══
+function App(){
+  const route=useHashRoute();
+  const[page,setPage]=useState(route.startsWith("#/anime/")||route.startsWith("#/app")?"app":"landing");
+  const[tab,setTab]=useState("browse");const[user,setUser]=useState(null);const[showAuth,setShowAuth]=useState(false);
+  const[animeList,setAnimeList]=useState([]);const[myRatings,setMyRatings]=useState([]);const[search,setSearch]=useState("");const[gf,setGf]=useState("");
+  const[loading,setLoading]=useState(false);const[apiStatus,setApiStatus]=useState("checking");const[lv,setLv]=useState(false);
+  const[currentPage,setCurrentPage]=useState(1);const[totalPages,setTotalPages]=useState(1);
+  const[showOnboarding,setShowOnboarding]=useState(false);
+  const[wlEntries,setWlEntries]=useState([]);const[wlStats,setWlStats]=useState(null);const[wlFilter,setWlFilter]=useState("");const[wlLoading,setWlLoading]=useState(false);
+
+  // Parse route
+  const animePageMatch=route.match(/^#\/anime\/(\d+)/);
+  const animePageId=animePageMatch?parseInt(animePageMatch[1]):null;
+  const isAppRoute=route.startsWith("#/app")||route.startsWith("#/anime/");
+
+  // Sync page state with hash
+  useEffect(()=>{
+    if(route==="#/"||route==="#"||route==="")setPage("landing");
+    else if(isAppRoute)setPage("app");
+    // Parse tab from route like #/app/chat
+    const tabMatch=route.match(/^#\/app\/(\w+)/);
+    if(tabMatch&&["browse","recommended","mylist","chat"].includes(tabMatch[1]))setTab(tabMatch[1]);
+  },[route]);
+
+  const goToAnime=(anime)=>{navigate("#/anime/"+(anime.id||anime.anime_id))};
+  const goToApp=(t)=>{navigate("#/app/"+(t||"browse"))};
+
+  useEffect(()=>{setLv(true)},[]);
+  useEffect(()=>{(async()=>{try{await api.health();setApiStatus("connected");const t=api.getToken();if(t){try{const d=await api.getMe();setUser(d.user)}catch{api.setToken(null)}}else if(!localStorage.getItem("bingery_onboarded"))setShowOnboarding(true)}catch{setApiStatus("disconnected")}})()},[]);
+
+  const fetchAnime=useCallback(async(pg=1)=>{if(apiStatus!=="connected")return;setLoading(true);try{const p="?page="+pg+"&per_page=24"+(search?"&search="+encodeURIComponent(search):"")+(gf?"&genre="+encodeURIComponent(gf):"")+"&sort=api_score&order=desc";const d=await api.getAnime(p);setAnimeList(d.anime);setCurrentPage(d.page);setTotalPages(d.pages)}catch(e){console.error(e)}setLoading(false)},[search,gf,apiStatus]);
+  const fetchRatings=useCallback(async()=>{try{const d=await api.getMyRatings();setMyRatings(d.ratings)}catch{setMyRatings([])}},[]);
+  const fetchWatchlist=useCallback(async(statusFilter)=>{setWlLoading(true);try{const p=statusFilter?"?status="+statusFilter:"";const d=await api.getWatchlist(p);setWlEntries(d.entries||[]);const s=await api.getWatchlistStats();setWlStats(s.stats)}catch(e){console.error(e)}setWlLoading(false)},[]);
+
+  useEffect(()=>{if(page==="app"&&tab==="browse"&&apiStatus==="connected"&&!animePageId)fetchAnime(1)},[page,tab,apiStatus,fetchAnime,animePageId]);
+  useEffect(()=>{if(page==="app"&&tab==="mylist"&&user&&!animePageId)fetchWatchlist(wlFilter)},[page,tab,user,wlFilter,fetchWatchlist,animePageId]);
+
+  const handleAuth=(u,t)=>{setUser(u);api.setToken(t)};const handleLogout=()=>{setUser(null);api.setToken(null);setMyRatings([]);setWlEntries([]);setWlStats(null)};
+
+  // ── Onboarding ──
+  if(showOnboarding&&page==="landing")return <div style={{minHeight:"100vh"}}><OnboardingFlow onComplete={()=>{setShowOnboarding(false);localStorage.setItem("bingery_onboarded","1");navigate("#/app/browse")}} onAuth={()=>setShowAuth(true)}/>{showAuth&&<AuthModal onClose={()=>setShowAuth(false)} onAuth={handleAuth}/>}</div>;
+
+  // ── Landing ──
+  if(page==="landing")return <div style={{minHeight:"100vh",overflow:"hidden"}}>
+    <div style={{position:"fixed",inset:0,overflow:"hidden",pointerEvents:"none"}}><div style={{position:"absolute",top:"-20%",right:"-10%",width:600,height:600,borderRadius:"50%",background:"radial-gradient(circle,rgba(249,115,22,.06) 0%,transparent 70%)",animation:"float 8s ease-in-out infinite"}}/></div>
+    <nav style={{position:"relative",zIndex:10,padding:"20px 40px",display:"flex",justifyContent:"space-between",alignItems:"center",maxWidth:1200,margin:"0 auto",opacity:lv?1:0,transition:"opacity .8s ease .1s"}}>
+      <div style={{display:"flex",alignItems:"center",gap:10}}><div style={{width:36,height:36,borderRadius:10,background:"linear-gradient(135deg,#f97316,#ea580c)",display:"flex",alignItems:"center",justifyContent:"center",fontWeight:800,fontSize:18,color:"#fff"}}>B</div><span style={{fontSize:20,fontWeight:800,letterSpacing:-.5}}>Bingery</span></div>
+      <div style={{display:"flex",gap:12,alignItems:"center"}}><div style={{width:8,height:8,borderRadius:"50%",background:apiStatus==="connected"?"#22c55e":apiStatus==="checking"?"#f59e0b":"#ef4444"}} title={apiStatus}/><button onClick={()=>navigate("#/app/browse")} style={{padding:"10px 24px",borderRadius:10,background:"rgba(255,255,255,.06)",border:"1px solid rgba(255,255,255,.1)",color:"#e8e8ed",fontWeight:600,fontSize:14,cursor:"pointer",fontFamily:"inherit"}}>Open App →</button></div>
+    </nav>
+    <section style={{position:"relative",zIndex:10,maxWidth:1200,margin:"0 auto",padding:"80px 40px 60px",textAlign:"center"}}>
+      <div style={{opacity:lv?1:0,transition:"all .8s ease .2s"}}><div style={{display:"inline-flex",alignItems:"center",gap:8,padding:"6px 16px",borderRadius:20,background:"rgba(249,115,22,.08)",border:"1px solid rgba(249,115,22,.15)",fontSize:13,fontWeight:600,color:"#f97316",marginBottom:28}}><span style={{width:6,height:6,borderRadius:"50%",background:"#f97316",animation:"glow 2s ease-in-out infinite"}}/>AI-Powered Anime Discovery</div></div>
+      <h1 style={{fontSize:"clamp(40px,7vw,80px)",fontFamily:"'Instrument Serif',Georgia,serif",fontWeight:400,lineHeight:1.05,margin:"0 auto",maxWidth:900,opacity:lv?1:0,transition:"all .8s ease .35s"}}>Your anime,{" "}<em style={{fontStyle:"italic",color:"#f97316"}}>understood</em></h1>
+      <p style={{fontSize:18,color:"rgba(232,232,237,.5)",maxWidth:540,margin:"24px auto 0",lineHeight:1.7,fontWeight:300,opacity:lv?1:0,transition:"all .8s ease .5s"}}>Rate, tag, and discover anime through a conversational AI that actually knows what it's talking about.</p>
+      {apiStatus==="disconnected"&&<div style={{margin:"24px auto",maxWidth:500,padding:"14px 20px",borderRadius:12,background:"rgba(239,68,68,.08)",border:"1px solid rgba(239,68,68,.2)",fontSize:13,color:"#fca5a5"}}>Backend not detected. Run <code style={{background:"rgba(255,255,255,.08)",padding:"2px 6px",borderRadius:4}}>python app.py</code></div>}
+      <div style={{display:"flex",gap:14,justifyContent:"center",marginTop:36,opacity:lv?1:0,transition:"all .8s ease .65s"}}><button onClick={()=>navigate("#/app/browse")} style={{padding:"14px 32px",borderRadius:12,background:"linear-gradient(135deg,#f97316,#ea580c)",border:"none",color:"#fff",fontWeight:700,fontSize:16,cursor:"pointer",fontFamily:"inherit",boxShadow:"0 4px 24px rgba(249,115,22,.25)"}}>Launch App</button></div>
+    </section>
+    <section style={{position:"relative",zIndex:10,maxWidth:1200,margin:"0 auto",padding:"40px 40px 80px"}}>
+      <div style={{textAlign:"center",marginBottom:48}}><h2 style={{fontFamily:"'Instrument Serif',Georgia,serif",fontSize:"clamp(28px,4vw,44px)",fontWeight:400}}>How <em style={{fontStyle:"italic",color:"#f97316"}}>Bingery</em> works</h2></div>
+      <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(240px,1fr))",gap:16}}>
+        {[{i:"🤖",t:"AI That Gets You",d:"Not a generic chatbot. Bingery AI researches anime deeply, references your taste profile, and gives specific reasons for every pick."},{i:"📊",t:"Rate 1–10 + Fan Tags",d:"Score anime precisely and vote on genres — from Shounen and Isekai to Mind-Bending and Cyberpunk."},{i:"🎯",t:"Smart Recs",d:"The more you rate, the smarter recommendations get. See what matches your taste in the Recommended tab."},{i:"🏷️",t:"AI Rating Assistant",d:"Not sure how to rate? Let AI guide you through it by discussing what you liked and suggesting scores and tags."}].map((f,i)=><div key={i} style={{background:"rgba(255,255,255,.02)",border:"1px solid rgba(255,255,255,.06)",borderRadius:14,padding:22}} onMouseEnter={e=>{e.currentTarget.style.background="rgba(255,255,255,.04)";e.currentTarget.style.borderColor="rgba(249,115,22,.2)"}} onMouseLeave={e=>{e.currentTarget.style.background="rgba(255,255,255,.02)";e.currentTarget.style.borderColor="rgba(255,255,255,.06)"}}><span style={{fontSize:26}}>{f.i}</span><h3 style={{fontSize:16,fontWeight:700,margin:"10px 0 6px"}}>{f.t}</h3><p style={{fontSize:13,color:"rgba(232,232,237,.5)",lineHeight:1.6,fontWeight:300}}>{f.d}</p></div>)}
+      </div>
+    </section>
+  </div>;
+
+  // ── App ──
+  return <div style={{display:"flex",flexDirection:"column",minHeight:"100vh"}}>
+    <header style={{padding:"10px 20px",display:"flex",alignItems:"center",justifyContent:"space-between",borderBottom:"1px solid var(--border)",flexShrink:0}}>
+      <div style={{display:"flex",alignItems:"center",gap:8}}><div style={{width:30,height:30,borderRadius:7,background:"linear-gradient(135deg,#f97316,#ea580c)",display:"flex",alignItems:"center",justifyContent:"center",fontWeight:800,fontSize:15,color:"#fff"}}>B</div><span style={{fontSize:17,fontWeight:800,letterSpacing:-.5}}>Bingery</span><div style={{width:7,height:7,borderRadius:"50%",background:apiStatus==="connected"?"#22c55e":"#ef4444",marginLeft:4}}/></div>
+      <div style={{display:"flex",gap:3,background:"var(--surface)",borderRadius:9,padding:3}}>
+        {[{k:"browse",l:"Browse"},{k:"recommended",l:"For You"},{k:"mylist",l:"My List"},{k:"chat",l:"AI Chat"}].map(t=><button key={t.k} onClick={()=>goToApp(t.k)} style={{padding:"6px 14px",borderRadius:7,border:"none",fontWeight:600,fontSize:11.5,cursor:"pointer",fontFamily:"inherit",transition:"all .15s",background:tab===t.k?"var(--accent)":"transparent",color:tab===t.k?"#fff":"var(--muted)"}}>
+          {t.l}{t.k==="mylist"&&myRatings.length>0&&<span style={{marginLeft:4,background:tab===t.k?"rgba(255,255,255,.25)":"var(--accent)",color:"#fff",fontSize:9,fontWeight:700,padding:"1px 5px",borderRadius:8}}>{myRatings.length}</span>}
+          {t.k==="chat"&&<span style={{marginLeft:4,fontSize:9,color:tab===t.k?"rgba(255,255,255,.6)":"rgba(249,115,22,.6)"}}>✦</span>}
+        </button>)}
+      </div>
+      <div style={{display:"flex",gap:8,alignItems:"center"}}>
+        {user?<><span style={{fontSize:12,color:"var(--muted)"}}>{user.username}</span><button onClick={handleLogout} style={{padding:"5px 12px",borderRadius:7,background:"var(--surface)",border:"1px solid var(--border)",color:"var(--muted)",fontSize:11,cursor:"pointer",fontFamily:"inherit"}}>Logout</button></>
+          :<button onClick={()=>setShowAuth(true)} style={{padding:"6px 16px",borderRadius:7,background:"var(--accent)",border:"none",color:"#fff",fontWeight:600,fontSize:12,cursor:"pointer",fontFamily:"inherit"}}>Sign In</button>}
+        <button onClick={()=>navigate("#/")} style={{padding:"5px 12px",borderRadius:7,background:"var(--surface)",border:"1px solid var(--border)",color:"var(--muted)",fontSize:11,cursor:"pointer",fontFamily:"inherit"}}>← Home</button>
+      </div>
+    </header>
+
+    <div style={{flex:1,overflow:"auto"}}>
+      {/* Browse */}
+      {!animePageId&&tab==="browse"&&<div style={{maxWidth:1200,margin:"0 auto",padding:20,animation:"fadeIn .25s"}}>
+        <h1 style={{fontSize:26,margin:"0 0 16px",fontFamily:"'Instrument Serif',Georgia,serif",fontWeight:400}}>Discover <em style={{fontStyle:"italic",color:"var(--accent)"}}>Anime</em></h1>
+        {apiStatus!=="connected"&&<div style={{padding:"12px 16px",borderRadius:10,background:"rgba(239,68,68,.08)",border:"1px solid rgba(239,68,68,.15)",color:"#fca5a5",fontSize:13,marginBottom:16}}>Backend not connected. Run <code style={{background:"rgba(255,255,255,.08)",padding:"2px 5px",borderRadius:3}}>python app.py</code></div>}
+        <div style={{display:"flex",gap:10,marginBottom:12,flexWrap:"wrap"}}><SearchAutocomplete onSelect={a=>goToAnime(a)} onSearch={q=>{setSearch(q);setTimeout(()=>fetchAnime(1),50)}}/></div>
+        <div style={{display:"flex",flexWrap:"wrap",gap:5,marginBottom:18}}><button onClick={()=>{setGf("");setTimeout(()=>fetchAnime(1),50)}} style={{padding:"5px 13px",borderRadius:18,border:"1px solid "+(!gf?"var(--accent)":"var(--border)"),background:!gf?"rgba(249,115,22,.12)":"transparent",color:!gf?"var(--accent)":"var(--muted)",fontSize:12,fontWeight:600,cursor:"pointer",fontFamily:"inherit"}}>All</button>{FGENRES.map(g=><button key={g} onClick={()=>{setGf(gf===g?"":g);setTimeout(()=>fetchAnime(1),50)}} style={{padding:"5px 13px",borderRadius:18,cursor:"pointer",fontFamily:"inherit",fontSize:12,fontWeight:600,transition:"all .15s",border:"1px solid "+(gf===g?(GC[g]||"var(--accent)"):"var(--border)"),background:gf===g?(GC[g]||"var(--accent)")+"18":"transparent",color:gf===g?(GC[g]||"var(--accent)"):"var(--muted)"}}>{g}</button>)}</div>
+        {loading?<div style={{textAlign:"center",padding:60,color:"var(--muted)"}}>Loading...</div>:<><div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(170px,1fr))",gap:16}}>{animeList.map((a,i)=><AnimeCard key={a.id||i} anime={a} index={i} onSelect={goToAnime}/>)}</div>{animeList.length===0&&<div style={{textAlign:"center",padding:80,color:"var(--muted)"}}><div style={{fontSize:40,opacity:.2}}>🔍</div><div style={{fontSize:16,fontWeight:600,marginTop:10}}>No anime found</div></div>}{totalPages>1&&<div style={{display:"flex",justifyContent:"center",gap:8,marginTop:24}}><button disabled={currentPage<=1} onClick={()=>fetchAnime(currentPage-1)} style={{padding:"8px 18px",borderRadius:8,border:"1px solid var(--border)",background:"var(--surface)",color:"var(--text)",fontSize:13,fontWeight:600,cursor:currentPage<=1?"default":"pointer",fontFamily:"inherit",opacity:currentPage<=1?.4:1}}>← Prev</button><span style={{padding:"8px 14px",fontSize:13,color:"var(--muted)"}}>Page {currentPage} / {totalPages}</span><button disabled={currentPage>=totalPages} onClick={()=>fetchAnime(currentPage+1)} style={{padding:"8px 18px",borderRadius:8,border:"1px solid var(--border)",background:"var(--surface)",color:"var(--text)",fontSize:13,fontWeight:600,cursor:currentPage>=totalPages?"default":"pointer",fontFamily:"inherit",opacity:currentPage>=totalPages?.4:1}}>Next →</button></div>}</>}
+      </div>}
+
+      {/* Recommended */}
+      {!animePageId&&tab==="recommended"&&<RecommendedPanel user={user} onSelectAnime={goToAnime} onShowAuth={()=>setShowAuth(true)}/>}
+
+      {/* My List */}
+      {!animePageId&&tab==="mylist"&&<div style={{maxWidth:1200,margin:"0 auto",padding:20,animation:"fadeIn .25s"}}>
+        <h1 style={{fontSize:26,margin:"0 0 8px",fontFamily:"'Instrument Serif',Georgia,serif",fontWeight:400}}>My <em style={{fontStyle:"italic",color:"var(--accent)"}}>List</em></h1>
+        {!user?<div style={{textAlign:"center",padding:60,color:"var(--muted)"}}><div style={{fontSize:17,fontWeight:600,marginBottom:12}}>Sign in to see your watchlist</div><button onClick={()=>setShowAuth(true)} style={{padding:"10px 24px",borderRadius:10,background:"var(--accent)",border:"none",color:"#fff",fontWeight:600,fontSize:14,cursor:"pointer",fontFamily:"inherit"}}>Sign In</button></div>
+        :<>
+          {/* Stats bar */}
+          {wlStats&&<div style={{display:"flex",gap:6,marginBottom:16,flexWrap:"wrap"}}>
+            <button onClick={()=>setWlFilter("")} style={{padding:"6px 14px",borderRadius:18,border:"1px solid "+(!wlFilter?"var(--accent)":"var(--border)"),background:!wlFilter?"rgba(249,115,22,.12)":"transparent",color:!wlFilter?"var(--accent)":"var(--muted)",fontSize:12,fontWeight:600,cursor:"pointer",fontFamily:"inherit"}}>All ({wlStats.total})</button>
+            {STATUSES.map(s=>{const cnt=wlStats[s.key]||0;return cnt>0||wlFilter===s.key?<button key={s.key} onClick={()=>setWlFilter(wlFilter===s.key?"":s.key)} style={{padding:"6px 14px",borderRadius:18,border:"1px solid "+(wlFilter===s.key?s.color+"60":"var(--border)"),background:wlFilter===s.key?s.color+"15":"transparent",color:wlFilter===s.key?s.color:"var(--muted)",fontSize:12,fontWeight:600,cursor:"pointer",fontFamily:"inherit",display:"flex",alignItems:"center",gap:5}}>
+              <span>{s.icon}</span>{s.label} ({cnt})</button>:null})}
+            {wlStats.favorites>0&&<button onClick={()=>setWlFilter(wlFilter==="favorites"?"":"favorites")} style={{padding:"6px 14px",borderRadius:18,border:"1px solid "+(wlFilter==="favorites"?"#f59e0b60":"var(--border)"),background:wlFilter==="favorites"?"rgba(245,158,11,.12)":"transparent",color:wlFilter==="favorites"?"#f59e0b":"var(--muted)",fontSize:12,fontWeight:600,cursor:"pointer",fontFamily:"inherit"}}>★ Favorites ({wlStats.favorites})</button>}
+          </div>}
+          {wlLoading?<div style={{textAlign:"center",padding:60,color:"var(--muted)"}}>Loading...</div>
+            :wlEntries.length===0?<div style={{textAlign:"center",padding:60,color:"var(--muted)"}}><div style={{fontSize:44,marginBottom:14,opacity:.15}}>📺</div><div style={{fontSize:17,fontWeight:600,marginBottom:8}}>{wlFilter?"No anime with this status":"Your list is empty"}</div>{!wlFilter&&<button onClick={()=>goToApp("browse")} style={{padding:"10px 22px",borderRadius:10,background:"var(--accent)",border:"none",color:"#fff",fontWeight:600,fontSize:14,cursor:"pointer",fontFamily:"inherit",marginTop:10}}>Browse Anime</button>}</div>
+            :<div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(170px,1fr))",gap:16}}>
+              {wlEntries.map((e,i)=>{const a={...(e.anime||{}),community_score:e.score};const st=STATUSES.find(s=>s.key===e.status);
+                return <div key={e.id} style={{position:"relative"}}>
+                  <AnimeCard anime={a} index={i} onSelect={goToAnime}/>
+                  {st&&<div style={{position:"absolute",top:6,left:6,background:st.color,borderRadius:4,padding:"2px 7px",fontSize:9,fontWeight:700,color:"#fff",letterSpacing:.3,display:"flex",alignItems:"center",gap:3,zIndex:2}}><span>{st.icon}</span>{st.label}</div>}
+                  {e.score&&<div style={{position:"absolute",bottom:52,left:8,background:"rgba(0,0,0,.7)",borderRadius:4,padding:"1px 6px",fontSize:10,fontWeight:700,color:"#f59e0b",zIndex:2}}>Your score: {e.score}/10</div>}
+                </div>})}
+            </div>}
+        </>}
+      </div>}
+
+      {/* AI Chat */}
+      {tab==="chat"&&!animePageId&&<AIChatPanel user={user} onSelectAnime={goToAnime}/>}
+
+      {/* Full Anime Page */}
+      {animePageId&&<AnimePage animeId={animePageId} user={user} onUpdate={()=>{if(user)fetchWatchlist(wlFilter)}} onSelectAnime={goToAnime}/>}
+    </div>
+
+    {showAuth&&<AuthModal onClose={()=>setShowAuth(false)} onAuth={handleAuth}/>}
+  </div>;
+}
+
+ReactDOM.createRoot(document.getElementById("root")).render(<App/>);
+</script>
+</body>
+</html>
