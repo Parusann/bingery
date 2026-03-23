@@ -6,9 +6,10 @@
 <link href="https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,300;0,9..40,500;0,9..40,700;0,9..40,800;1,9..40,400&family=Instrument+Serif:ital@0;1&display=swap" rel="stylesheet">
 <style>
 *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
-:root{--bg:#08080c;--card:#111118;--surface:#1a1a24;--border:rgba(255,255,255,0.06);--text:#e8e8ed;--muted:rgba(232,232,237,0.45);--accent:#f97316;--green:#22c55e}
-body{background:var(--bg);color:var(--text);font-family:'DM Sans','Helvetica Neue',sans-serif;min-height:100vh}
+:root{--bg:#08080c;--card:#111118;--surface:#1a1a24;--border:rgba(255,255,255,0.08);--text:#e8e8ed;--muted:rgba(232,232,237,0.5);--accent:#f97316;--green:#22c55e}
+body{background:var(--bg);color:var(--text);font-family:'DM Sans','Helvetica Neue',sans-serif;min-height:100vh;font-size:15px;line-height:1.6}
 input:focus,textarea:focus{outline:none}
+input,textarea,button{font-size:inherit}
 *{scrollbar-width:thin;scrollbar-color:rgba(255,255,255,0.06) transparent}
 @keyframes fadeUp{from{opacity:0;transform:translateY(16px)}to{opacity:1;transform:translateY(0)}}
 @keyframes fadeIn{from{opacity:0}to{opacity:1}}
@@ -149,31 +150,71 @@ function SearchAutocomplete({onSelect,onSearch}){
 
 function AnimeCard({anime,onSelect,index=0,compact}){
   const[h,setH]=useState(false);const[ie,setIe]=useState(false);const img=anime.image_url;const score=anime.community_score||anime.api_score;const genres=(anime.official_genres||anime.genres||[]).map(g=>g.name||g);
-  return <div onClick={()=>onSelect(anime)} onMouseEnter={()=>setH(true)} onMouseLeave={()=>setH(false)} style={{background:"var(--card)",border:"1px solid var(--border)",borderRadius:compact?10:12,overflow:"hidden",cursor:"pointer",transition:"all 0.3s cubic-bezier(0.22,1,0.36,1)",transform:h?"translateY(-4px) scale(1.01)":"none",boxShadow:h?"0 14px 28px rgba(0,0,0,0.3)":"0 2px 8px rgba(0,0,0,0.15)",animation:"fadeUp 0.4s ease "+(index*.04)+"s both"}}>
+  return <div onClick={()=>onSelect(anime)} onMouseEnter={()=>setH(true)} onMouseLeave={()=>setH(false)} style={{background:"var(--card)",border:"1px solid var(--border)",borderRadius:compact?10:14,overflow:"hidden",cursor:"pointer",transition:"all 0.3s cubic-bezier(0.22,1,0.36,1)",transform:h?"translateY(-4px) scale(1.01)":"none",boxShadow:h?"0 14px 28px rgba(0,0,0,0.3)":"0 2px 8px rgba(0,0,0,0.15)",animation:"fadeUp 0.4s ease "+(index*.04)+"s both"}}>
     <div style={{position:"relative",aspectRatio:"3/4",background:"var(--surface)",overflow:"hidden"}}>
-      {!ie&&img?<img src={img} alt="" onError={()=>setIe(true)} loading="lazy" style={{width:"100%",height:"100%",objectFit:"cover",transition:"transform 0.4s",transform:h?"scale(1.06)":"scale(1)"}}/>:<div style={{width:"100%",height:"100%",display:"flex",alignItems:"center",justifyContent:"center"}}><span style={{fontSize:compact?28:40,opacity:.15}}>🎬</span></div>}
-      {score>0&&<div style={{position:"absolute",top:6,right:6,background:"rgba(0,0,0,.75)",backdropFilter:"blur(8px)",borderRadius:5,padding:"2px 7px",display:"flex",alignItems:"center",gap:3}}><span style={{color:"#f59e0b",fontSize:11}}>★</span><span style={{color:"#fff",fontSize:11,fontWeight:700}}>{typeof score==="number"?score.toFixed(1):score}</span></div>}
+      {!ie&&img?<img src={img} alt="" onError={()=>setIe(true)} loading="lazy" style={{width:"100%",height:"100%",objectFit:"cover",transition:"transform 0.4s",transform:h?"scale(1.06)":"scale(1)"}}/>:<div style={{width:"100%",height:"100%",display:"flex",alignItems:"center",justifyContent:"center"}}><span style={{fontSize:compact?28:44,opacity:.15}}>🎬</span></div>}
+      {score>0&&<div style={{position:"absolute",top:8,right:8,background:"rgba(0,0,0,.75)",backdropFilter:"blur(8px)",borderRadius:6,padding:"4px 9px",display:"flex",alignItems:"center",gap:4}}><span style={{color:"#f59e0b",fontSize:13}}>★</span><span style={{color:"#fff",fontSize:13,fontWeight:700}}>{typeof score==="number"?score.toFixed(1):score}</span></div>}
     </div>
-    <div style={{padding:compact?"8px 10px 10px":"10px 12px 12px"}}><h3 style={{margin:0,fontSize:compact?11.5:13,fontWeight:700,color:"var(--text)",lineHeight:1.3,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{anime.title_english||anime.title}</h3>
-      <div style={{display:"flex",alignItems:"center",gap:4,marginTop:3}}><span style={{fontSize:10.5,color:"var(--muted)"}}>{anime.year}</span>{anime.episodes&&<><span style={{width:2.5,height:2.5,borderRadius:"50%",background:"var(--muted)",opacity:.4}}/><span style={{fontSize:10.5,color:"var(--muted)"}}>{anime.episodes} eps</span></>}</div>
-      {!compact&&<div style={{display:"flex",flexWrap:"wrap",gap:3,marginTop:4}}>{genres.slice(0,2).map(n=><span key={n} style={{fontSize:9.5,fontWeight:600,padding:"2px 5px",borderRadius:3,background:(GC[n]||"#666")+"18",color:GC[n]||"#888"}}>{n}</span>)}</div>}
+    <div style={{padding:compact?"10px 12px 12px":"14px 14px 16px"}}><h3 style={{margin:0,fontSize:compact?13:15,fontWeight:700,color:"var(--text)",lineHeight:1.3,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{anime.title_english||anime.title}</h3>
+      <div style={{display:"flex",alignItems:"center",gap:5,marginTop:5}}><span style={{fontSize:12.5,color:"var(--muted)"}}>{anime.year}</span>{anime.episodes&&<><span style={{width:3,height:3,borderRadius:"50%",background:"var(--muted)",opacity:.4}}/><span style={{fontSize:12.5,color:"var(--muted)"}}>{anime.episodes} eps</span></>}</div>
+      {!compact&&<div style={{display:"flex",flexWrap:"wrap",gap:4,marginTop:6}}>{genres.slice(0,2).map(n=><span key={n} style={{fontSize:11,fontWeight:600,padding:"3px 7px",borderRadius:4,background:(GC[n]||"#666")+"18",color:GC[n]||"#888"}}>{n}</span>)}</div>}
     </div></div>;
 }
 
-// ═══ ANIME CARD (for chat — inline, horizontal) ═══
-function ChatAnimeCard({anime,onSelect}){
-  const[ie,setIe]=useState(false);
-  return <div onClick={()=>onSelect&&onSelect(anime)} style={{background:"var(--card)",border:"1px solid var(--border)",borderRadius:10,overflow:"hidden",cursor:"pointer",display:"flex",gap:10,transition:"all 0.2s",minWidth:260,maxWidth:300,flexShrink:0}} onMouseEnter={e=>e.currentTarget.style.borderColor="var(--accent)"} onMouseLeave={e=>e.currentTarget.style.borderColor="var(--border)"}>
-    <div style={{width:70,flexShrink:0,overflow:"hidden"}}>{!ie&&anime.image_url?<img src={anime.image_url} alt="" onError={()=>setIe(true)} style={{width:"100%",height:"100%",objectFit:"cover",minHeight:95}}/>:<div style={{width:"100%",height:95,background:"var(--surface)",display:"flex",alignItems:"center",justifyContent:"center"}}><span style={{fontSize:22,opacity:.2}}>🎬</span></div>}</div>
-    <div style={{padding:"10px 10px 10px 0",flex:1,minWidth:0}}>
-      <div style={{fontSize:13,fontWeight:700,color:"var(--text)",lineHeight:1.3,display:"-webkit-box",WebkitLineClamp:2,WebkitBoxOrient:"vertical",overflow:"hidden"}}>{anime.title_english||anime.title}</div>
-      <div style={{display:"flex",alignItems:"center",gap:5,marginTop:4}}>
-        {anime.api_score>0&&<span style={{fontSize:11,color:"#f59e0b",fontWeight:600}}>★ {anime.api_score?.toFixed?.(1)}</span>}
-        {anime.year&&<span style={{fontSize:11,color:"var(--muted)"}}>{anime.year}</span>}
+// ═══ MINI MODAL (for chat anime cards) ═══
+function MiniAnimeModal({anime,onClose,onFullPage}){
+  const[ie,setIe]=useState(false);const[d,setD]=useState(anime);
+  useEffect(()=>{if(anime.id)(async()=>{try{const r=await api.getAnimeDetail(anime.id);setD(r.anime)}catch{}})()},[anime]);
+  const genres=(d.official_genres||d.genres||[]).map(g=>g.name||g);const fg=d.fan_genres||[];
+  return <div onClick={onClose} style={{position:"fixed",inset:0,background:"rgba(0,0,0,.7)",backdropFilter:"blur(8px)",zIndex:1050,display:"flex",alignItems:"center",justifyContent:"center",padding:20,animation:"fadeIn .15s"}}>
+    <div onClick={e=>e.stopPropagation()} style={{background:"var(--card)",borderRadius:16,maxWidth:520,width:"100%",maxHeight:"80vh",overflow:"auto",border:"1px solid var(--border)",animation:"scaleUp .2s ease",padding:24}}>
+      <div style={{display:"flex",gap:18}}>
+        <div style={{flexShrink:0,width:130,borderRadius:10,overflow:"hidden"}}>
+          {!ie&&d.image_url?<img src={d.image_url} alt="" onError={()=>setIe(true)} style={{width:"100%",aspectRatio:"3/4",objectFit:"cover"}}/>
+            :<div style={{width:"100%",aspectRatio:"3/4",background:"var(--surface)",display:"flex",alignItems:"center",justifyContent:"center"}}><span style={{fontSize:32,opacity:.15}}>🎬</span></div>}
+        </div>
+        <div style={{flex:1,minWidth:0}}>
+          <h2 style={{margin:0,fontSize:20,fontWeight:800,lineHeight:1.2}}>{d.title_english||d.title}</h2>
+          {d.title_english&&d.title!==d.title_english&&<div style={{fontSize:13,color:"var(--muted)",marginTop:3}}>{d.title}</div>}
+          <div style={{display:"flex",alignItems:"center",gap:8,marginTop:10,flexWrap:"wrap"}}>
+            {d.api_score>0&&<span style={{fontSize:14,color:"#f59e0b",fontWeight:700}}>★ {d.api_score?.toFixed?.(1)}</span>}
+            {d.year&&<span style={{fontSize:13,color:"var(--muted)"}}>{d.year}</span>}
+            {d.episodes&&<span style={{fontSize:13,color:"var(--muted)"}}>{d.episodes} eps</span>}
+            {d.studio&&<span style={{fontSize:13,color:"var(--muted)"}}>{d.studio}</span>}
+          </div>
+          <div style={{display:"flex",flexWrap:"wrap",gap:5,marginTop:10}}>
+            {genres.slice(0,5).map(n=><span key={n} style={{fontSize:12,fontWeight:600,padding:"3px 9px",borderRadius:5,background:(GC[n]||"#666")+"18",color:GC[n]||"#888"}}>{n}</span>)}
+          </div>
+        </div>
       </div>
-      <div style={{display:"flex",flexWrap:"wrap",gap:3,marginTop:5}}>{(anime.genres||[]).slice(0,3).map((g,i)=>{const n=typeof g==="string"?g:g.name;return <span key={i} style={{fontSize:9,fontWeight:600,padding:"1px 5px",borderRadius:3,background:(GC[n]||"#666")+"18",color:GC[n]||"#888"}}>{n}</span>})}</div>
-      <div style={{fontSize:10,color:"var(--accent)",marginTop:5,fontWeight:600}}>View Details →</div>
-    </div></div>;
+      <p style={{color:"var(--muted)",fontSize:14,lineHeight:1.7,marginTop:16}}>{(d.synopsis||"No synopsis available.").slice(0,400)}{(d.synopsis||"").length>400?"...":""}</p>
+      {fg.length>0&&<div style={{marginTop:14}}><div style={{fontSize:13,fontWeight:700,marginBottom:8}}>Fan Genres</div>{fg.slice(0,5).map(f=><div key={f.genre} style={{display:"inline-block",marginRight:6,marginBottom:4,padding:"3px 10px",borderRadius:12,background:(GC[f.genre]||"#666")+"15",color:GC[f.genre]||"#999",fontSize:12,fontWeight:600}}>{f.genre} ({f.percentage}%)</div>)}</div>}
+      <div style={{display:"flex",gap:10,marginTop:18}}>
+        <button onClick={()=>{onClose();onFullPage?.(d)}} style={{flex:1,padding:"12px",borderRadius:10,background:"var(--accent)",border:"none",color:"#fff",fontWeight:700,fontSize:14,cursor:"pointer",fontFamily:"inherit"}}>View Full Page</button>
+        <button onClick={onClose} style={{padding:"12px 20px",borderRadius:10,background:"var(--surface)",border:"1px solid var(--border)",color:"var(--muted)",fontWeight:600,fontSize:14,cursor:"pointer",fontFamily:"inherit"}}>Close</button>
+      </div>
+    </div>
+  </div>;
+}
+
+// ═══ ANIME CARD (for chat — interactive with mini modal) ═══
+function ChatAnimeCard({anime,onSelect}){
+  const[ie,setIe]=useState(false);const[showMini,setShowMini]=useState(false);
+  return <>
+    <div onClick={()=>setShowMini(true)} style={{background:"var(--card)",border:"1px solid var(--border)",borderRadius:12,overflow:"hidden",cursor:"pointer",display:"flex",gap:12,transition:"all 0.2s",minWidth:280,maxWidth:320,flexShrink:0}} onMouseEnter={e=>e.currentTarget.style.borderColor="var(--accent)"} onMouseLeave={e=>e.currentTarget.style.borderColor="var(--border)"}>
+      <div style={{width:80,flexShrink:0,overflow:"hidden"}}>{!ie&&anime.image_url?<img src={anime.image_url} alt="" onError={()=>setIe(true)} style={{width:"100%",height:"100%",objectFit:"cover",minHeight:110}}/>:<div style={{width:"100%",height:110,background:"var(--surface)",display:"flex",alignItems:"center",justifyContent:"center"}}><span style={{fontSize:24,opacity:.2}}>🎬</span></div>}</div>
+      <div style={{padding:"12px 12px 12px 0",flex:1,minWidth:0}}>
+        <div style={{fontSize:14,fontWeight:700,color:"var(--text)",lineHeight:1.3,display:"-webkit-box",WebkitLineClamp:2,WebkitBoxOrient:"vertical",overflow:"hidden"}}>{anime.title_english||anime.title}</div>
+        <div style={{display:"flex",alignItems:"center",gap:6,marginTop:6}}>
+          {anime.api_score>0&&<span style={{fontSize:12,color:"#f59e0b",fontWeight:600}}>★ {anime.api_score?.toFixed?.(1)}</span>}
+          {anime.year&&<span style={{fontSize:12,color:"var(--muted)"}}>{anime.year}</span>}
+        </div>
+        <div style={{display:"flex",flexWrap:"wrap",gap:4,marginTop:6}}>{(anime.genres||[]).slice(0,3).map((g,i)=>{const n=typeof g==="string"?g:g.name;return <span key={i} style={{fontSize:10,fontWeight:600,padding:"2px 6px",borderRadius:3,background:(GC[n]||"#666")+"18",color:GC[n]||"#888"}}>{n}</span>})}</div>
+        <div style={{fontSize:12,color:"var(--accent)",marginTop:6,fontWeight:600}}>Click for details →</div>
+      </div>
+    </div>
+    {showMini&&<MiniAnimeModal anime={anime} onClose={()=>setShowMini(false)} onFullPage={a=>onSelect?.(a)}/>}
+  </>;
 }
 
 // ═══ AUTH MODAL ═══
@@ -378,7 +419,7 @@ function AnimePage({animeId,user,onUpdate,onSelectAnime}){
 
 // ═══ AI CHAT ═══
 function AIChatPanel({user,onSelectAnime}){
-  const[msgs,setMsgs]=useState([{role:"ai",text:"Hey there! I'm Bingery AI — your personal anime scout. I don't just give generic lists. I dig into what makes each anime special and match it to what *you'll* love.\n\nWhat kind of anime are you in the mood for? Or if you're not sure, just tell me the last anime you really enjoyed and I'll work from there!",cards:[]}]);
+  const[msgs,setMsgs]=useState([{role:"ai",text:"Hey there! I'm Bingery AI — your personal anime scout. I don't just give generic lists. I dig into what makes each anime special and match it to what *you'll* love.\n\nWhat kind of anime are you in the mood for? Pick a vibe below, or just tell me what you're feeling!",cards:[]}]);
   const[input,setInput]=useState("");const[loading,setLoading]=useState(false);const endRef=useRef(null);
   useEffect(()=>{endRef.current?.scrollIntoView({behavior:"smooth"})},[msgs,loading]);
 
@@ -389,54 +430,74 @@ function AIChatPanel({user,onSelectAnime}){
       const r=await api.chatMessage({message:msg,conversation:conv,mode:"recommend"});
       setMsgs(p=>[...p,{role:"ai",text:r.response,cards:r.anime_cards||[]}]);
     }catch(e){
-      // Fallback if AI service unavailable
-      setMsgs(p=>[...p,{role:"ai",text:"I'm having trouble connecting to my AI brain right now. In the meantime, try browsing the Recommended tab for personalized picks, or search the catalog!",cards:[]}]);
+      setMsgs(p=>[...p,{role:"ai",text:"I'm having trouble connecting right now. Try browsing the Recommended tab or search the catalog!",cards:[]}]);
     }
     setLoading(false);
   };
 
-  const quickPrompts=["I want something dark and psychological","What's the best anime of the last 3 years?","Recommend based on my watchlist","I just finished a long series, need something short","Something with incredible animation"];
+  // Interactive category selectors
+  const moods=[
+    {label:"🔥 Action-packed",prompt:"I want intense action anime with great fight scenes"},
+    {label:"🧠 Mind-bending",prompt:"Recommend a psychological anime that will blow my mind"},
+    {label:"😂 Lighthearted",prompt:"I want something funny and wholesome to relax with"},
+    {label:"💀 Dark & mature",prompt:"Give me dark, mature anime that's not for the faint of heart"},
+    {label:"❤️ Emotional",prompt:"I want anime that will make me cry"},
+    {label:"🌟 Highly rated",prompt:"What are the absolute best anime I need to watch?"},
+  ];
+  const followUps=[
+    {label:"What else do you have?",prompt:"Those are good but show me different ones"},
+    {label:"Something newer",prompt:"Can you suggest something from the last 2-3 years?"},
+    {label:"Based on my list",prompt:"Look at my watchlist and recommend based on my taste"},
+    {label:"Short series only",prompt:"I want something short, under 25 episodes"},
+  ];
+  const showMoods=msgs.length<=2;
+  const showFollowUps=msgs.length>2&&msgs.length<=6;
 
-  return <div style={{maxWidth:740,margin:"0 auto",padding:"16px 20px",height:"calc(100vh - 56px)",display:"flex",flexDirection:"column"}}>
-    <div style={{marginBottom:12,display:"flex",alignItems:"center",gap:10}}>
-      <div style={{width:36,height:36,borderRadius:10,background:"linear-gradient(135deg,var(--accent),#f59e0b)",display:"flex",alignItems:"center",justifyContent:"center",fontWeight:800,fontSize:16,color:"#fff",flexShrink:0}}>B</div>
-      <div><h1 style={{fontSize:20,margin:0,fontFamily:"'Instrument Serif',Georgia,serif",fontWeight:400}}>Bingery <em style={{fontStyle:"italic",color:"var(--accent)"}}>AI</em></h1><p style={{color:"var(--muted)",fontSize:11,margin:0}}>Powered by Claude — personalized anime recommendations</p></div>
+  return <div style={{maxWidth:780,margin:"0 auto",padding:"20px 24px",height:"calc(100vh - 56px)",display:"flex",flexDirection:"column"}}>
+    <div style={{marginBottom:16,display:"flex",alignItems:"center",gap:12}}>
+      <div style={{width:40,height:40,borderRadius:12,background:"linear-gradient(135deg,var(--accent),#f59e0b)",display:"flex",alignItems:"center",justifyContent:"center",fontWeight:800,fontSize:18,color:"#fff",flexShrink:0}}>B</div>
+      <div><h1 style={{fontSize:22,margin:0,fontFamily:"'Instrument Serif',Georgia,serif",fontWeight:400}}>Bingery <em style={{fontStyle:"italic",color:"var(--accent)"}}>AI</em></h1><p style={{color:"var(--muted)",fontSize:13,margin:0}}>Powered by Claude — click anime cards to see details</p></div>
     </div>
 
     {/* Messages */}
     <div style={{flex:1,overflow:"auto",paddingRight:4}}>
       {msgs.map((m,i)=>m.role==="user"?
-        <div key={i} style={{display:"flex",justifyContent:"flex-end",marginBottom:14,animation:"fadeUp 0.3s ease"}}><div style={{background:"var(--accent)",color:"#fff",padding:"10px 15px",borderRadius:"13px 13px 3px 13px",maxWidth:"75%",fontSize:13,lineHeight:1.55}}>{m.text}</div></div>
-        :<div key={i} style={{marginBottom:20,animation:"fadeUp 0.3s ease"}}>
-          <div style={{display:"flex",gap:10,alignItems:"flex-start"}}>
-            <div style={{width:28,height:28,borderRadius:7,background:"linear-gradient(135deg,var(--accent),#f59e0b)",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0,fontSize:12,fontWeight:800,color:"#fff"}}>B</div>
+        <div key={i} style={{display:"flex",justifyContent:"flex-end",marginBottom:16,animation:"fadeUp 0.3s ease"}}><div style={{background:"var(--accent)",color:"#fff",padding:"12px 18px",borderRadius:"14px 14px 4px 14px",maxWidth:"75%",fontSize:15,lineHeight:1.6}}>{m.text}</div></div>
+        :<div key={i} style={{marginBottom:22,animation:"fadeUp 0.3s ease"}}>
+          <div style={{display:"flex",gap:12,alignItems:"flex-start"}}>
+            <div style={{width:32,height:32,borderRadius:8,background:"linear-gradient(135deg,var(--accent),#f59e0b)",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0,fontSize:14,fontWeight:800,color:"#fff"}}>B</div>
             <div style={{flex:1}}>
-              <div style={{background:"var(--surface)",padding:"12px 16px",borderRadius:"3px 13px 13px 13px",fontSize:13,lineHeight:1.65,color:"var(--text)",whiteSpace:"pre-wrap"}}>{m.text}</div>
-              {/* Anime cards */}
-              {m.cards&&m.cards.length>0&&<div style={{display:"flex",gap:10,marginTop:10,overflowX:"auto",paddingBottom:6}}>
+              <div style={{background:"var(--surface)",padding:"14px 20px",borderRadius:"4px 14px 14px 14px",fontSize:15,lineHeight:1.7,color:"var(--text)",whiteSpace:"pre-wrap"}}>{m.text}</div>
+              {m.cards&&m.cards.length>0&&<div style={{display:"flex",gap:12,marginTop:12,overflowX:"auto",paddingBottom:8}}>
                 {m.cards.map((c,j)=><ChatAnimeCard key={j} anime={c} onSelect={onSelectAnime}/>)}
               </div>}
             </div>
           </div>
         </div>
       )}
-      {loading&&<div style={{display:"flex",gap:10,alignItems:"flex-start",marginBottom:14}}>
-        <div style={{width:28,height:28,borderRadius:7,background:"linear-gradient(135deg,var(--accent),#f59e0b)",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0,fontSize:12,fontWeight:800,color:"#fff"}}>B</div>
-        <div style={{background:"var(--surface)",padding:"14px 18px",borderRadius:"3px 13px 13px 13px"}}>
-          <div style={{display:"flex",gap:3,alignItems:"center"}}><span style={{fontSize:12,color:"var(--muted)",marginRight:6}}>Researching</span>{[0,1,2].map(i=><div key={i} style={{width:5,height:5,borderRadius:"50%",background:"var(--accent)",animation:"typing 1s infinite "+(i*.2)+"s"}}/>)}</div>
+      {loading&&<div style={{display:"flex",gap:12,alignItems:"flex-start",marginBottom:16}}>
+        <div style={{width:32,height:32,borderRadius:8,background:"linear-gradient(135deg,var(--accent),#f59e0b)",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0,fontSize:14,fontWeight:800,color:"#fff"}}>B</div>
+        <div style={{background:"var(--surface)",padding:"16px 20px",borderRadius:"4px 14px 14px 14px"}}>
+          <div style={{display:"flex",gap:4,alignItems:"center"}}><span style={{fontSize:13,color:"var(--muted)",marginRight:8}}>Researching</span>{[0,1,2].map(i=><div key={i} style={{width:6,height:6,borderRadius:"50%",background:"var(--accent)",animation:"typing 1s infinite "+(i*.2)+"s"}}/>)}</div>
         </div></div>}
       <div ref={endRef}/>
     </div>
 
-    {/* Quick prompts */}
-    {msgs.length<=2&&<div style={{display:"flex",flexWrap:"wrap",gap:5,marginBottom:8}}>
-      {quickPrompts.map(s=><button key={s} onClick={()=>send(s)} style={{padding:"5px 11px",borderRadius:8,border:"1px solid var(--border)",background:"transparent",color:"var(--muted)",fontSize:11,cursor:"pointer",fontFamily:"inherit",transition:"all .15s",whiteSpace:"nowrap"}} onMouseEnter={e=>{e.target.style.borderColor="var(--accent)";e.target.style.color="var(--accent)"}} onMouseLeave={e=>{e.target.style.borderColor="var(--border)";e.target.style.color="var(--muted)"}}>{s}</button>)}
+    {/* Interactive quick selects */}
+    {showMoods&&<div style={{marginBottom:12}}>
+      <div style={{fontSize:13,color:"var(--muted)",marginBottom:8,fontWeight:600}}>Pick a mood:</div>
+      <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(180px,1fr))",gap:8}}>
+        {moods.map(m=><button key={m.label} onClick={()=>send(m.prompt)} style={{padding:"12px 16px",borderRadius:10,border:"1px solid var(--border)",background:"var(--surface)",color:"var(--text)",fontSize:14,fontWeight:600,cursor:"pointer",fontFamily:"inherit",textAlign:"left",transition:"all .15s"}} onMouseEnter={e=>{e.currentTarget.style.borderColor="var(--accent)";e.currentTarget.style.background="rgba(249,115,22,.06)"}} onMouseLeave={e=>{e.currentTarget.style.borderColor="var(--border)";e.currentTarget.style.background="var(--surface)"}}>{m.label}</button>)}
+      </div>
+    </div>}
+    {showFollowUps&&<div style={{display:"flex",flexWrap:"wrap",gap:6,marginBottom:10}}>
+      {followUps.map(f=><button key={f.label} onClick={()=>send(f.prompt)} style={{padding:"8px 14px",borderRadius:10,border:"1px solid var(--border)",background:"var(--surface)",color:"var(--text)",fontSize:13,fontWeight:600,cursor:"pointer",fontFamily:"inherit",transition:"all .15s"}} onMouseEnter={e=>{e.currentTarget.style.borderColor="var(--accent)";e.currentTarget.style.background="rgba(249,115,22,.06)"}} onMouseLeave={e=>{e.currentTarget.style.borderColor="var(--border)";e.currentTarget.style.background="var(--surface)"}}>{f.label}</button>)}
     </div>}
 
-    <div style={{display:"flex",gap:8}}>
-      <input value={input} onChange={e=>setInput(e.target.value)} onKeyDown={e=>e.key==="Enter"&&send()} placeholder="Ask for anime recommendations..."
-        style={{flex:1,padding:"11px 16px",borderRadius:11,border:"1px solid var(--border)",background:"var(--surface)",color:"var(--text)",fontSize:14,fontFamily:"inherit"}} onFocus={e=>e.target.style.borderColor="var(--accent)"} onBlur={e=>e.target.style.borderColor="var(--border)"}/>
-      <button onClick={()=>send()} disabled={loading} style={{padding:"11px 20px",borderRadius:11,border:"none",fontWeight:700,fontSize:14,cursor:"pointer",fontFamily:"inherit",background:input.trim()?"var(--accent)":"var(--surface)",color:input.trim()?"#fff":"var(--muted)",transition:"all .15s"}}>Send</button>
+    <div style={{display:"flex",gap:10}}>
+      <input value={input} onChange={e=>setInput(e.target.value)} onKeyDown={e=>e.key==="Enter"&&send()} placeholder="Or type your own request..."
+        style={{flex:1,padding:"13px 18px",borderRadius:12,border:"1px solid var(--border)",background:"var(--surface)",color:"var(--text)",fontSize:15,fontFamily:"inherit"}} onFocus={e=>e.target.style.borderColor="var(--accent)"} onBlur={e=>e.target.style.borderColor="var(--border)"}/>
+      <button onClick={()=>send()} disabled={loading} style={{padding:"13px 24px",borderRadius:12,border:"none",fontWeight:700,fontSize:15,cursor:"pointer",fontFamily:"inherit",background:input.trim()?"var(--accent)":"var(--surface)",color:input.trim()?"#fff":"var(--muted)",transition:"all .15s"}}>Send</button>
     </div>
   </div>;
 }
@@ -469,9 +530,10 @@ function RecommendedPanel({user,onSelectAnime,onShowAuth}){
   </div>;
 }
 
-// ═══ ONBOARDING ═══
+// ═══ ONBOARDING (optional — user chooses guided vs skip) ═══
 function OnboardingFlow({onComplete,onAuth}){
-  const[step,setStep]=useState(0);const[chatMsgs,setChatMsgs]=useState([{role:"ai",text:"Welcome to Bingery! 🎬 I'm your anime guide, and I'm going to help you set up your taste profile so I can give you amazing personalized recommendations.\n\nLet's start with a fun question: **What's the anime that first got you hooked?** The one that made you realize anime was something special."}]);
+  const[mode,setMode]=useState("choice"); // "choice", "guided", done
+  const[step,setStep]=useState(0);const[chatMsgs,setChatMsgs]=useState([{role:"ai",text:"Awesome, let's do this! 🎬\n\nFirst question: **What's the anime that first got you hooked?** The one that made you fall in love with anime. You can pick from the suggestions below or type your own!"}]);
   const[input,setInput]=useState("");const[loading,setLoading]=useState(false);const[showSignup,setShowSignup]=useState(false);const endRef=useRef(null);
   useEffect(()=>{endRef.current?.scrollIntoView({behavior:"smooth"})},[chatMsgs,loading]);
 
@@ -482,40 +544,76 @@ function OnboardingFlow({onComplete,onAuth}){
       const r=await api.chatMessage({message:msg,conversation:conv,mode:"onboard"});
       setChatMsgs(p=>[...p,{role:"ai",text:r.response,cards:r.anime_cards||[]}]);setStep(s=>s+1);
     }catch{
-      const fallback=step===0?"Great choice! Now tell me — do you prefer anime with lots of action and fights, or do you lean more towards deep stories and mysteries?":"Thanks for sharing! Based on what you've told me, I think you'd love some of the anime in our catalog. Let's get you signed up so I can start tracking your taste!";
+      const fallback=step===0?"Great taste! Now — do you prefer anime with lots of action and fights, or do you lean more towards deep stories and mysteries? Pick below or tell me!":"Awesome! I've got a good sense of your taste now. Let's get you set up!";
       setChatMsgs(p=>[...p,{role:"ai",text:fallback}]);setStep(s=>s+1);
     }
     setLoading(false);if(step>=2)setTimeout(()=>setShowSignup(true),1500);
   };
 
-  return <div style={{maxWidth:600,margin:"0 auto",padding:"40px 20px",animation:"fadeUp .5s ease"}}>
-    <div style={{textAlign:"center",marginBottom:30}}>
+  // ── Choice screen ──
+  if(mode==="choice") return <div style={{maxWidth:560,margin:"0 auto",padding:"60px 20px",animation:"fadeUp .5s ease",textAlign:"center"}}>
+    <div style={{width:64,height:64,borderRadius:16,background:"linear-gradient(135deg,#f97316,#ea580c)",display:"inline-flex",alignItems:"center",justifyContent:"center",fontWeight:800,fontSize:30,color:"#fff",marginBottom:16}}>B</div>
+    <h1 style={{fontSize:32,fontFamily:"'Instrument Serif',Georgia,serif",fontWeight:400}}>Welcome to <em style={{fontStyle:"italic",color:"var(--accent)"}}>Bingery</em></h1>
+    <p style={{color:"var(--muted)",fontSize:16,marginTop:10,lineHeight:1.6,maxWidth:400,margin:"10px auto 0"}}>Your AI-powered anime discovery platform. How would you like to get started?</p>
+
+    <div style={{display:"flex",flexDirection:"column",gap:14,marginTop:36,maxWidth:380,margin:"36px auto 0"}}>
+      <button onClick={()=>setMode("guided")} style={{padding:"20px 24px",borderRadius:14,background:"var(--card)",border:"1px solid rgba(249,115,22,.2)",color:"var(--text)",cursor:"pointer",fontFamily:"inherit",textAlign:"left",transition:"all .2s"}} onMouseEnter={e=>{e.currentTarget.style.borderColor="var(--accent)";e.currentTarget.style.transform="translateY(-2px)"}} onMouseLeave={e=>{e.currentTarget.style.borderColor="rgba(249,115,22,.2)";e.currentTarget.style.transform="translateY(0)"}}>
+        <div style={{display:"flex",alignItems:"center",gap:12}}>
+          <span style={{fontSize:28}}>🤖</span>
+          <div><div style={{fontSize:16,fontWeight:700}}>Get personalized help</div><div style={{fontSize:13,color:"var(--muted)",marginTop:3}}>Our AI will ask a few fun questions to learn your taste and recommend anime for you</div></div>
+        </div>
+      </button>
+
+      <button onClick={()=>{onComplete();}} style={{padding:"20px 24px",borderRadius:14,background:"var(--card)",border:"1px solid var(--border)",color:"var(--text)",cursor:"pointer",fontFamily:"inherit",textAlign:"left",transition:"all .2s"}} onMouseEnter={e=>{e.currentTarget.style.borderColor="var(--muted)";e.currentTarget.style.transform="translateY(-2px)"}} onMouseLeave={e=>{e.currentTarget.style.borderColor="var(--border)";e.currentTarget.style.transform="translateY(0)"}}>
+        <div style={{display:"flex",alignItems:"center",gap:12}}>
+          <span style={{fontSize:28}}>🚀</span>
+          <div><div style={{fontSize:16,fontWeight:700}}>Jump right in</div><div style={{fontSize:13,color:"var(--muted)",marginTop:3}}>Skip the intro and start browsing, rating, and discovering anime on your own</div></div>
+        </div>
+      </button>
+
+      <button onClick={()=>{onComplete();setTimeout(()=>onAuth(),100)}} style={{padding:"16px 24px",borderRadius:14,background:"transparent",border:"1px solid var(--border)",color:"var(--muted)",cursor:"pointer",fontFamily:"inherit",textAlign:"center",fontSize:14,fontWeight:600,transition:"all .2s"}} onMouseEnter={e=>e.currentTarget.style.color="var(--text)"} onMouseLeave={e=>e.currentTarget.style.color="var(--muted)"}>
+        I already have an account — Sign in
+      </button>
+    </div>
+  </div>;
+
+  // ── Guided flow ──
+  return <div style={{maxWidth:640,margin:"0 auto",padding:"40px 20px",animation:"fadeUp .5s ease"}}>
+    <div style={{textAlign:"center",marginBottom:28}}>
       <div style={{width:56,height:56,borderRadius:14,background:"linear-gradient(135deg,#f97316,#ea580c)",display:"inline-flex",alignItems:"center",justifyContent:"center",fontWeight:800,fontSize:26,color:"#fff",marginBottom:12}}>B</div>
-      <h1 style={{fontSize:28,fontFamily:"'Instrument Serif',Georgia,serif",fontWeight:400}}>Welcome to <em style={{fontStyle:"italic",color:"var(--accent)"}}>Bingery</em></h1>
-      <p style={{color:"var(--muted)",fontSize:14,marginTop:6}}>Let's discover your anime taste</p>
+      <h1 style={{fontSize:28,fontFamily:"'Instrument Serif',Georgia,serif",fontWeight:400}}>Let's find your <em style={{fontStyle:"italic",color:"var(--accent)"}}>taste</em></h1>
     </div>
     <div style={{background:"var(--card)",borderRadius:16,border:"1px solid var(--border)",overflow:"hidden"}}>
-      <div style={{maxHeight:400,overflow:"auto",padding:"20px 20px 12px"}}>
+      <div style={{maxHeight:420,overflow:"auto",padding:"24px 24px 14px"}}>
         {chatMsgs.map((m,i)=>m.role==="user"?
-          <div key={i} style={{display:"flex",justifyContent:"flex-end",marginBottom:14}}><div style={{background:"var(--accent)",color:"#fff",padding:"10px 15px",borderRadius:"13px 13px 3px 13px",maxWidth:"80%",fontSize:13,lineHeight:1.55}}>{m.text}</div></div>
-          :<div key={i} style={{marginBottom:16,display:"flex",gap:10,alignItems:"flex-start"}}><div style={{width:28,height:28,borderRadius:7,background:"linear-gradient(135deg,var(--accent),#f59e0b)",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0,fontSize:12,fontWeight:800,color:"#fff"}}>B</div>
-            <div style={{flex:1}}><div style={{background:"var(--surface)",padding:"12px 16px",borderRadius:"3px 13px 13px 13px",fontSize:13,lineHeight:1.65,whiteSpace:"pre-wrap"}}>{m.text}</div>
-              {m.cards?.length>0&&<div style={{display:"flex",gap:8,marginTop:8,overflowX:"auto"}}>{m.cards.map((c,j)=><ChatAnimeCard key={j} anime={c}/>)}</div>}
+          <div key={i} style={{display:"flex",justifyContent:"flex-end",marginBottom:16}}><div style={{background:"var(--accent)",color:"#fff",padding:"12px 18px",borderRadius:"14px 14px 4px 14px",maxWidth:"80%",fontSize:14,lineHeight:1.6}}>{m.text}</div></div>
+          :<div key={i} style={{marginBottom:18,display:"flex",gap:12,alignItems:"flex-start"}}><div style={{width:32,height:32,borderRadius:8,background:"linear-gradient(135deg,var(--accent),#f59e0b)",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0,fontSize:14,fontWeight:800,color:"#fff"}}>B</div>
+            <div style={{flex:1}}><div style={{background:"var(--surface)",padding:"14px 18px",borderRadius:"4px 14px 14px 14px",fontSize:14,lineHeight:1.7,whiteSpace:"pre-wrap"}}>{m.text}</div>
+              {m.cards?.length>0&&<div style={{display:"flex",gap:10,marginTop:10,overflowX:"auto",paddingBottom:4}}>{m.cards.map((c,j)=><ChatAnimeCard key={j} anime={c}/>)}</div>}
             </div></div>
         )}
-        {loading&&<div style={{display:"flex",gap:10,alignItems:"flex-start",marginBottom:14}}><div style={{width:28,height:28,borderRadius:7,background:"linear-gradient(135deg,var(--accent),#f59e0b)",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0,fontSize:12,fontWeight:800,color:"#fff"}}>B</div><div style={{background:"var(--surface)",padding:"12px 16px",borderRadius:"3px 13px 13px 13px",display:"flex",gap:3}}>{[0,1,2].map(i=><div key={i} style={{width:5,height:5,borderRadius:"50%",background:"var(--accent)",animation:"typing 1s infinite "+(i*.2)+"s"}}/>)}</div></div>}
+        {loading&&<div style={{display:"flex",gap:12,alignItems:"flex-start",marginBottom:14}}><div style={{width:32,height:32,borderRadius:8,background:"linear-gradient(135deg,var(--accent),#f59e0b)",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0,fontSize:14,fontWeight:800,color:"#fff"}}>B</div><div style={{background:"var(--surface)",padding:"14px 18px",borderRadius:"4px 14px 14px 14px",display:"flex",gap:4}}>{[0,1,2].map(i=><div key={i} style={{width:6,height:6,borderRadius:"50%",background:"var(--accent)",animation:"typing 1s infinite "+(i*.2)+"s"}}/>)}</div></div>}
         <div ref={endRef}/>
       </div>
-      {!showSignup?<div style={{padding:"12px 20px 20px",borderTop:"1px solid var(--border)"}}>
-        {step===0&&<div style={{display:"flex",flexWrap:"wrap",gap:5,marginBottom:8}}>{["Death Note","Attack on Titan","Naruto","Dragon Ball","One Piece","Fullmetal Alchemist"].map(s=><button key={s} onClick={()=>send(s)} style={{padding:"4px 10px",borderRadius:7,border:"1px solid var(--border)",background:"transparent",color:"var(--muted)",fontSize:11,cursor:"pointer",fontFamily:"inherit"}} onMouseEnter={e=>{e.target.style.borderColor="var(--accent)";e.target.style.color="var(--accent)"}} onMouseLeave={e=>{e.target.style.borderColor="var(--border)";e.target.style.color="var(--muted)"}}>{s}</button>)}</div>}
-        <div style={{display:"flex",gap:8}}><input value={input} onChange={e=>setInput(e.target.value)} onKeyDown={e=>e.key==="Enter"&&send()} placeholder="Type your answer..." style={{flex:1,padding:"10px 14px",borderRadius:10,border:"1px solid var(--border)",background:"var(--surface)",color:"var(--text)",fontSize:13,fontFamily:"inherit"}}/>
-          <button onClick={()=>send()} style={{padding:"10px 16px",borderRadius:10,background:"var(--accent)",border:"none",color:"#fff",fontWeight:700,fontSize:13,cursor:"pointer",fontFamily:"inherit"}}>Send</button></div>
-      </div>:<div style={{padding:"16px 20px 20px",borderTop:"1px solid var(--border)",textAlign:"center"}}>
-        <p style={{fontSize:13,color:"var(--muted)",marginBottom:12}}>Create an account to save your preferences and get personalized recommendations!</p>
-        <div style={{display:"flex",gap:10,justifyContent:"center"}}><button onClick={()=>{onComplete();setTimeout(()=>onAuth(),100)}} style={{padding:"10px 22px",borderRadius:10,background:"var(--accent)",border:"none",color:"#fff",fontWeight:700,fontSize:13,cursor:"pointer",fontFamily:"inherit"}}>Create Account</button>
-          <button onClick={onComplete} style={{padding:"10px 22px",borderRadius:10,background:"var(--surface)",border:"1px solid var(--border)",color:"var(--muted)",fontWeight:600,fontSize:13,cursor:"pointer",fontFamily:"inherit"}}>Skip for now</button></div>
+      {!showSignup?<div style={{padding:"14px 24px 24px",borderTop:"1px solid var(--border)"}}>
+        {/* Quick select options based on step */}
+        {step===0&&<div style={{marginBottom:10}}>
+          <div style={{fontSize:12,color:"var(--muted)",marginBottom:6,fontWeight:600}}>Quick picks:</div>
+          <div style={{display:"flex",flexWrap:"wrap",gap:6}}>{["Death Note","Attack on Titan","Naruto","One Piece","Fullmetal Alchemist","Steins;Gate","Demon Slayer","My Hero Academia"].map(s=><button key={s} onClick={()=>send(s)} style={{padding:"8px 14px",borderRadius:10,border:"1px solid var(--border)",background:"var(--surface)",color:"var(--text)",fontSize:13,fontWeight:600,cursor:"pointer",fontFamily:"inherit",transition:"all .15s"}} onMouseEnter={e=>{e.target.style.borderColor="var(--accent)";e.target.style.background="rgba(249,115,22,.08)"}} onMouseLeave={e=>{e.target.style.borderColor="var(--border)";e.target.style.background="var(--surface)"}}>{s}</button>)}</div>
+        </div>}
+        {step===1&&<div style={{marginBottom:10}}>
+          <div style={{fontSize:12,color:"var(--muted)",marginBottom:6,fontWeight:600}}>What do you prefer?</div>
+          <div style={{display:"flex",flexWrap:"wrap",gap:6}}>{["Action & fights","Deep stories & mystery","Comedy & slice of life","Dark & psychological","Romance & drama","Sci-fi & fantasy"].map(s=><button key={s} onClick={()=>send(s)} style={{padding:"8px 14px",borderRadius:10,border:"1px solid var(--border)",background:"var(--surface)",color:"var(--text)",fontSize:13,fontWeight:600,cursor:"pointer",fontFamily:"inherit",transition:"all .15s"}} onMouseEnter={e=>{e.target.style.borderColor="var(--accent)";e.target.style.background="rgba(249,115,22,.08)"}} onMouseLeave={e=>{e.target.style.borderColor="var(--border)";e.target.style.background="var(--surface)"}}>{s}</button>)}</div>
+        </div>}
+        <div style={{display:"flex",gap:10}}><input value={input} onChange={e=>setInput(e.target.value)} onKeyDown={e=>e.key==="Enter"&&send()} placeholder="Or type your own answer..." style={{flex:1,padding:"12px 16px",borderRadius:10,border:"1px solid var(--border)",background:"var(--surface)",color:"var(--text)",fontSize:14,fontFamily:"inherit"}}/>
+          <button onClick={()=>send()} style={{padding:"12px 20px",borderRadius:10,background:"var(--accent)",border:"none",color:"#fff",fontWeight:700,fontSize:14,cursor:"pointer",fontFamily:"inherit"}}>Send</button></div>
+      </div>:<div style={{padding:"20px 24px 24px",borderTop:"1px solid var(--border)",textAlign:"center"}}>
+        <p style={{fontSize:15,color:"var(--muted)",marginBottom:14}}>Create an account to save your preferences and unlock personalized recommendations!</p>
+        <div style={{display:"flex",gap:12,justifyContent:"center"}}><button onClick={()=>{onComplete();setTimeout(()=>onAuth(),100)}} style={{padding:"12px 28px",borderRadius:10,background:"var(--accent)",border:"none",color:"#fff",fontWeight:700,fontSize:15,cursor:"pointer",fontFamily:"inherit"}}>Create Account</button>
+          <button onClick={onComplete} style={{padding:"12px 28px",borderRadius:10,background:"var(--surface)",border:"1px solid var(--border)",color:"var(--muted)",fontWeight:600,fontSize:15,cursor:"pointer",fontFamily:"inherit"}}>Skip for now</button></div>
       </div>}
-    </div></div>;
+    </div>
+  </div>;
 }
 
 // ═══ MAIN APP ═══
