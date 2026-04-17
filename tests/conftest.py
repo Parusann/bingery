@@ -44,7 +44,7 @@ def auth_headers(app):
     user = User(
         username="tester",
         email="tester@example.com",
-        password=bcrypt.generate_password_hash("password").decode("utf-8"),
+        password_hash=bcrypt.generate_password_hash("password").decode("utf-8"),
     )
     db.session.add(user)
     db.session.commit()

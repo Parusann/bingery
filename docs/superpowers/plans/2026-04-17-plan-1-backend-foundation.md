@@ -123,7 +123,7 @@ def auth_headers(app):
     user = User(
         username="tester",
         email="tester@example.com",
-        password=bcrypt.generate_password_hash("password").decode("utf-8"),
+        password_hash=bcrypt.generate_password_hash("password").decode("utf-8"),
     )
     db.session.add(user)
     db.session.commit()
@@ -1377,7 +1377,7 @@ from models import db, User, Anime, Collection, CollectionItem
 
 def _make_user_and_anime(app):
     with app.app_context():
-        user = User(username="u", email="u@e.com", password="pw")
+        user = User(username="u", email="u@e.com", password_hash="pw")
         a1 = Anime(mal_id=1, title_romaji="A", synopsis="", year=2020, episodes=12,
                    studio="S", cover_image_url="", source="ORIGINAL",
                    status="FINISHED", format="TV")
@@ -1717,7 +1717,7 @@ def test_cannot_access_other_users_collection(app, client, auth_headers):
     from models import db, User, Collection
     headers, _owner = auth_headers
     with app.app_context():
-        other = User(username="other", email="o@e.com", password="pw")
+        other = User(username="other", email="o@e.com", password_hash="pw")
         db.session.add(other)
         db.session.commit()
         c = Collection(user_id=other.id, name="Not Yours")
