@@ -42,7 +42,6 @@ def test_factory_returns_anthropic_by_default(monkeypatch):
     assert provider.__class__.__name__ == "AnthropicProvider"
 
 
-@pytest.mark.skip(reason="provider class added in later task")
 def test_factory_returns_ollama(monkeypatch):
     monkeypatch.setenv("AI_PROVIDER", "ollama")
     monkeypatch.setenv("OLLAMA_MODEL", "gemma4:31b")
