@@ -35,7 +35,6 @@ def test_ai_response_defaults_are_safe():
     assert r.stop_reason is None
 
 
-@pytest.mark.skip(reason="provider class added in later task")
 def test_factory_returns_anthropic_by_default(monkeypatch):
     monkeypatch.setenv("AI_PROVIDER", "anthropic")
     monkeypatch.setenv("ANTHROPIC_API_KEY", "k")
