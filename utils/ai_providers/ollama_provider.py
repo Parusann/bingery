@@ -77,9 +77,51 @@ class OllamaProvider:
                 if piece:
                     yield piece
 
-    # Fallback path placeholder; real implementation added in Task 5.
-    def _prompt_fallback(self, messages, tools, system, max_tokens) -> AIResponse:
-        return AIResponse(text="", tool_calls=[])
+    def _prompt_fallback(
+        self,
+        messages: list[Message],
+        tools: list[ToolSchema],
+        system: str | None,
+        max_tokens: int,
+    ) -> AIResponse:
+        """Prompt-based tool use for models without native function-calling."""
+        injected_system = _build_tool_prompt(system, tools)
+        ollama_messages = self._to_ollama_messages(messages, injected_system)
+        body: dict[str, Any] = {
+            "model": self.model,
+            "messages": ollama_messages,
+            "stream": False,
+            "options": {"num_predict": max_tokens},
+        }
+        resp = requests.post(f"{self.url}/api/chat", json=body, timeout=self.timeout)
+        resp.raise_for_status()
+        data = resp.json()
+
+        text = data.get("message", {}).get("content", "") or ""
+        call = _extract_tool_json(text)
+        if call:
+            return AIResponse(
+                text="",
+                tool_calls=[ToolCall(
+                    id=f"ollama_fb_{uuid.uuid4().hex[:8]}",
+                    name=call["tool"],
+                    arguments=call.get("arguments", {}) or {},
+                )],
+                stop_reason="tool_use",
+                usage={
+                    "input": data.get("prompt_eval_count", 0),
+                    "output": data.get("eval_count", 0),
+                },
+            )
+        return AIResponse(
+            text=text,
+            tool_calls=[],
+            stop_reason="stop" if data.get("done") else None,
+            usage={
+                "input": data.get("prompt_eval_count", 0),
+                "output": data.get("eval_count", 0),
+            },
+        )
 
     @staticmethod
     def _to_ollama_messages(messages: list[Message], system: str | None) -> list[dict]:
@@ -136,3 +178,43 @@ class OllamaProvider:
             stop_reason="stop" if data.get("done") else None,
             usage=usage,
         )
+
+
+def _build_tool_prompt(system: str | None, tools: list[ToolSchema]) -> str:
+    header = system.strip() if system else ""
+    schema_block = json.dumps(
+        [{"name": t.name, "description": t.description, "parameters": t.parameters} for t in tools],
+        indent=2,
+    )
+    instructions = (
+        "You can call ONE of the following tools by responding with a single JSON "
+        "object on its own line formatted exactly as:\n"
+        '{"tool": "<tool_name>", "arguments": { ...arguments... }}\n'
+        "If no tool is needed, answer in plain prose without JSON.\n\n"
+        f"Tools:\n{schema_block}"
+    )
+    return f"{header}\n\n{instructions}".strip()
+
+
+def _extract_tool_json(text: str) -> dict | None:
+    """Find the first JSON object in `text` that looks like a tool invocation."""
+    start = text.find("{")
+    while start != -1:
+        depth = 0
+        for end in range(start, len(text)):
+            ch = text[end]
+            if ch == "{":
+                depth += 1
+            elif ch == "}":
+                depth -= 1
+                if depth == 0:
+                    candidate = text[start:end + 1]
+                    try:
+                        parsed = json.loads(candidate)
+                    except json.JSONDecodeError:
+                        break
+                    if isinstance(parsed, dict) and "tool" in parsed:
+                        return parsed
+                    break
+        start = text.find("{", start + 1)
+    return None
