@@ -295,3 +295,73 @@ class WatchlistEntry(db.Model):
             ).first()
             data["score"] = rating.score if rating else None
         return data
+
+
+class Collection(db.Model):
+    __tablename__ = "collections"
+
+    id = db.Column(db.Integer, primary_key=True)
+    user_id = db.Column(db.Integer, db.ForeignKey("user.id"), nullable=False)
+    name = db.Column(db.String(80), nullable=False)
+    description = db.Column(db.String(500))
+    color = db.Column(db.String(16), default="amber")
+    icon = db.Column(db.String(32), default="bookmark")
+    is_public = db.Column(db.Boolean, default=False, nullable=False)
+    share_token = db.Column(db.String(32), unique=True, nullable=True)
+    created_at = db.Column(db.DateTime, default=db.func.current_timestamp())
+    updated_at = db.Column(
+        db.DateTime,
+        default=db.func.current_timestamp(),
+        onupdate=db.func.current_timestamp(),
+    )
+
+    user = db.relationship("User", backref=db.backref("collections", lazy="dynamic"))
+    items = db.relationship(
+        "CollectionItem",
+        backref="collection",
+        cascade="all, delete-orphan",
+        lazy="dynamic",
+    )
+
+    def to_dict(self, include_items: bool = False):
+        d = {
+            "id": self.id,
+            "user_id": self.user_id,
+            "name": self.name,
+            "description": self.description,
+            "color": self.color,
+            "icon": self.icon,
+            "is_public": self.is_public,
+            "share_token": self.share_token,
+            "items_count": self.items.count(),
+            "created_at": self.created_at.isoformat() if self.created_at else None,
+            "updated_at": self.updated_at.isoformat() if self.updated_at else None,
+        }
+        if include_items:
+            d["items"] = [i.to_dict() for i in self.items]
+        return d
+
+
+class CollectionItem(db.Model):
+    __tablename__ = "collection_items"
+    __table_args__ = (
+        db.UniqueConstraint("collection_id", "anime_id", name="uq_collection_anime"),
+    )
+
+    id = db.Column(db.Integer, primary_key=True)
+    collection_id = db.Column(db.Integer, db.ForeignKey("collections.id"), nullable=False)
+    anime_id = db.Column(db.Integer, db.ForeignKey("anime.id"), nullable=False)
+    note = db.Column(db.String(500))
+    added_at = db.Column(db.DateTime, default=db.func.current_timestamp())
+
+    anime = db.relationship("Anime")
+
+    def to_dict(self):
+        return {
+            "id": self.id,
+            "collection_id": self.collection_id,
+            "anime_id": self.anime_id,
+            "note": self.note,
+            "added_at": self.added_at.isoformat() if self.added_at else None,
+            "anime": self.anime.to_dict(include_community=False) if self.anime else None,
+        }
