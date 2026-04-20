@@ -32,3 +32,58 @@ def test_create_collection_requires_name(client, auth_headers):
     headers, _user = auth_headers
     resp = client.post("/api/collections", headers=headers, json={})
     assert resp.status_code == 400
+
+
+def _create(client, headers, **kwargs):
+    payload = {"name": "Test"}
+    payload.update(kwargs)
+    r = client.post("/api/collections", headers=headers, json=payload)
+    return r.get_json()["collection"]
+
+
+def test_get_collection_detail(client, auth_headers):
+    headers, _ = auth_headers
+    c = _create(client, headers, name="Cozy")
+    r = client.get(f"/api/collections/{c['id']}", headers=headers)
+    assert r.status_code == 200
+    body = r.get_json()["collection"]
+    assert body["name"] == "Cozy"
+    assert body["items"] == []
+
+
+def test_update_collection(client, auth_headers):
+    headers, _ = auth_headers
+    c = _create(client, headers, name="Old")
+    r = client.patch(
+        f"/api/collections/{c['id']}",
+        headers=headers,
+        json={"name": "New", "color": "violet"},
+    )
+    assert r.status_code == 200
+    body = r.get_json()["collection"]
+    assert body["name"] == "New"
+    assert body["color"] == "violet"
+
+
+def test_delete_collection(client, auth_headers):
+    headers, _ = auth_headers
+    c = _create(client, headers, name="GoAway")
+    r = client.delete(f"/api/collections/{c['id']}", headers=headers)
+    assert r.status_code == 204
+    r2 = client.get(f"/api/collections/{c['id']}", headers=headers)
+    assert r2.status_code == 404
+
+
+def test_cannot_access_other_users_collection(app, client, auth_headers):
+    from models import db, User, Collection
+    headers, _owner = auth_headers
+    with app.app_context():
+        other = User(username="other", email="o@e.com", password_hash="pw")
+        db.session.add(other)
+        db.session.commit()
+        c = Collection(user_id=other.id, name="Not Yours")
+        db.session.add(c)
+        db.session.commit()
+        cid = c.id
+    r = client.get(f"/api/collections/{cid}", headers=headers)
+    assert r.status_code == 404
