@@ -34,6 +34,7 @@ def create_app(config_class=Config):
     from routes.recommend import recommend_bp
     from routes.watchlist import watchlist_bp
     from routes.search import search_bp
+    from routes.collections import collections_bp
 
     auth_bcrypt.init_app(app)
     app.register_blueprint(auth_bp)
@@ -44,6 +45,7 @@ def create_app(config_class=Config):
     app.register_blueprint(recommend_bp)
     app.register_blueprint(watchlist_bp)
     app.register_blueprint(search_bp)
+    app.register_blueprint(collections_bp, url_prefix="/api/collections")
 
     # ── Health check ──────────────────────────────────────────────────────
     @app.route("/api/health", methods=["GET"])
