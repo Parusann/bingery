@@ -1336,12 +1336,15 @@ Required imports for the new file:
 
 ```python
 """System prompt and tool-execution dispatcher for the chatbot."""
-from models import db, Anime, User, Rating, FanGenreVote, Genre
-from sqlalchemy import func
-from utils.anilist import search_anilist as anilist_search
+import json
+
+from models import db, Anime, Rating, FanGenreVote, Genre, anime_genres
+from routes.recommend import build_taste_profile
 ```
 
 Leave the body of `BINGERY_SYSTEM` and `execute_tool` unchanged aside from imports.
+Note: `execute_tool` does an inline `from utils.anilist import AniListClient` inside
+the `search_anilist` branch — keep that inline to avoid a circular import at module load.
 
 - [ ] **Step 5: Run tests**
 
