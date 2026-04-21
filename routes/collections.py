@@ -74,6 +74,20 @@ def update_collection(collection_id: int):
     if "icon" in data:
         c.icon = (data["icon"] or "bookmark")[:32]
 
+    if "is_public" in data:
+        new_public = bool(data["is_public"])
+        c.is_public = new_public
+        if new_public and not c.share_token:
+            from utils.tokens import generate_share_token
+            # Ensure uniqueness (collision chance is negligible but cheap to check).
+            while True:
+                token = generate_share_token()
+                if not Collection.query.filter_by(share_token=token).first():
+                    c.share_token = token
+                    break
+        if not new_public:
+            c.share_token = None
+
     db.session.commit()
     return jsonify({"collection": c.to_dict()})
 
@@ -127,3 +141,11 @@ def remove_item(collection_id: int, anime_id: int):
     db.session.delete(item)
     db.session.commit()
     return "", 204
+
+
+@collections_bp.route("/public/<string:token>", methods=["GET"])
+def get_public_collection(token: str):
+    c = Collection.query.filter_by(share_token=token, is_public=True).first()
+    if not c:
+        return jsonify({"error": "not found"}), 404
+    return jsonify({"collection": c.to_dict(include_items=True)})

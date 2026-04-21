@@ -169,3 +169,31 @@ def test_remove_anime_from_collection(client, auth_headers, app):
 
     r = client.delete(f"/api/collections/{c['id']}/items/{aid}", headers=headers)
     assert r.status_code == 204
+
+
+def test_toggle_public_generates_share_token(client, auth_headers):
+    headers, _ = auth_headers
+    c = _create(client, headers, name="Share Me")
+    r = client.patch(f"/api/collections/{c['id']}", headers=headers, json={"is_public": True})
+    assert r.status_code == 200
+    body = r.get_json()["collection"]
+    assert body["is_public"] is True
+    assert body["share_token"]
+
+
+def test_public_endpoint_returns_collection_without_auth(client, auth_headers, app):
+    headers, _ = auth_headers
+    c = _create(client, headers, name="Share Me")
+    patched = client.patch(f"/api/collections/{c['id']}", headers=headers, json={"is_public": True})
+    token = patched.get_json()["collection"]["share_token"]
+
+    r = client.get(f"/api/collections/public/{token}")
+    assert r.status_code == 200
+    assert r.get_json()["collection"]["name"] == "Share Me"
+
+
+def test_public_endpoint_404_when_private(client, auth_headers):
+    headers, _ = auth_headers
+    c = _create(client, headers, name="Private")
+    r = client.get(f"/api/collections/public/never-generated")
+    assert r.status_code == 404
