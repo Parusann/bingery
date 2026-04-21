@@ -89,6 +89,38 @@ def test_cannot_access_other_users_collection(app, client, auth_headers):
     assert r.status_code == 404
 
 
+def test_cannot_add_or_remove_items_on_other_users_collection(app, client, auth_headers):
+    from flask_jwt_extended import create_access_token
+    from models import db, User, Collection, Anime
+    headers, _owner = auth_headers
+    with app.app_context():
+        other = User(username="other2", email="o2@e.com", password_hash="pw")
+        db.session.add(other)
+        db.session.commit()
+        c = Collection(user_id=other.id, name="Private")
+        db.session.add(c)
+        a = Anime(
+            mal_id=99, title="Other", synopsis="", year=2023, episodes=12,
+            studio="X", image_url="", source="ORIGINAL", status="FINISHED",
+        )
+        db.session.add(a)
+        db.session.commit()
+        cid, aid = c.id, a.id
+
+    r_post = client.post(
+        f"/api/collections/{cid}/items",
+        headers=headers,
+        json={"anime_id": aid},
+    )
+    assert r_post.status_code == 404
+
+    r_delete = client.delete(
+        f"/api/collections/{cid}/items/{aid}",
+        headers=headers,
+    )
+    assert r_delete.status_code == 404
+
+
 def _make_anime(app, title="Frieren"):
     from models import db, Anime
     with app.app_context():

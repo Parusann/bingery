@@ -97,7 +97,7 @@ def add_item(collection_id: int):
     anime_id = data.get("anime_id")
     if not isinstance(anime_id, int):
         return jsonify({"error": "`anime_id` must be an integer"}), 400
-    if not Anime.query.get(anime_id):
+    if not db.session.get(Anime, anime_id):
         return jsonify({"error": "anime not found"}), 404
 
     existing = CollectionItem.query.filter_by(
