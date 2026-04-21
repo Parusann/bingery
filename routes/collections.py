@@ -2,7 +2,7 @@
 from flask import Blueprint, request, jsonify
 from flask_jwt_extended import jwt_required, get_jwt_identity
 
-from models import db, Collection
+from models import db, Collection, Anime, CollectionItem
 
 
 collections_bp = Blueprint("collections", __name__)
@@ -84,5 +84,46 @@ def delete_collection(collection_id: int):
     user_id = int(get_jwt_identity())
     c = _owned_or_404(user_id, collection_id)
     db.session.delete(c)
+    db.session.commit()
+    return "", 204
+
+
+@collections_bp.route("/<int:collection_id>/items", methods=["POST"])
+@jwt_required()
+def add_item(collection_id: int):
+    user_id = int(get_jwt_identity())
+    c = _owned_or_404(user_id, collection_id)
+    data = request.get_json(silent=True) or {}
+    anime_id = data.get("anime_id")
+    if not isinstance(anime_id, int):
+        return jsonify({"error": "`anime_id` must be an integer"}), 400
+    if not Anime.query.get(anime_id):
+        return jsonify({"error": "anime not found"}), 404
+
+    existing = CollectionItem.query.filter_by(
+        collection_id=c.id, anime_id=anime_id
+    ).first()
+    if existing:
+        return jsonify({"item": existing.to_dict()}), 200
+
+    item = CollectionItem(
+        collection_id=c.id,
+        anime_id=anime_id,
+        note=(data.get("note") or "")[:500] or None,
+    )
+    db.session.add(item)
+    db.session.commit()
+    return jsonify({"item": item.to_dict()}), 201
+
+
+@collections_bp.route("/<int:collection_id>/items/<int:anime_id>", methods=["DELETE"])
+@jwt_required()
+def remove_item(collection_id: int, anime_id: int):
+    user_id = int(get_jwt_identity())
+    c = _owned_or_404(user_id, collection_id)
+    item = CollectionItem.query.filter_by(collection_id=c.id, anime_id=anime_id).first()
+    if not item:
+        return "", 204
+    db.session.delete(item)
     db.session.commit()
     return "", 204

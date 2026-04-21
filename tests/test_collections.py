@@ -87,3 +87,53 @@ def test_cannot_access_other_users_collection(app, client, auth_headers):
         cid = c.id
     r = client.get(f"/api/collections/{cid}", headers=headers)
     assert r.status_code == 404
+
+
+def _make_anime(app, title="Frieren"):
+    from models import db, Anime
+    with app.app_context():
+        a = Anime(
+            mal_id=42, title=title, synopsis="", year=2023, episodes=28,
+            studio="Madhouse", image_url="", source="ORIGINAL",
+            status="FINISHED",
+        )
+        db.session.add(a)
+        db.session.commit()
+        return a.id
+
+
+def test_add_anime_to_collection(client, auth_headers, app):
+    headers, _ = auth_headers
+    c = _create(client, headers, name="Picks")
+    aid = _make_anime(app)
+
+    r = client.post(
+        f"/api/collections/{c['id']}/items",
+        headers=headers,
+        json={"anime_id": aid, "note": "must rewatch"},
+    )
+    assert r.status_code == 201
+    item = r.get_json()["item"]
+    assert item["anime_id"] == aid
+    assert item["note"] == "must rewatch"
+
+
+def test_adding_duplicate_anime_is_idempotent(client, auth_headers, app):
+    headers, _ = auth_headers
+    c = _create(client, headers, name="Picks")
+    aid = _make_anime(app)
+
+    r1 = client.post(f"/api/collections/{c['id']}/items", headers=headers, json={"anime_id": aid})
+    r2 = client.post(f"/api/collections/{c['id']}/items", headers=headers, json={"anime_id": aid})
+    assert r1.status_code == 201
+    assert r2.status_code == 200  # already exists
+
+
+def test_remove_anime_from_collection(client, auth_headers, app):
+    headers, _ = auth_headers
+    c = _create(client, headers, name="Picks")
+    aid = _make_anime(app)
+    client.post(f"/api/collections/{c['id']}/items", headers=headers, json={"anime_id": aid})
+
+    r = client.delete(f"/api/collections/{c['id']}/items/{aid}", headers=headers)
+    assert r.status_code == 204
