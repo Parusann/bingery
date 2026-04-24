@@ -76,17 +76,25 @@ def dashboard():
     )
     top_fan_tags = [{"name": n, "count": c} for n, c in fan_rows]
 
-    # Hours watched estimate
-    watchlist = {
-        w.anime_id: w.status for w in
-        WatchlistEntry.query.filter_by(user_id=user_id).all()
-    }
+    # Hours watched estimate — derived from the watchlist, not ratings.
+    # A rating doesn't imply viewing; watchlist status does.
+    # For `watching` with a tracked episode count, use that directly;
+    # otherwise weight total episodes by completion fraction.
+    entries = (
+        db.session.query(WatchlistEntry, Anime)
+        .join(Anime, Anime.id == WatchlistEntry.anime_id)
+        .filter(WatchlistEntry.user_id == user_id)
+        .all()
+    )
     total_minutes = 0.0
-    for _, anime in ratings:
-        status = watchlist.get(anime.id, "completed")
-        weight = COMPLETION_WEIGHTS.get(status, 1.0)
-        eps = anime.episodes or 0
-        total_minutes += eps * DEFAULT_EPISODE_MINUTES * weight
+    for w, anime in entries:
+        eps_total = anime.episodes or 0
+        if w.status == "watching" and (w.episodes_watched or 0) > 0:
+            minutes = w.episodes_watched * DEFAULT_EPISODE_MINUTES
+        else:
+            weight = COMPLETION_WEIGHTS.get(w.status, 0.0)
+            minutes = eps_total * DEFAULT_EPISODE_MINUTES * weight
+        total_minutes += minutes
     hours = round(total_minutes / 60.0, 1)
 
     return jsonify({
@@ -107,11 +115,14 @@ def dashboard():
 @jwt_required()
 def genres_breakdown():
     user_id = int(get_jwt_identity())
+    # Unrated votes contribute 0 to the average (instead of being skipped),
+    # so weighted_score = avg * count is not inflated when the user has
+    # voted on anime they have not rated.
     rows = (
         db.session.query(
             FanGenreVote.genre_tag,
             func.count(FanGenreVote.id),
-            func.coalesce(func.avg(Rating.score), 0),
+            func.coalesce(func.avg(func.coalesce(Rating.score, 0)), 0),
         )
         .outerjoin(
             Rating,
