@@ -36,6 +36,7 @@ def create_app(config_class=Config):
     from routes.search import search_bp
     from routes.collections import collections_bp
     from routes.stats import stats_bp
+    from routes.activity import activity_bp
 
     auth_bcrypt.init_app(app)
     app.register_blueprint(auth_bp)
@@ -48,6 +49,7 @@ def create_app(config_class=Config):
     app.register_blueprint(search_bp)
     app.register_blueprint(collections_bp, url_prefix="/api/collections")
     app.register_blueprint(stats_bp, url_prefix="/api/stats")
+    app.register_blueprint(activity_bp, url_prefix="/api/activity")
 
     # ── Health check ──────────────────────────────────────────────────────
     @app.route("/api/health", methods=["GET"])
