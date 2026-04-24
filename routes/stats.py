@@ -131,7 +131,8 @@ def genres_breakdown():
         }
         for name, count, avg in rows
     ]
-    genres.sort(key=lambda g: g["weighted_score"], reverse=True)
+    # Sort by weighted_score descending; tiebreak on name ascending for determinism.
+    genres.sort(key=lambda g: (-g["weighted_score"], g["name"]))
     return jsonify({"genres": genres})
 
 
