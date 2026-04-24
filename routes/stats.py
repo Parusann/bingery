@@ -44,7 +44,7 @@ def dashboard():
     year_counter: Counter[int] = Counter()
     for _, anime in ratings:
         if anime.year:
-            year_counter[int(anime.year)] += 1
+            year_counter[anime.year] += 1
     year_distribution = [
         {"year": y, "count": c} for y, c in sorted(year_counter.items())
     ]
