@@ -125,3 +125,26 @@ def test_stats_does_not_leak_other_users_data(app, client, auth_headers):
     assert body["top_studios"] == []
     assert body["top_fan_tags"] == []
     assert body["year_distribution"] == []
+
+
+def test_stats_genres_breakdown(client, auth_headers, app):
+    headers, user = auth_headers
+    _seed_ratings(app, user.id)
+    r = client.get("/api/stats/genres", headers=headers)
+    assert r.status_code == 200
+    body = r.get_json()
+    fantasy = next(g for g in body["genres"] if g["name"] == "Fantasy")
+    assert fantasy["count"] == 2
+    assert fantasy["weighted_score"] > 0
+
+
+def test_stats_timeline(client, auth_headers, app):
+    headers, user = auth_headers
+    _seed_ratings(app, user.id)
+    r = client.get("/api/stats/timeline", headers=headers)
+    assert r.status_code == 200
+    body = r.get_json()
+    assert {row["year"] for row in body["timeline"]} == {2020, 2023}
+    for row in body["timeline"]:
+        assert "count" in row
+        assert "average_score" in row

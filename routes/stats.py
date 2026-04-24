@@ -101,3 +101,54 @@ def dashboard():
         "top_fan_tags": top_fan_tags,
         "estimated_hours_watched": hours,
     })
+
+
+@stats_bp.route("/genres", methods=["GET"])
+@jwt_required()
+def genres_breakdown():
+    user_id = int(get_jwt_identity())
+    rows = (
+        db.session.query(
+            FanGenreVote.genre_tag,
+            func.count(FanGenreVote.id),
+            func.coalesce(func.avg(Rating.score), 0),
+        )
+        .outerjoin(
+            Rating,
+            (Rating.user_id == FanGenreVote.user_id)
+            & (Rating.anime_id == FanGenreVote.anime_id),
+        )
+        .filter(FanGenreVote.user_id == user_id)
+        .group_by(FanGenreVote.genre_tag)
+        .all()
+    )
+    genres = [
+        {
+            "name": name,
+            "count": int(count),
+            "weighted_score": round(float(avg) * int(count), 2),
+            "avg_score": round(float(avg), 2),
+        }
+        for name, count, avg in rows
+    ]
+    genres.sort(key=lambda g: g["weighted_score"], reverse=True)
+    return jsonify({"genres": genres})
+
+
+@stats_bp.route("/timeline", methods=["GET"])
+@jwt_required()
+def timeline():
+    user_id = int(get_jwt_identity())
+    rows = (
+        db.session.query(Anime.year, func.count(Rating.id), func.avg(Rating.score))
+        .join(Rating, Rating.anime_id == Anime.id)
+        .filter(Rating.user_id == user_id, Anime.year.isnot(None))
+        .group_by(Anime.year)
+        .order_by(Anime.year)
+        .all()
+    )
+    out = [
+        {"year": int(year), "count": int(count), "average_score": round(float(avg), 2)}
+        for year, count, avg in rows
+    ]
+    return jsonify({"timeline": out})
