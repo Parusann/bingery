@@ -2,7 +2,7 @@
 
 
 def _seed_ratings(app, user_id):
-    from models import db, Anime, Rating, FanGenreVote
+    from models import db, Anime, Rating, FanGenreVote, WatchlistEntry
     with app.app_context():
         a = Anime(mal_id=1, title="A", synopsis="", year=2020,
                   episodes=12, studio="Madhouse", image_url="",
@@ -18,6 +18,9 @@ def _seed_ratings(app, user_id):
             FanGenreVote(user_id=user_id, anime_id=a.id, genre_tag="Fantasy"),
             FanGenreVote(user_id=user_id, anime_id=b.id, genre_tag="Fantasy"),
             FanGenreVote(user_id=user_id, anime_id=b.id, genre_tag="Drama"),
+            # Watchlist drives estimated_hours_watched.
+            WatchlistEntry(user_id=user_id, anime_id=a.id, status="completed"),
+            WatchlistEntry(user_id=user_id, anime_id=b.id, status="completed"),
         ])
         db.session.commit()
 
@@ -127,6 +130,54 @@ def test_stats_does_not_leak_other_users_data(app, client, auth_headers):
     assert body["year_distribution"] == []
 
 
+def test_stats_hours_watched_is_watchlist_driven(app, client, auth_headers):
+    """estimated_hours_watched reflects watchlist status, not ratings.
+
+    - Ratings alone must not contribute hours.
+    - `watching` with episodes_watched counts those episodes only.
+    - `completed` counts full episode count.
+    - `plan_to_watch` contributes zero.
+    """
+    from models import db, Anime, Rating, WatchlistEntry
+    headers, user = auth_headers
+
+    with app.app_context():
+        rated_only = Anime(mal_id=801, title="RatedOnly", synopsis="", year=2020,
+                           episodes=12, studio="S", image_url="",
+                           source="ORIGINAL", status="FINISHED")
+        watching = Anime(mal_id=802, title="Watching", synopsis="", year=2021,
+                         episodes=24, studio="S", image_url="",
+                         source="ORIGINAL", status="FINISHED")
+        done = Anime(mal_id=803, title="Done", synopsis="", year=2022,
+                     episodes=12, studio="S", image_url="",
+                     source="ORIGINAL", status="FINISHED")
+        planned = Anime(mal_id=804, title="Planned", synopsis="", year=2023,
+                        episodes=12, studio="S", image_url="",
+                        source="ORIGINAL", status="FINISHED")
+        db.session.add_all([rated_only, watching, done, planned])
+        db.session.commit()
+        db.session.add_all([
+            # Rated but NOT on watchlist — must not add hours.
+            Rating(user_id=user.id, anime_id=rated_only.id, score=7),
+            WatchlistEntry(user_id=user.id, anime_id=watching.id,
+                           status="watching", episodes_watched=6),
+            WatchlistEntry(user_id=user.id, anime_id=done.id,
+                           status="completed"),
+            WatchlistEntry(user_id=user.id, anime_id=planned.id,
+                           status="plan_to_watch"),
+        ])
+        db.session.commit()
+
+    r = client.get("/api/stats", headers=headers)
+    body = r.get_json()
+    # watching: 6 eps * 24min = 144
+    # completed: 12 eps * 24min * 1.0 = 288
+    # plan_to_watch: 0
+    # rated-only: 0 (no watchlist entry)
+    # total = 432 min = 7.2 hours
+    assert body["estimated_hours_watched"] == 7.2
+
+
 def test_stats_genres_breakdown(client, auth_headers, app):
     headers, user = auth_headers
     _seed_ratings(app, user.id)
@@ -232,6 +283,40 @@ def test_stats_genres_does_not_leak_other_users(app, client, auth_headers):
     r = client.get("/api/stats/genres", headers=headers)
     assert r.status_code == 200
     assert r.get_json() == {"genres": []}
+
+
+def test_stats_genres_mixed_rated_and_unrated_votes(app, client, auth_headers):
+    """Unrated votes dilute the avg to 0 instead of being ignored.
+
+    Previously `AVG(score)` skipped NULL, so a rated(8) + unrated vote under
+    one genre yielded avg=8 and weighted=16. Now unrated contributes 0 to the
+    average, so avg=(8+0)/2=4 and weighted=4*2=8.
+    """
+    from models import db, Anime, Rating, FanGenreVote
+    headers, user = auth_headers
+
+    with app.app_context():
+        rated = Anime(mal_id=701, title="Rated", synopsis="", year=2020,
+                      episodes=12, studio="S", image_url="",
+                      source="ORIGINAL", status="FINISHED")
+        unrated = Anime(mal_id=702, title="Unrated", synopsis="", year=2021,
+                        episodes=12, studio="S", image_url="",
+                        source="ORIGINAL", status="FINISHED")
+        db.session.add_all([rated, unrated])
+        db.session.commit()
+        db.session.add_all([
+            Rating(user_id=user.id, anime_id=rated.id, score=8),
+            FanGenreVote(user_id=user.id, anime_id=rated.id, genre_tag="Mecha"),
+            FanGenreVote(user_id=user.id, anime_id=unrated.id, genre_tag="Mecha"),
+        ])
+        db.session.commit()
+
+    r = client.get("/api/stats/genres", headers=headers)
+    body = r.get_json()
+    mecha = next(g for g in body["genres"] if g["name"] == "Mecha")
+    assert mecha["count"] == 2
+    assert mecha["avg_score"] == 4.0
+    assert mecha["weighted_score"] == 8.0
 
 
 def test_stats_genres_handles_voted_but_unrated_anime(app, client, auth_headers):
