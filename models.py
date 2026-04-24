@@ -323,20 +323,21 @@ class Collection(db.Model):
         lazy="dynamic",
     )
 
-    def to_dict(self, include_items: bool = False):
+    def to_dict(self, include_items: bool = False, public: bool = False):
         d = {
             "id": self.id,
-            "user_id": self.user_id,
             "name": self.name,
             "description": self.description,
             "color": self.color,
             "icon": self.icon,
             "is_public": self.is_public,
-            "share_token": self.share_token,
             "items_count": self.items.count(),
             "created_at": self.created_at.isoformat() if self.created_at else None,
             "updated_at": self.updated_at.isoformat() if self.updated_at else None,
         }
+        if not public:
+            d["user_id"] = self.user_id
+            d["share_token"] = self.share_token
         if include_items:
             d["items"] = [i.to_dict() for i in self.items]
         return d

@@ -197,3 +197,32 @@ def test_public_endpoint_404_when_private(client, auth_headers):
     c = _create(client, headers, name="Private")
     r = client.get(f"/api/collections/public/never-generated")
     assert r.status_code == 404
+
+
+def test_public_endpoint_404_after_toggling_private(client, auth_headers):
+    headers, _ = auth_headers
+    c = _create(client, headers, name="Share Me")
+    patched = client.patch(
+        f"/api/collections/{c['id']}", headers=headers, json={"is_public": True}
+    )
+    token = patched.get_json()["collection"]["share_token"]
+    # Turning public off revokes the share link.
+    client.patch(
+        f"/api/collections/{c['id']}", headers=headers, json={"is_public": False}
+    )
+    r = client.get(f"/api/collections/public/{token}")
+    assert r.status_code == 404
+
+
+def test_public_endpoint_omits_owner_identifiers(client, auth_headers):
+    headers, _ = auth_headers
+    c = _create(client, headers, name="Share Me")
+    patched = client.patch(
+        f"/api/collections/{c['id']}", headers=headers, json={"is_public": True}
+    )
+    token = patched.get_json()["collection"]["share_token"]
+    r = client.get(f"/api/collections/public/{token}")
+    assert r.status_code == 200
+    body = r.get_json()["collection"]
+    assert "user_id" not in body
+    assert "share_token" not in body

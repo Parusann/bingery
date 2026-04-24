@@ -148,4 +148,4 @@ def get_public_collection(token: str):
     c = Collection.query.filter_by(share_token=token, is_public=True).first()
     if not c:
         return jsonify({"error": "not found"}), 404
-    return jsonify({"collection": c.to_dict(include_items=True)})
+    return jsonify({"collection": c.to_dict(include_items=True, public=True)})
