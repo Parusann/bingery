@@ -148,3 +148,109 @@ def test_stats_timeline(client, auth_headers, app):
     for row in body["timeline"]:
         assert "count" in row
         assert "average_score" in row
+
+
+def test_stats_genres_and_timeline_require_auth(client):
+    assert client.get("/api/stats/genres").status_code == 401
+    assert client.get("/api/stats/timeline").status_code == 401
+
+
+def test_stats_genres_empty_user(client, auth_headers):
+    headers, _ = auth_headers
+    r = client.get("/api/stats/genres", headers=headers)
+    assert r.status_code == 200
+    assert r.get_json() == {"genres": []}
+
+
+def test_stats_timeline_empty_user(client, auth_headers):
+    headers, _ = auth_headers
+    r = client.get("/api/stats/timeline", headers=headers)
+    assert r.status_code == 200
+    assert r.get_json() == {"timeline": []}
+
+
+def test_stats_timeline_is_sorted_ascending_and_skips_null_years(app, client, auth_headers):
+    """Timeline must be year-ascending and must exclude anime with no year."""
+    from models import db, Anime, Rating
+    headers, user = auth_headers
+
+    with app.app_context():
+        early = Anime(mal_id=101, title="Early", synopsis="", year=2005,
+                      episodes=12, studio="S1", image_url="",
+                      source="ORIGINAL", status="FINISHED")
+        mid = Anime(mal_id=102, title="Mid", synopsis="", year=2015,
+                    episodes=12, studio="S2", image_url="",
+                    source="ORIGINAL", status="FINISHED")
+        late = Anime(mal_id=103, title="Late", synopsis="", year=2024,
+                     episodes=12, studio="S3", image_url="",
+                     source="ORIGINAL", status="FINISHED")
+        yearless = Anime(mal_id=104, title="Yearless", synopsis="", year=None,
+                         episodes=12, studio="S4", image_url="",
+                         source="ORIGINAL", status="FINISHED")
+        db.session.add_all([early, mid, late, yearless])
+        db.session.commit()
+        db.session.add_all([
+            Rating(user_id=user.id, anime_id=early.id, score=6),
+            Rating(user_id=user.id, anime_id=mid.id, score=7),
+            Rating(user_id=user.id, anime_id=late.id, score=8),
+            Rating(user_id=user.id, anime_id=yearless.id, score=9),
+        ])
+        db.session.commit()
+
+    r = client.get("/api/stats/timeline", headers=headers)
+    body = r.get_json()
+    years = [row["year"] for row in body["timeline"]]
+    assert years == [2005, 2015, 2024]  # sorted asc, yearless excluded
+
+
+def test_stats_genres_does_not_leak_other_users(app, client, auth_headers):
+    """Another user's votes must not appear in this user's /genres response."""
+    from flask_bcrypt import Bcrypt
+    from models import db, User, Anime, Rating, FanGenreVote
+    headers, _owner = auth_headers
+
+    with app.app_context():
+        bcrypt = Bcrypt(app)
+        other = User(
+            username="strangergenres",
+            email="sg@example.com",
+            password_hash=bcrypt.generate_password_hash("pw").decode("utf-8"),
+        )
+        db.session.add(other)
+        db.session.commit()
+        a = Anime(mal_id=555, title="TheirsG", synopsis="", year=2010,
+                  episodes=12, studio="X", image_url="",
+                  source="ORIGINAL", status="FINISHED")
+        db.session.add(a)
+        db.session.commit()
+        db.session.add_all([
+            Rating(user_id=other.id, anime_id=a.id, score=10),
+            FanGenreVote(user_id=other.id, anime_id=a.id, genre_tag="Horror"),
+        ])
+        db.session.commit()
+
+    r = client.get("/api/stats/genres", headers=headers)
+    assert r.status_code == 200
+    assert r.get_json() == {"genres": []}
+
+
+def test_stats_genres_handles_voted_but_unrated_anime(app, client, auth_headers):
+    """A genre voted on an anime the user has not rated yields avg_score=0."""
+    from models import db, Anime, FanGenreVote
+    headers, user = auth_headers
+
+    with app.app_context():
+        a = Anime(mal_id=606, title="Unrated", synopsis="", year=2022,
+                  episodes=12, studio="Y", image_url="",
+                  source="ORIGINAL", status="FINISHED")
+        db.session.add(a)
+        db.session.commit()
+        db.session.add(FanGenreVote(user_id=user.id, anime_id=a.id, genre_tag="Slice"))
+        db.session.commit()
+
+    r = client.get("/api/stats/genres", headers=headers)
+    body = r.get_json()
+    slice_entry = next(g for g in body["genres"] if g["name"] == "Slice")
+    assert slice_entry["count"] == 1
+    assert slice_entry["avg_score"] == 0.0
+    assert slice_entry["weighted_score"] == 0.0
