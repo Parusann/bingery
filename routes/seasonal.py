@@ -1,6 +1,7 @@
 """Seasonal calendar routes."""
 from flask import Blueprint, jsonify, request
 from flask_jwt_extended import jwt_required, get_jwt_identity
+from sqlalchemy import func
 
 from models import db, Anime, WatchlistEntry
 
@@ -8,7 +9,9 @@ from models import db, Anime, WatchlistEntry
 seasonal_bp = Blueprint("seasonal", __name__)
 
 VALID_SEASONS = {"WINTER", "SPRING", "SUMMER", "FALL"}
-AIRING_STATUSES = {"RELEASING", "CURRENTLY_AIRING"}
+# Match both raw AniList enum values and the human-readable form stored by
+# utils/anilist.py ingestion. Compared case-insensitively below.
+AIRING_STATUSES = {"releasing", "currently_airing", "currently airing"}
 
 
 def _with_status_overlay(user_id: int, anime_list):
@@ -32,6 +35,15 @@ def _with_status_overlay(user_id: int, anime_list):
 @seasonal_bp.route("", methods=["GET"])
 @jwt_required()
 def seasonal():
+    """List anime for a given season+year, with the caller's watchlist overlay.
+
+    GET /api/seasonal?season=WINTER&year=2026
+    -> 200 {"anime": [{...anime fields, "user_status", "is_favorite"}]}
+    -> 400 if season is missing/invalid or year is missing/non-int.
+
+    Season match is case-insensitive so it works against both the raw AniList
+    enum (`WINTER`) and the lowercased value stored by ingestion (`winter`).
+    """
     user_id = int(get_jwt_identity())
     season = (request.args.get("season") or "").upper()
     year_raw = request.args.get("year")
@@ -46,7 +58,10 @@ def seasonal():
 
     rows = (
         db.session.query(Anime)
-        .filter_by(season=season, year=year)
+        .filter(
+            func.lower(Anime.season) == season.lower(),
+            Anime.year == year,
+        )
         .order_by(Anime.title)
         .all()
     )
@@ -56,10 +71,19 @@ def seasonal():
 @seasonal_bp.route("/airing-now", methods=["GET"])
 @jwt_required()
 def airing_now():
+    """List anime currently airing, with the caller's watchlist overlay.
+
+    GET /api/seasonal/airing-now
+    -> 200 {"anime": [{...anime fields, "user_status", "is_favorite"}]}
+
+    Status match is case-insensitive and accepts both the raw AniList enum
+    (`RELEASING`, `CURRENTLY_AIRING`) and the human-readable form stored by
+    ingestion (`Currently Airing`).
+    """
     user_id = int(get_jwt_identity())
     rows = (
         db.session.query(Anime)
-        .filter(Anime.status.in_(AIRING_STATUSES))
+        .filter(func.lower(Anime.status).in_(AIRING_STATUSES))
         .order_by(Anime.title)
         .all()
     )
