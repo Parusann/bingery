@@ -106,7 +106,7 @@ def execute_tool(tool_name, tool_input, user_id=None):
             return json.dumps({"error": "User not logged in"})
         limit = min(tool_input.get("limit", 50), 100)
         ratings = (
-            Rating.query.filter_by(user_id=user_id)
+            db.session.query(Rating).filter_by(user_id=user_id)
             .order_by(Rating.score.desc())
             .limit(limit).all()
         )
@@ -119,7 +119,7 @@ def execute_tool(tool_name, tool_input, user_id=None):
 
     elif tool_name == "get_anime_details":
         anime_id = tool_input.get("anime_id")
-        anime = Anime.query.get(anime_id) if anime_id else None
+        anime = db.session.get(Anime, anime_id) if anime_id else None
         if not anime:
             return json.dumps({"error": "Anime not found"})
         return json.dumps(anime.to_dict(include_community=True), indent=2)

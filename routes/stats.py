@@ -38,7 +38,11 @@ def dashboard():
         if total_rated else 0.0
     )
 
-    total_genre_votes = FanGenreVote.query.filter_by(user_id=user_id).count()
+    total_genre_votes = (
+        db.session.query(FanGenreVote)
+        .filter_by(user_id=user_id)
+        .count()
+    )
 
     # Year distribution
     year_counter: Counter[int] = Counter()

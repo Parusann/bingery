@@ -290,7 +290,7 @@ class WatchlistEntry(db.Model):
         if include_anime:
             data["anime"] = self.anime.to_dict(include_community=False)
             # Include user's rating if it exists
-            rating = Rating.query.filter_by(
+            rating = db.session.query(Rating).filter_by(
                 user_id=self.user_id, anime_id=self.anime_id
             ).first()
             data["score"] = rating.score if rating else None
