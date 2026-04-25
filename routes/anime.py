@@ -61,7 +61,7 @@ def list_anime():
 @anime_bp.route("/<int:anime_id>", methods=["GET"])
 def get_anime(anime_id):
     """Full anime detail with community scores and fan genres."""
-    anime = Anime.query.get(anime_id)
+    anime = db.session.get(Anime, anime_id)
     if not anime:
         return jsonify({"error": "Anime not found."}), 404
 
@@ -73,13 +73,13 @@ def get_anime(anime_id):
         uid = get_jwt_identity()
         if uid:
             uid = int(uid)
-            rating = Rating.query.filter_by(user_id=uid, anime_id=anime_id).first()
+            rating = db.session.query(Rating).filter_by(user_id=uid, anime_id=anime_id).first()
             data["user_rating"] = rating.to_dict() if rating else None
 
-            votes = FanGenreVote.query.filter_by(user_id=uid, anime_id=anime_id).all()
+            votes = db.session.query(FanGenreVote).filter_by(user_id=uid, anime_id=anime_id).all()
             data["user_genre_votes"] = [v.genre_tag for v in votes]
 
-            wl = WatchlistEntry.query.filter_by(user_id=uid, anime_id=anime_id).first()
+            wl = db.session.query(WatchlistEntry).filter_by(user_id=uid, anime_id=anime_id).first()
             data["user_watch_status"] = wl.to_dict() if wl else None
     except Exception:
         data["user_rating"] = None
@@ -92,7 +92,7 @@ def get_anime(anime_id):
 @anime_bp.route("/<int:anime_id>/ratings", methods=["GET"])
 def get_anime_ratings(anime_id):
     """All ratings for an anime, with pagination."""
-    anime = Anime.query.get(anime_id)
+    anime = db.session.get(Anime, anime_id)
     if not anime:
         return jsonify({"error": "Anime not found."}), 404
 
@@ -125,7 +125,7 @@ def get_anime_ratings(anime_id):
 @anime_bp.route("/genres", methods=["GET"])
 def list_genres():
     """All available genres, grouped by category."""
-    genres = Genre.query.order_by(Genre.category, Genre.name).all()
+    genres = db.session.query(Genre).order_by(Genre.category, Genre.name).all()
     grouped = {}
     for g in genres:
         grouped.setdefault(g.category, []).append(g.to_dict())

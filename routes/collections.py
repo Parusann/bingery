@@ -12,7 +12,7 @@ collections_bp = Blueprint("collections", __name__)
 @jwt_required()
 def list_collections():
     user_id = int(get_jwt_identity())
-    rows = Collection.query.filter_by(user_id=user_id).order_by(Collection.updated_at.desc()).all()
+    rows = db.session.query(Collection).filter_by(user_id=user_id).order_by(Collection.updated_at.desc()).all()
     return jsonify({"collections": [c.to_dict() for c in rows]})
 
 
@@ -40,7 +40,7 @@ def create_collection():
 
 
 def _owned_or_404(user_id: int, collection_id: int) -> Collection:
-    c = Collection.query.filter_by(id=collection_id, user_id=user_id).first()
+    c = db.session.query(Collection).filter_by(id=collection_id, user_id=user_id).first()
     if not c:
         from flask import abort
         abort(404)
@@ -82,7 +82,7 @@ def update_collection(collection_id: int):
             # Ensure uniqueness (collision chance is negligible but cheap to check).
             while True:
                 token = generate_share_token()
-                if not Collection.query.filter_by(share_token=token).first():
+                if not db.session.query(Collection).filter_by(share_token=token).first():
                     c.share_token = token
                     break
         if not new_public:
@@ -114,7 +114,7 @@ def add_item(collection_id: int):
     if not db.session.get(Anime, anime_id):
         return jsonify({"error": "anime not found"}), 404
 
-    existing = CollectionItem.query.filter_by(
+    existing = db.session.query(CollectionItem).filter_by(
         collection_id=c.id, anime_id=anime_id
     ).first()
     if existing:
@@ -135,7 +135,7 @@ def add_item(collection_id: int):
 def remove_item(collection_id: int, anime_id: int):
     user_id = int(get_jwt_identity())
     c = _owned_or_404(user_id, collection_id)
-    item = CollectionItem.query.filter_by(collection_id=c.id, anime_id=anime_id).first()
+    item = db.session.query(CollectionItem).filter_by(collection_id=c.id, anime_id=anime_id).first()
     if not item:
         return "", 204
     db.session.delete(item)
@@ -145,7 +145,7 @@ def remove_item(collection_id: int, anime_id: int):
 
 @collections_bp.route("/public/<string:token>", methods=["GET"])
 def get_public_collection(token: str):
-    c = Collection.query.filter_by(share_token=token, is_public=True).first()
+    c = db.session.query(Collection).filter_by(share_token=token, is_public=True).first()
     if not c:
         return jsonify({"error": "not found"}), 404
     return jsonify({"collection": c.to_dict(include_items=True, public=True)})

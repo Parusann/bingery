@@ -18,7 +18,7 @@ def get_watchlist():
     page = request.args.get("page", 1, type=int)
     per_page = min(request.args.get("per_page", 50, type=int), 100)
 
-    query = WatchlistEntry.query.filter_by(user_id=user_id)
+    query = db.session.query(WatchlistEntry).filter_by(user_id=user_id)
 
     if status_filter and status_filter in WATCH_STATUSES:
         query = query.filter_by(status=status_filter)
@@ -47,11 +47,11 @@ def get_watchlist_stats():
     user_id = int(get_jwt_identity())
     counts = {}
     for status in WATCH_STATUSES:
-        counts[status] = WatchlistEntry.query.filter_by(
+        counts[status] = db.session.query(WatchlistEntry).filter_by(
             user_id=user_id, status=status
         ).count()
     counts["total"] = sum(counts.values())
-    counts["favorites"] = WatchlistEntry.query.filter_by(
+    counts["favorites"] = db.session.query(WatchlistEntry).filter_by(
         user_id=user_id, is_favorite=True
     ).count()
     return jsonify({"stats": counts}), 200
@@ -66,7 +66,7 @@ def set_watch_status(anime_id):
     Creates or updates a watchlist entry.
     """
     user_id = int(get_jwt_identity())
-    anime = Anime.query.get(anime_id)
+    anime = db.session.get(Anime, anime_id)
     if not anime:
         return jsonify({"error": "Anime not found."}), 404
 
@@ -75,7 +75,7 @@ def set_watch_status(anime_id):
     if status not in WATCH_STATUSES:
         return jsonify({"error": f"Invalid status. Must be one of: {', '.join(WATCH_STATUSES)}"}), 400
 
-    entry = WatchlistEntry.query.filter_by(user_id=user_id, anime_id=anime_id).first()
+    entry = db.session.query(WatchlistEntry).filter_by(user_id=user_id, anime_id=anime_id).first()
     if entry:
         entry.status = status
         if "episodes_watched" in data:
@@ -104,7 +104,7 @@ def set_watch_status(anime_id):
 def get_watch_status(anime_id):
     """Get the user's watchlist entry for a specific anime."""
     user_id = int(get_jwt_identity())
-    entry = WatchlistEntry.query.filter_by(user_id=user_id, anime_id=anime_id).first()
+    entry = db.session.query(WatchlistEntry).filter_by(user_id=user_id, anime_id=anime_id).first()
     if not entry:
         return jsonify({"entry": None}), 200
     return jsonify({"entry": entry.to_dict()}), 200
@@ -115,7 +115,7 @@ def get_watch_status(anime_id):
 def remove_from_watchlist(anime_id):
     """Remove an anime from the user's watchlist."""
     user_id = int(get_jwt_identity())
-    entry = WatchlistEntry.query.filter_by(user_id=user_id, anime_id=anime_id).first()
+    entry = db.session.query(WatchlistEntry).filter_by(user_id=user_id, anime_id=anime_id).first()
     if not entry:
         return jsonify({"error": "Not in your watchlist."}), 404
     db.session.delete(entry)
@@ -128,11 +128,11 @@ def remove_from_watchlist(anime_id):
 def toggle_favorite(anime_id):
     """Toggle favorite status. Creates a watchlist entry if needed."""
     user_id = int(get_jwt_identity())
-    anime = Anime.query.get(anime_id)
+    anime = db.session.get(Anime, anime_id)
     if not anime:
         return jsonify({"error": "Anime not found."}), 404
 
-    entry = WatchlistEntry.query.filter_by(user_id=user_id, anime_id=anime_id).first()
+    entry = db.session.query(WatchlistEntry).filter_by(user_id=user_id, anime_id=anime_id).first()
     if entry:
         entry.is_favorite = not entry.is_favorite
     else:
@@ -164,10 +164,10 @@ def bulk_add():
 
     added = 0
     for aid in anime_ids[:100]:  # cap at 100
-        anime = Anime.query.get(aid)
+        anime = db.session.get(Anime, aid)
         if not anime:
             continue
-        existing = WatchlistEntry.query.filter_by(user_id=user_id, anime_id=aid).first()
+        existing = db.session.query(WatchlistEntry).filter_by(user_id=user_id, anime_id=aid).first()
         if not existing:
             db.session.add(WatchlistEntry(
                 user_id=user_id, anime_id=aid, status=status
