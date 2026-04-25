@@ -38,6 +38,7 @@ def create_app(config_class=Config):
     from routes.stats import stats_bp
     from routes.activity import activity_bp
     from routes.seasonal import seasonal_bp
+    from routes.compare import compare_bp
 
     auth_bcrypt.init_app(app)
     app.register_blueprint(auth_bp)
@@ -52,6 +53,7 @@ def create_app(config_class=Config):
     app.register_blueprint(stats_bp, url_prefix="/api/stats")
     app.register_blueprint(activity_bp, url_prefix="/api/activity")
     app.register_blueprint(seasonal_bp, url_prefix="/api/seasonal")
+    app.register_blueprint(compare_bp, url_prefix="/api/compare")
 
     # ── Health check ──────────────────────────────────────────────────────
     @app.route("/api/health", methods=["GET"])
