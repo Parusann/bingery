@@ -8,3 +8,8 @@ venv/
 dist/
 build/
 .DS_Store
+frontend/node_modules/
+frontend/dist/
+frontend/.env
+frontend/test-results/
+frontend/playwright-report/
