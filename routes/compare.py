@@ -45,7 +45,7 @@ def compare():
         a_id = int(request.args.get("a", ""))
         b_id = int(request.args.get("b", ""))
     except ValueError:
-        return jsonify({"error": "`a` and `b` must be integers"}), 400
+        return jsonify({"error": "both `a` and `b` are required and must be integers"}), 400
 
     a = db.session.get(Anime, a_id)
     b = db.session.get(Anime, b_id)
@@ -63,7 +63,7 @@ def compare():
         "fan_genres": sorted(
             set(left["user"]["fan_genres"]) & set(right["user"]["fan_genres"])
         ),
-        "studios": sorted({a.studio, b.studio} - {None})
+        "studios": [a.studio]
         if a.studio == b.studio and a.studio is not None
         else [],
     }
