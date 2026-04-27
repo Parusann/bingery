@@ -13,3 +13,16 @@ frontend/dist/
 frontend/.env
 frontend/test-results/
 frontend/playwright-report/
+# tsc -b composite build artifacts
+frontend/tailwind.config.js
+frontend/tailwind.config.d.ts
+frontend/vite.config.js
+frontend/vite.config.d.ts
+frontend/vitest.config.js
+frontend/vitest.config.d.ts
+frontend/playwright.config.js
+frontend/playwright.config.d.ts
+frontend/src/design/tokens.js
+frontend/src/design/tokens.d.ts
+frontend/*.tsbuildinfo
+
