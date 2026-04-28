@@ -1,20 +1,19 @@
-import { Outlet, Link } from "react-router-dom";
+import { Outlet } from "react-router-dom";
+import { AmbientBlobs } from "@/design/AmbientBlobs";
+import { GrainOverlay } from "@/design/GrainOverlay";
+import { Header } from "./Header";
 
 export default function AppShell() {
   return (
-    <div className="min-h-screen bg-bg text-text">
-      <header className="px-6 py-4 border-b border-border flex gap-4 items-center">
-        <Link to="/" className="font-display text-xl text-amber">Bingery</Link>
-        <nav className="flex gap-4 text-sm text-text-muted">
-          <Link to="/discover">Discover</Link>
-          <Link to="/watchlist">Watchlist</Link>
-          <Link to="/for-you">For you</Link>
-          <Link to="/chat">Chat</Link>
-        </nav>
-      </header>
-      <main>
-        <Outlet />
-      </main>
+    <div className="relative min-h-screen bg-bg text-text">
+      <AmbientBlobs />
+      <GrainOverlay />
+      <div className="relative z-10">
+        <Header />
+        <main className="max-w-7xl mx-auto px-6 py-10">
+          <Outlet />
+        </main>
+      </div>
     </div>
   );
 }
