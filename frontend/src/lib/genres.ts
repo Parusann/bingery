@@ -10,13 +10,15 @@ export const GENRE_COLORS: Record<string, string> = {
   "Sci-Fi": "#06b6d4",
   "Slice of Life": "#84cc16",
   Supernatural: "#a855f7",
-  Thriller: "#dc2626",
-  Shounen: "#f97316",
-  Seinen: "#14b8a6",
-  Isekai: "#a78bfa",
+  Thriller: "#f97316",
+  Shounen: "#3b82f6",
+  Seinen: "#64748b",
+  Isekai: "#10b981",
+  Psychological: "#7c3aed",
+  "Dark Fantasy": "#881337",
 };
 
-export const GENRE_VOCAB = [
+export const FAN_GENRES = [
   "Action",
   "Adventure",
   "Comedy",
