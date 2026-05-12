@@ -183,3 +183,25 @@ export interface SeasonalResponse {
   season: Season;
   anime: AnimeSummary[];
 }
+
+export type ActivityKind =
+  | "rating"
+  | "watch_status"
+  | "favorite"
+  | "collection_item"
+  | "collection_create"
+  | "genre_vote";
+
+export interface ActivityEvent {
+  id: number;
+  kind: ActivityKind;
+  created_at: string;
+  anime?: AnimeSummary;
+  meta: Record<string, unknown>;
+}
+
+export interface ActivityResponse {
+  events: ActivityEvent[];
+  page: number;
+  pages: number;
+}

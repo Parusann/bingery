@@ -100,3 +100,6 @@ export interface StatsHeatmapResp {
 
 import type { SeasonalResponse } from "./models";
 export interface SeasonalResp extends SeasonalResponse {}
+
+import type { ActivityResponse } from "./models";
+export interface ActivityResp extends ActivityResponse {}

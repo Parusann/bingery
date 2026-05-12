@@ -182,4 +182,7 @@ export const api = {
     request<import("@/types/api").SeasonalResp>(
       `/seasonal${year && season ? `?year=${year}&season=${season}` : ""}`
     ),
+
+  getActivity: (page = 1) =>
+    request<import("@/types/api").ActivityResp>(`/activity?page=${page}`),
 };
