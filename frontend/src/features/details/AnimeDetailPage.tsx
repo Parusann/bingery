@@ -2,6 +2,9 @@ import { useParams } from "react-router-dom";
 import { GlassCard } from "@/design/GlassCard";
 import { Skeleton } from "@/design/Skeleton";
 import { useAnimeDetail, useSimilar } from "@/hooks/useAnimeDetail";
+import { WatchStatusSelector } from "@/features/watchlist/WatchStatusSelector";
+import { AddToCollection } from "@/features/collections/AddToCollection";
+import { useAuth } from "@/stores/auth";
 import { DetailHero } from "./DetailHero";
 import { FanGenreBars } from "./FanGenreBars";
 import { RatingPanel } from "./RatingPanel";
@@ -10,6 +13,7 @@ import { SimilarStrip } from "./SimilarStrip";
 export function AnimeDetailPage() {
   const { id } = useParams();
   const numericId = id ? Number(id) : undefined;
+  const user = useAuth((s) => s.user);
   const detail = useAnimeDetail(numericId);
   const similar = useSimilar(numericId);
 
@@ -22,9 +26,20 @@ export function AnimeDetailPage() {
     );
   }
   const anime = detail.data.anime;
+  const actions = user ? (
+    <>
+      <WatchStatusSelector
+        animeId={anime.id}
+        current={anime.user_watch_status?.status ?? null}
+        isFavorite={anime.user_watch_status?.is_favorite ?? false}
+      />
+      <AddToCollection animeId={anime.id} />
+    </>
+  ) : null;
+
   return (
     <article>
-      <DetailHero anime={anime} />
+      <DetailHero anime={anime} actions={actions} />
       <div className="grid md:grid-cols-[1fr_420px] gap-8">
         <section>
           <h2 className="font-display text-2xl mb-4">Community fan genres</h2>

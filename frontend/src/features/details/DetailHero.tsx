@@ -1,9 +1,15 @@
+import type { ReactNode } from "react";
 import type { AnimeDetail } from "@/types/models";
 import { LiquidGLSurface } from "@/design/LiquidGLSurface";
 import { Badge } from "@/design/Badge";
 import { genreColor } from "@/lib/genres";
 
-export function DetailHero({ anime }: { anime: AnimeDetail }) {
+interface HeroProps {
+  anime: AnimeDetail;
+  actions?: ReactNode;
+}
+
+export function DetailHero({ anime, actions }: HeroProps) {
   const genres = (anime.official_genres ?? anime.genres ?? [])
     .map((g) => (typeof g === "string" ? g : g.name))
     .filter(Boolean) as string[];
@@ -32,12 +38,17 @@ export function DetailHero({ anime }: { anime: AnimeDetail }) {
           {anime.title_english && anime.title !== anime.title_english ? (
             <p className="text-text-muted mb-3">{anime.title}</p>
           ) : null}
-          <div className="flex flex-wrap gap-1.5 mb-4">
-            {genres.slice(0, 6).map((g) => (
-              <Badge key={g} color={genreColor(g)}>
-                {g}
-              </Badge>
-            ))}
+          <div className="flex flex-wrap items-center gap-3 mb-4">
+            <div className="flex flex-wrap gap-1.5">
+              {genres.slice(0, 6).map((g) => (
+                <Badge key={g} color={genreColor(g)}>
+                  {g}
+                </Badge>
+              ))}
+            </div>
+            {actions ? (
+              <div className="ml-auto flex flex-wrap gap-2">{actions}</div>
+            ) : null}
           </div>
           <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
             <Stat label="Episodes" value={anime.episodes ?? "—"} />
