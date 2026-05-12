@@ -1,11 +1,15 @@
 import { Skeleton } from "@/design/Skeleton";
 import { useAuth } from "@/stores/auth";
-import { useStatsOverview } from "@/hooks/useStats";
+import { useStatsHeatmap, useStatsOverview } from "@/hooks/useStats";
 import { OverviewCards } from "./OverviewCards";
+import { RatingHistogram } from "./RatingHistogram";
+import { GenreBreakdown } from "./GenreBreakdown";
+import { ActivityHeatmap } from "./ActivityHeatmap";
 
 export function StatsPage() {
   const user = useAuth((s) => s.user);
   const overview = useStatsOverview(!!user);
+  const heatmap = useStatsHeatmap(!!user);
 
   if (!user) {
     return (
@@ -29,6 +33,24 @@ export function StatsPage() {
         </div>
       ) : (
         <OverviewCards overview={overview.data.overview} />
+      )}
+      <div className="grid md:grid-cols-2 gap-4">
+        {overview.data ? (
+          <>
+            <RatingHistogram buckets={overview.data.rating_distribution} />
+            <GenreBreakdown slices={overview.data.top_genres} />
+          </>
+        ) : (
+          <>
+            <Skeleton className="h-64" rounded="lg" />
+            <Skeleton className="h-64" rounded="lg" />
+          </>
+        )}
+      </div>
+      {heatmap.data ? (
+        <ActivityHeatmap data={heatmap.data.heatmap} />
+      ) : (
+        <Skeleton className="h-40" rounded="lg" />
       )}
     </div>
   );
