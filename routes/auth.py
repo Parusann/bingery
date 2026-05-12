@@ -29,9 +29,9 @@ def register():
     username = data["username"].strip()
     email = data["email"].strip().lower()
 
-    if User.query.filter_by(username=username).first():
+    if db.session.query(User).filter_by(username=username).first():
         return jsonify({"error": "Username already taken."}), 409
-    if User.query.filter_by(email=email).first():
+    if db.session.query(User).filter_by(email=email).first():
         return jsonify({"error": "Email already registered."}), 409
 
     # ── Create user ───────────────────────────────────────────────────────
@@ -53,7 +53,7 @@ def login():
     email = (data.get("email") or "").strip().lower()
     password = data.get("password") or ""
 
-    user = User.query.filter_by(email=email).first()
+    user = db.session.query(User).filter_by(email=email).first()
     if not user or not bcrypt.check_password_hash(user.password_hash, password):
         return jsonify({"error": "Invalid email or password."}), 401
 
@@ -64,7 +64,7 @@ def login():
 @auth_bp.route("/me", methods=["GET"])
 @jwt_required()
 def get_profile():
-    user = User.query.get(int(get_jwt_identity()))
+    user = db.session.get(User, int(get_jwt_identity()))
     if not user:
         return jsonify({"error": "User not found."}), 404
     return jsonify({"user": user.to_dict(include_stats=True)}), 200
@@ -73,13 +73,13 @@ def get_profile():
 @auth_bp.route("/me", methods=["PATCH"])
 @jwt_required()
 def update_profile():
-    user = User.query.get(int(get_jwt_identity()))
+    user = db.session.get(User, int(get_jwt_identity()))
     if not user:
         return jsonify({"error": "User not found."}), 404
 
     data = request.get_json() or {}
     if "username" in data and data["username"].strip():
-        existing = User.query.filter_by(username=data["username"].strip()).first()
+        existing = db.session.query(User).filter_by(username=data["username"].strip()).first()
         if existing and existing.id != user.id:
             return jsonify({"error": "Username already taken."}), 409
         user.username = data["username"].strip()

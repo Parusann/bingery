@@ -34,6 +34,11 @@ def create_app(config_class=Config):
     from routes.recommend import recommend_bp
     from routes.watchlist import watchlist_bp
     from routes.search import search_bp
+    from routes.collections import collections_bp
+    from routes.stats import stats_bp
+    from routes.activity import activity_bp
+    from routes.seasonal import seasonal_bp
+    from routes.compare import compare_bp
 
     auth_bcrypt.init_app(app)
     app.register_blueprint(auth_bp)
@@ -44,6 +49,11 @@ def create_app(config_class=Config):
     app.register_blueprint(recommend_bp)
     app.register_blueprint(watchlist_bp)
     app.register_blueprint(search_bp)
+    app.register_blueprint(collections_bp, url_prefix="/api/collections")
+    app.register_blueprint(stats_bp, url_prefix="/api/stats")
+    app.register_blueprint(activity_bp, url_prefix="/api/activity")
+    app.register_blueprint(seasonal_bp, url_prefix="/api/seasonal")
+    app.register_blueprint(compare_bp, url_prefix="/api/compare")
 
     # ── Health check ──────────────────────────────────────────────────────
     @app.route("/api/health", methods=["GET"])
