@@ -175,3 +175,11 @@ export interface StatsOverviewResponse {
   rating_distribution: StatsRatingBucket[];
   top_genres: StatsGenreSlice[];
 }
+
+export type Season = "winter" | "spring" | "summer" | "fall";
+
+export interface SeasonalResponse {
+  year: number;
+  season: Season;
+  anime: AnimeSummary[];
+}
