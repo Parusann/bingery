@@ -31,3 +31,8 @@ CLAUDE.md
 claude.md
 .plan2-spec.tmp.md
 .task*-spec.tmp.md
+
+# Local tooling dirs
+.superpowers/
+.claude/
+.rtk/

@@ -27,7 +27,7 @@ def build_taste_profile(user_id):
         "rated_ids": [1, 2, 3, ...]
     }
     """
-    ratings = Rating.query.filter_by(user_id=user_id).all()
+    ratings = db.session.query(Rating).filter_by(user_id=user_id).all()
     if not ratings:
         return None
 
@@ -38,7 +38,7 @@ def build_taste_profile(user_id):
     # Genre affinity: for each genre the user voted on, weight by score
     genre_weights = {}
     genre_counts = {}
-    votes = FanGenreVote.query.filter_by(user_id=user_id).all()
+    votes = db.session.query(FanGenreVote).filter_by(user_id=user_id).all()
     for v in votes:
         score = scores.get(v.anime_id, avg_score)
         genre_weights[v.genre_tag] = genre_weights.get(v.genre_tag, 0) + score
@@ -47,7 +47,7 @@ def build_taste_profile(user_id):
     # Also factor in official genres of highly rated anime
     for r in ratings:
         if r.score >= 7:
-            anime = Anime.query.get(r.anime_id)
+            anime = db.session.get(Anime, r.anime_id)
             if anime:
                 for g in anime.official_genres:
                     weight = r.score * 0.5  # lower weight than explicit votes
@@ -64,7 +64,7 @@ def build_taste_profile(user_id):
     # Year preference
     years = []
     for r in ratings:
-        anime = Anime.query.get(r.anime_id)
+        anime = db.session.get(Anime, r.anime_id)
         if anime and anime.year:
             years.append(anime.year)
     preferred_years = (min(years), max(years)) if years else (2000, 2025)
@@ -145,7 +145,7 @@ def get_recommendations():
 
     # Get all anime the user hasn't rated
     rated_ids = set(profile["rated_ids"])
-    candidates = Anime.query.filter(~Anime.id.in_(rated_ids)).all()
+    candidates = db.session.query(Anime).filter(~Anime.id.in_(rated_ids)).all()
 
     # Score each candidate
     scored = []
@@ -190,7 +190,7 @@ def get_similar_anime(anime_id):
     GET /api/recommend/similar/3?limit=8
     Find anime similar to a given anime (by genre overlap).
     """
-    anime = Anime.query.get(anime_id)
+    anime = db.session.get(Anime, anime_id)
     if not anime:
         return jsonify({"error": "Anime not found."}), 404
 
@@ -199,7 +199,7 @@ def get_similar_anime(anime_id):
     fan_genres = {fg["genre"] for fg in anime.get_fan_genres()[:5]}
     all_tags = genre_names | fan_genres
 
-    candidates = Anime.query.filter(Anime.id != anime_id).all()
+    candidates = db.session.query(Anime).filter(Anime.id != anime_id).all()
     scored = []
     for c in candidates:
         c_genres = {g.name for g in c.official_genres}

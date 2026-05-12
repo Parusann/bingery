@@ -17,7 +17,7 @@ def rate_anime(anime_id):
     Body: { "score": 8, "review": "optional text" }
     """
     user_id = int(get_jwt_identity())
-    anime = Anime.query.get(anime_id)
+    anime = db.session.get(Anime, anime_id)
     if not anime:
         return jsonify({"error": "Anime not found."}), 404
 
@@ -29,7 +29,7 @@ def rate_anime(anime_id):
     review = (data.get("review") or "")[:2000]
 
     # Upsert — update if already rated, otherwise create
-    rating = Rating.query.filter_by(user_id=user_id, anime_id=anime_id).first()
+    rating = db.session.query(Rating).filter_by(user_id=user_id, anime_id=anime_id).first()
     if rating:
         rating.score = score
         rating.review = review
@@ -40,7 +40,7 @@ def rate_anime(anime_id):
         db.session.add(rating)
 
     # Auto-set watchlist status to "completed" when rating
-    wl = WatchlistEntry.query.filter_by(user_id=user_id, anime_id=anime_id).first()
+    wl = db.session.query(WatchlistEntry).filter_by(user_id=user_id, anime_id=anime_id).first()
     if not wl:
         wl = WatchlistEntry(user_id=user_id, anime_id=anime_id, status="completed")
         db.session.add(wl)
@@ -61,14 +61,14 @@ def rate_anime(anime_id):
 def delete_rating(anime_id):
     """Remove the user's rating for an anime."""
     user_id = int(get_jwt_identity())
-    rating = Rating.query.filter_by(user_id=user_id, anime_id=anime_id).first()
+    rating = db.session.query(Rating).filter_by(user_id=user_id, anime_id=anime_id).first()
     if not rating:
         return jsonify({"error": "No rating found to delete."}), 404
 
     db.session.delete(rating)
     db.session.commit()
 
-    anime = Anime.query.get(anime_id)
+    anime = db.session.get(Anime, anime_id)
     return jsonify({
         "message": "Rating deleted.",
         "community_score": anime.get_community_score(),
@@ -116,7 +116,7 @@ def vote_fan_genres(anime_id):
     Body: { "genres": ["Shounen", "Isekai", "Action", "Dark Fantasy"] }
     """
     user_id = int(get_jwt_identity())
-    anime = Anime.query.get(anime_id)
+    anime = db.session.get(Anime, anime_id)
     if not anime:
         return jsonify({"error": "Anime not found."}), 404
 
@@ -137,7 +137,7 @@ def vote_fan_genres(anime_id):
         }), 400
 
     # Remove previous votes and replace with new ones
-    FanGenreVote.query.filter_by(user_id=user_id, anime_id=anime_id).delete()
+    db.session.query(FanGenreVote).filter_by(user_id=user_id, anime_id=anime_id).delete()
 
     for genre_tag in genres:
         vote = FanGenreVote(
@@ -156,7 +156,7 @@ def vote_fan_genres(anime_id):
 @ratings_bp.route("/anime/<int:anime_id>/fan-genres", methods=["GET"])
 def get_fan_genres(anime_id):
     """Get aggregated fan genre data for an anime."""
-    anime = Anime.query.get(anime_id)
+    anime = db.session.get(Anime, anime_id)
     if not anime:
         return jsonify({"error": "Anime not found."}), 404
 
@@ -209,7 +209,7 @@ def submit_full_review(anime_id):
     Body: { "score": 9, "review": "Masterpiece", "genres": ["Shounen", "Action"] }
     """
     user_id = int(get_jwt_identity())
-    anime = Anime.query.get(anime_id)
+    anime = db.session.get(Anime, anime_id)
     if not anime:
         return jsonify({"error": "Anime not found."}), 404
 
@@ -222,7 +222,7 @@ def submit_full_review(anime_id):
 
     review_text = (data.get("review") or "")[:2000]
 
-    rating = Rating.query.filter_by(user_id=user_id, anime_id=anime_id).first()
+    rating = db.session.query(Rating).filter_by(user_id=user_id, anime_id=anime_id).first()
     if rating:
         rating.score = score
         rating.review = review_text
@@ -236,14 +236,14 @@ def submit_full_review(anime_id):
     genres = data.get("genres", [])
     if isinstance(genres, list) and len(genres) <= 15:
         valid_genres = [g for g in genres if g in ALLOWED_FAN_GENRES]
-        FanGenreVote.query.filter_by(user_id=user_id, anime_id=anime_id).delete()
+        db.session.query(FanGenreVote).filter_by(user_id=user_id, anime_id=anime_id).delete()
         for genre_tag in valid_genres:
             db.session.add(
                 FanGenreVote(user_id=user_id, anime_id=anime_id, genre_tag=genre_tag)
             )
 
     # ── Auto-watchlist ────────────────────────────────────────────────────
-    wl = WatchlistEntry.query.filter_by(user_id=user_id, anime_id=anime_id).first()
+    wl = db.session.query(WatchlistEntry).filter_by(user_id=user_id, anime_id=anime_id).first()
     status_override = data.get("watch_status")
     if not wl:
         wl = WatchlistEntry(
@@ -274,7 +274,7 @@ def submit_full_review(anime_id):
 @ratings_bp.route("/users/<int:user_id>/ratings", methods=["GET"])
 def get_user_ratings(user_id):
     """Get all anime a user has rated, with their scores."""
-    user = User.query.get(user_id)
+    user = db.session.get(User, user_id)
     if not user:
         return jsonify({"error": "User not found."}), 404
 
