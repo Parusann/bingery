@@ -8,6 +8,31 @@ venv/
 dist/
 build/
 .DS_Store
+frontend/node_modules/
+frontend/dist/
+frontend/.env
+frontend/test-results/
+frontend/playwright-report/
+# tsc -b composite build artifacts
+frontend/tailwind.config.js
+frontend/tailwind.config.d.ts
+frontend/vite.config.js
+frontend/vite.config.d.ts
+frontend/vitest.config.js
+frontend/vitest.config.d.ts
+frontend/playwright.config.js
+frontend/playwright.config.d.ts
+frontend/src/design/tokens.js
+frontend/src/design/tokens.d.ts
+frontend/*.tsbuildinfo
+
+# Editor/tooling notes that must never enter the public repo
+CLAUDE.md
+claude.md
+.plan2-spec.tmp.md
+.task*-spec.tmp.md
+
+# Local tooling dirs
 .superpowers/
 .claude/
 .rtk/
