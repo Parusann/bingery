@@ -139,3 +139,39 @@ export interface CollectionDetail extends Collection {
   items: CollectionItem[];
   owner: { id: number; username: string; display_name: string | null };
 }
+
+export interface StatsOverview {
+  total_rated: number;
+  total_watched: number;
+  hours_watched: number;
+  favorite_count: number;
+  avg_rating: number | null;
+  top_genre: string | null;
+  streak_days: number;
+}
+
+export interface StatsHeatmapCell {
+  date: string;
+  count: number;
+}
+
+export interface StatsHeatmap {
+  cells: StatsHeatmapCell[];
+  max: number;
+}
+
+export interface StatsGenreSlice {
+  genre: string;
+  count: number;
+}
+
+export interface StatsRatingBucket {
+  score: number;
+  count: number;
+}
+
+export interface StatsOverviewResponse {
+  overview: StatsOverview;
+  rating_distribution: StatsRatingBucket[];
+  top_genres: StatsGenreSlice[];
+}
