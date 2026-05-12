@@ -185,4 +185,9 @@ export const api = {
 
   getActivity: (page = 1) =>
     request<import("@/types/api").ActivityResp>(`/activity?page=${page}`),
+
+  getCompare: (a: string, b: string) =>
+    request<import("@/types/api").CompareResp>(
+      `/compare/users?user_a=${encodeURIComponent(a)}&user_b=${encodeURIComponent(b)}`
+    ),
 };
