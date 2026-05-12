@@ -6,6 +6,7 @@ import { DiscoverPage } from "@/features/discover/DiscoverPage";
 import { AnimeDetailPage } from "@/features/details/AnimeDetailPage";
 import { WatchlistPage } from "@/features/watchlist/WatchlistPage";
 import { ForYouPage } from "@/features/for-you/ForYouPage";
+import { ChatPage } from "@/features/chat/ChatPage";
 
 const Placeholder = ({ name }: { name: string }) => (
   <div className="p-10 font-display text-3xl text-amber">{name}</div>
@@ -21,7 +22,7 @@ export const router = createBrowserRouter([
       { path: "anime/:id", element: <AnimeDetailPage /> },
       { path: "watchlist", element: <WatchlistPage /> },
       { path: "for-you", element: <ForYouPage /> },
-      { path: "chat", element: <Placeholder name="Chat" /> },
+      { path: "chat", element: <ChatPage /> },
       { path: "auth", element: <AuthPage /> },
       { path: "*", element: <Navigate to="/" replace /> },
     ],
