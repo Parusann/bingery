@@ -134,4 +134,42 @@ export const api = {
       method: "POST",
       body: JSON.stringify(body),
     }),
+
+  getCollections: () =>
+    request<import("@/types/api").CollectionsListResponse>("/collections"),
+  getCollection: (id: number) =>
+    request<import("@/types/api").CollectionResponse>(`/collections/${id}`),
+  getSharedCollection: (token: string) =>
+    request<import("@/types/api").CollectionResponse>(`/collections/share/${token}`),
+  createCollection: (body: {
+    title: string;
+    description?: string;
+    is_public?: boolean;
+  }) =>
+    request<import("@/types/api").CollectionMutation>("/collections", {
+      method: "POST",
+      body: JSON.stringify(body),
+    }),
+  updateCollection: (
+    id: number,
+    body: { title?: string; description?: string; is_public?: boolean }
+  ) =>
+    request<import("@/types/api").CollectionMutation>(`/collections/${id}`, {
+      method: "PUT",
+      body: JSON.stringify(body),
+    }),
+  deleteCollection: (id: number) =>
+    request<{ ok: boolean }>(`/collections/${id}`, { method: "DELETE" }),
+  addToCollection: (
+    id: number,
+    body: { anime_id: number; note?: string }
+  ) =>
+    request<{ item: import("@/types/models").CollectionItem }>(
+      `/collections/${id}/items`,
+      { method: "POST", body: JSON.stringify(body) }
+    ),
+  removeFromCollection: (id: number, animeId: number) =>
+    request<{ ok: boolean }>(`/collections/${id}/items/${animeId}`, {
+      method: "DELETE",
+    }),
 };

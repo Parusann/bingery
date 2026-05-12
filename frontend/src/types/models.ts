@@ -113,3 +113,29 @@ export interface ChatResponse {
   response: string;
   suggested_anime?: ChatAnimeRef[];
 }
+
+export interface Collection {
+  id: number;
+  owner_id: number;
+  title: string;
+  description: string | null;
+  is_public: boolean;
+  share_token: string | null;
+  item_count: number;
+  cover_image_url: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface CollectionItem {
+  id: number;
+  anime: AnimeSummary;
+  note: string | null;
+  position: number;
+  added_at: string;
+}
+
+export interface CollectionDetail extends Collection {
+  items: CollectionItem[];
+  owner: { id: number; username: string; display_name: string | null };
+}

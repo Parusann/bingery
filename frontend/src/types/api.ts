@@ -76,3 +76,17 @@ export interface ChatRequest {
 }
 
 export type { WatchStatus, ChatResponse };
+
+import type { Collection, CollectionDetail } from "./models";
+
+export interface CollectionsListResponse {
+  collections: Collection[];
+}
+
+export interface CollectionResponse {
+  collection: CollectionDetail;
+}
+
+export interface CollectionMutation {
+  collection: Collection;
+}
