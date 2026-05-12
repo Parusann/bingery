@@ -11,3 +11,7 @@ build/
 .superpowers/
 .claude/
 .rtk/
+
+# Editor/tooling notes that must never enter the public repo
+CLAUDE.md
+claude.md
