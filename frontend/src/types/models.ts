@@ -205,3 +205,17 @@ export interface ActivityResponse {
   page: number;
   pages: number;
 }
+
+export interface CompareTaste {
+  shared_genres: StatsGenreSlice[];
+  only_a_genres: StatsGenreSlice[];
+  only_b_genres: StatsGenreSlice[];
+  shared_anime: AnimeSummary[];
+  score_agreement: number;
+}
+
+export interface CompareResponse {
+  user_a: { id: number; username: string; display_name: string | null };
+  user_b: { id: number; username: string; display_name: string | null };
+  taste: CompareTaste;
+}
