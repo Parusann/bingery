@@ -1,7 +1,7 @@
-import { Outlet } from "react-router-dom";
 import { AmbientBlobs } from "@/design/AmbientBlobs";
 import { GrainOverlay } from "@/design/GrainOverlay";
 import { Header } from "./Header";
+import { PageTransition } from "./PageTransition";
 
 export default function AppShell() {
   return (
@@ -11,7 +11,7 @@ export default function AppShell() {
       <div className="relative z-10">
         <Header />
         <main className="max-w-7xl mx-auto px-6 py-10">
-          <Outlet />
+          <PageTransition />
         </main>
       </div>
     </div>
