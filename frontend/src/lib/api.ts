@@ -177,4 +177,9 @@ export const api = {
     request<import("@/types/api").StatsOverviewResp>("/stats/overview"),
   getStatsHeatmap: () =>
     request<import("@/types/api").StatsHeatmapResp>("/stats/heatmap"),
+
+  getSeasonal: (year?: number, season?: import("@/types/models").Season) =>
+    request<import("@/types/api").SeasonalResp>(
+      `/seasonal${year && season ? `?year=${year}&season=${season}` : ""}`
+    ),
 };
