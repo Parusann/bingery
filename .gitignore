@@ -26,3 +26,8 @@ frontend/src/design/tokens.js
 frontend/src/design/tokens.d.ts
 frontend/*.tsbuildinfo
 
+# Editor/tooling notes that must never enter the public repo
+CLAUDE.md
+claude.md
+.plan2-spec.tmp.md
+.task*-spec.tmp.md
