@@ -90,3 +90,10 @@ export interface CollectionResponse {
 export interface CollectionMutation {
   collection: Collection;
 }
+
+import type { StatsHeatmap, StatsOverviewResponse } from "./models";
+
+export interface StatsOverviewResp extends StatsOverviewResponse {}
+export interface StatsHeatmapResp {
+  heatmap: StatsHeatmap;
+}

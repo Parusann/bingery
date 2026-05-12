@@ -172,4 +172,9 @@ export const api = {
     request<{ ok: boolean }>(`/collections/${id}/items/${animeId}`, {
       method: "DELETE",
     }),
+
+  getStatsOverview: () =>
+    request<import("@/types/api").StatsOverviewResp>("/stats/overview"),
+  getStatsHeatmap: () =>
+    request<import("@/types/api").StatsHeatmapResp>("/stats/heatmap"),
 };
