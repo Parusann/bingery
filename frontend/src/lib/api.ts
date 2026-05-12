@@ -140,7 +140,7 @@ export const api = {
   getCollection: (id: number) =>
     request<import("@/types/api").CollectionResponse>(`/collections/${id}`),
   getSharedCollection: (token: string) =>
-    request<import("@/types/api").CollectionResponse>(`/collections/share/${token}`),
+    request<import("@/types/api").CollectionResponse>(`/collections/public/${token}`),
   createCollection: (body: {
     title: string;
     description?: string;
@@ -155,7 +155,7 @@ export const api = {
     body: { title?: string; description?: string; is_public?: boolean }
   ) =>
     request<import("@/types/api").CollectionMutation>(`/collections/${id}`, {
-      method: "PUT",
+      method: "PATCH",
       body: JSON.stringify(body),
     }),
   deleteCollection: (id: number) =>
