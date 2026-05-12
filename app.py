@@ -13,11 +13,20 @@ from flask_jwt_extended import JWTManager
 from config import Config
 from models import db
 
-STATIC_DIR = os.path.join(os.path.abspath(os.path.dirname(__file__)), "static")
+
+# Serve the new Vite-built frontend from frontend/dist/. If that directory is
+# missing (dev before build or CI stage 1) fall back to the legacy static/
+# bundle so the server still returns usable HTML.
+def _static_root() -> str:
+    frontend = os.path.join(os.path.abspath(os.path.dirname(__file__)), "frontend", "dist")
+    if os.path.isdir(frontend) and os.path.exists(os.path.join(frontend, "index.html")):
+        return frontend
+    return os.path.join(os.path.abspath(os.path.dirname(__file__)), "static")
 
 
 def create_app(config_class=Config):
-    app = Flask(__name__, static_folder=STATIC_DIR)
+    root = _static_root()
+    app = Flask(__name__, static_folder=root, static_url_path="")
     app.config.from_object(config_class)
 
     # ── Extensions ────────────────────────────────────────────────────────
@@ -60,17 +69,22 @@ def create_app(config_class=Config):
     def health():
         return jsonify({"status": "ok", "service": "bingery-api"}), 200
 
-    # ── Serve frontend ────────────────────────────────────────────────────
-    @app.route("/")
-    def serve_index():
-        return send_from_directory(STATIC_DIR, "index.html")
+    # ── Serve frontend (SPA with fallback) ────────────────────────────────
+    @app.route("/", defaults={"path": ""})
+    @app.route("/<path:path>")
+    def spa(path: str):
+        # API routes are handled above; anything else serves the SPA index.
+        full = os.path.join(app.static_folder, path)
+        if path and os.path.exists(full) and os.path.isfile(full):
+            return send_from_directory(app.static_folder, path)
+        return send_from_directory(app.static_folder, "index.html")
 
     # ── Error handlers ────────────────────────────────────────────────────
     @app.errorhandler(404)
     def not_found(e):
         if flask_request.path.startswith("/api/"):
             return jsonify({"error": "Not found."}), 404
-        return send_from_directory(STATIC_DIR, "index.html")
+        return send_from_directory(app.static_folder, "index.html")
 
     @app.errorhandler(500)
     def server_error(e):
