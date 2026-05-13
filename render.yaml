@@ -1,26 +1,29 @@
-databases:
-  - name: bingery-db
-    plan: free
-    databaseName: bingery
-    user: bingery
-
 services:
   - type: web
     name: bingery
-    runtime: python
-    plan: free
-    buildCommand: pip install -r requirements.txt && python seed.py && python -m utils.anilist --mode popular --pages 2
-    startCommand: gunicorn app:app --bind 0.0.0.0:$PORT --workers 2 --timeout 120
+    env: python
+    buildCommand: "./build.sh"
+    startCommand: "gunicorn app:app --workers 2 --timeout 120"
+    healthCheckPath: /api/health
     envVars:
+      - key: PYTHON_VERSION
+        value: "3.12.3"
+      - key: AI_PROVIDER
+        value: anthropic
+      - key: ANTHROPIC_MODEL
+        value: claude-sonnet-4-6
+      - key: OLLAMA_MODEL
+        value: gemma4:31b
+      - key: OLLAMA_BASE_URL
+        value: http://localhost:11434
+      - key: ANTHROPIC_API_KEY
+        sync: false
+      - key: JWT_SECRET_KEY
+        generateValue: true
       - key: DATABASE_URL
         fromDatabase:
           name: bingery-db
           property: connectionString
-      - key: SECRET_KEY
-        generateValue: true
-      - key: JWT_SECRET_KEY
-        generateValue: true
-      - key: ANTHROPIC_API_KEY
-        sync: false
-      - key: PYTHON_VERSION
-        value: 3.11.6
+databases:
+  - name: bingery-db
+    plan: free
