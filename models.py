@@ -34,6 +34,7 @@ class User(db.Model):
     password_hash = db.Column(db.String(128), nullable=False)
     avatar_url = db.Column(db.String(300), default=None)
     bio = db.Column(db.String(500), default="")
+    display_name = db.Column(db.String(80), nullable=True, default=None)
     created_at = db.Column(
         db.DateTime, nullable=False, default=lambda: datetime.now(timezone.utc)
     )
@@ -49,6 +50,7 @@ class User(db.Model):
             "email": self.email,
             "avatar_url": self.avatar_url,
             "bio": self.bio,
+            "display_name": self.display_name,
             "created_at": self.created_at.isoformat(),
         }
         if include_stats:

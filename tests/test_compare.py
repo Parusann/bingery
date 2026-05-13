@@ -163,7 +163,7 @@ def test_compare_user_data_isolated_per_user(client, auth_headers, app):
 # ───────────────────────────────────────────────────────────────────────────
 
 
-def _make_user(app, username, email=None, password="password"):
+def _make_user(app, username, email=None, password="password", display_name=None):
     """Create a fresh user, return (headers_dict, user)."""
     from flask_jwt_extended import create_access_token
     from flask_bcrypt import Bcrypt
@@ -174,6 +174,7 @@ def _make_user(app, username, email=None, password="password"):
         username=username,
         email=email or f"{username}@example.com",
         password_hash=bcrypt.generate_password_hash(password).decode("utf-8"),
+        display_name=display_name,
     )
     db.session.add(user)
     db.session.commit()
