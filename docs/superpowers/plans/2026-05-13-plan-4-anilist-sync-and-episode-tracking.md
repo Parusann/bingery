@@ -3,7 +3,8 @@
 **Date:** 2026-05-13
 **Branch (proposed):** `revamp/anilist-sync-and-schedule`
 **Base:** `main` at `0081eb9` (Plan 3 merged)
-**Status:** Phase A scoped, Phase B pending dub-source decision
+**Status:** Phase A scoped + Phase B locked to **B-iv (Hybrid)** dub source
+**seed.py decision:** Kept as-is. Documented role: fresh-DB dev bootstrap only. Production deploys do not run it. The 20 hand-curated anime will be near-duplicates of AniList rows post-sync; acceptable dev-only impact.
 
 ---
 
@@ -308,29 +309,206 @@ export interface ScheduleResponse {
 
 ---
 
-# Phase B — Dub episode tracking
+# Phase B — Hybrid dub episode tracking (chosen path: B-iv)
 
-## **Phase B is blocked on the dub data source decision. See options below; pick one before scoping the tasks.**
+## Architecture: tiered fallback
 
-## Phase B task skeleton (to be detailed once source is chosen)
+Three data sources, written to `Episode.air_date_dub` with `dub_source` indicating which one filled it:
 
-- **B1.** Add `air_date_dub`, `dub_source` fields to Episode (already speced in A1 — confirms columns exist)
-- **B2.** Implement the chosen data source (see options below for what this looks like per choice)
-- **B3.** Extend `/api/schedule/upcoming?kind=dub` to actually return dub episodes
-- **B4.** Frontend: enable "Dub" filter tab on /schedule; show dub air date on AnimeDetail's NextEpisodeWidget; optional Sub/Dub badge on Episode rows
-- **B5.** Tests + verification
+```
+┌─────────────────────────────────────────────────────────────────┐
+│ Tier 1 — Crunchyroll RSS (automated, ~70% coverage)            │
+│   - Cron-pulls https://feeds.feedburner.com/crunchyroll/rss    │
+│   - Fuzzy-match RSS title → Anime row by title/anilist_id      │
+│   - Sets dub_source = "crunchyroll_rss"                        │
+└─────────────────────────────────────────────────────────────────┘
+                              │ writes
+                              ▼
+┌─────────────────────────────────────────────────────────────────┐
+│ Tier 2 — AnimeSchedule.net API (automated, fills gaps to ~95%) │
+│   - Cron-pulls /api/v3/timetables/dub                          │
+│   - Only updates Episode rows where dub_source is null         │
+│   - Sets dub_source = "animeschedule"                          │
+└─────────────────────────────────────────────────────────────────┘
+                              │ writes (gaps only)
+                              ▼
+┌─────────────────────────────────────────────────────────────────┐
+│ Tier 3 — Manual user submissions (community-curated, edge cases)│
+│   - DubReport endpoint + minimal moderation queue              │
+│   - Verified submissions override Tier 1/2 if more recent      │
+│   - Sets dub_source = "user:<username>"                        │
+└─────────────────────────────────────────────────────────────────┘
+```
+
+## Phase B tasks
+
+### Task B1: Episode.air_date_dub schema confirmation + DubReport model
+
+**Files:**
+- Modify: `models.py` *(add `DubReport` model)*
+- Modify: `tests/test_models.py`
+
+**DubReport model:**
+
+```python
+class DubReport(db.Model):
+    """User-submitted dub air-date submissions, awaiting moderation or auto-accepted."""
+    id              = db.Column(db.Integer, primary_key=True)
+    episode_id      = db.Column(db.Integer, db.ForeignKey("episode.id"), nullable=False, index=True)
+    submitted_by    = db.Column(db.Integer, db.ForeignKey("user.id"), nullable=False)
+    air_date        = db.Column(db.DateTime, nullable=False)
+    status          = db.Column(db.String(20), default="pending")  # pending | accepted | rejected
+    note            = db.Column(db.String(500), nullable=True)
+    created_at      = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc))
+    reviewed_at     = db.Column(db.DateTime, nullable=True)
+    reviewed_by     = db.Column(db.Integer, db.ForeignKey("user.id"), nullable=True)
+```
+
+**Acceptance:**
+- `Episode.air_date_dub` + `dub_source` columns exist (from Task A1)
+- `DubReport` table created via `db.create_all()` or ALTER snippet
+- Foreign-key cascade: deleting an anime cascades to its episodes and their reports
 
 ---
 
-## Phase B — Dub data source options
+### Task B2a: Crunchyroll RSS ingester (Tier 1)
 
-| | Source | Coverage | Effort | Risk |
-|---|---|---|---|---|
-| **B-i** | Crunchyroll RSS feeds | ~70% (recent CR-distributed dubs) | Medium (parser + cron) | Medium — format undocumented, can break |
-| **B-ii** | Manual user submissions | Variable — depends on community | High (moderation UX) | Low — fully under your control |
-| **B-iii** | AnimeSchedule.net | ~85% (covers most dubs in single feed) | Low (single fetch) | High — semi-public API, ToS gray area |
-| **B-iv** | Hybrid: CR RSS + AnimeSchedule fallback + manual fill | ~95% | Very high (three sources) | Mixed (mostly B-iii's risks) |
-| **B-v** | Sub-only (defer dub to Plan 5) | 0% (dub) | Zero | Zero |
+**Files:**
+- Create: `utils/dub_sources/crunchyroll.py`
+- Create: `sync_dub_crunchyroll.py` *(CLI entry, similar to sync_anilist.py)*
+- Create: `tests/test_dub_crunchyroll.py`
+
+**Behavior:**
+- Fetches `https://feeds.feedburner.com/crunchyroll/rss` (or per-language variants)
+- Parses each entry: extract `<title>`, `<pubDate>`, episode number from title text (regex `Episode (\d+)` etc.)
+- Fuzzy-matches show title against `Anime.title` and `Anime.title_english` (token-set ratio ≥ 80%)
+- If match: upsert `Episode` row, set `air_date_dub` and `dub_source = "crunchyroll_rss"`
+- If no match: log to `tests/.unmatched_dub_titles.log` for manual review (also useful as a B-iii fallback signal)
+- Rate-limit: 1 fetch per 60s (RSS doesn't need fast polling)
+- CLI: `python sync_dub_crunchyroll.py [--dry-run | --since YYYY-MM-DD]`
+
+**Acceptance:**
+- Test against a captured RSS fixture (don't hit live URL in tests)
+- Fuzzy-match correctness on edge cases (subtitles, season suffixes, romaji vs English)
+- Idempotent: re-runs don't create duplicate Episodes
+
+---
+
+### Task B2b: AnimeSchedule.net ingester (Tier 2)
+
+**Files:**
+- Create: `utils/dub_sources/animeschedule.py`
+- Create: `sync_dub_animeschedule.py` *(CLI entry)*
+- Create: `tests/test_dub_animeschedule.py`
+
+**Behavior:**
+- Fetches `https://animeschedule.net/api/v3/timetables/dub` (semi-public JSON endpoint)
+- For each row: match by `animeschedule.title` → `Anime.title` (same fuzzy logic as B2a)
+- **Only writes `air_date_dub` if it is currently NULL** (Tier 1 takes precedence)
+- Sets `dub_source = "animeschedule"`
+- Graceful 4xx/5xx handling — log + exit non-zero, don't corrupt DB
+- CLI: `python sync_dub_animeschedule.py [--dry-run]`
+
+**Acceptance:**
+- Test against a captured fixture
+- Confirms Tier 1 data is never overwritten
+- Logs how many gaps were filled vs already-populated
+
+---
+
+### Task B3: User dub-report endpoints (Tier 3)
+
+**Files:**
+- Create: `routes/dub_reports.py`
+- Modify: `app.py` *(register blueprint at `/api/dub-reports`)*
+- Create: `tests/test_dub_reports.py`
+
+**Endpoints:**
+
+```
+POST /api/dub-reports
+  body: { episode_id: <int>, air_date: "YYYY-MM-DDTHH:MM:SSZ", note?: <str> }
+  -> 201 { report: {...} }
+  -> 400 if episode doesn't exist or air_date is invalid
+  -> 409 if same user already submitted for this episode (one report per user per episode)
+
+GET /api/dub-reports?status=pending
+  -> 200 { reports: [...] }
+  (Admin-only — define is_admin flag or accept first-user-as-admin pattern for now)
+
+PATCH /api/dub-reports/<id>
+  body: { status: "accepted" | "rejected" }
+  -> 200 { report: {...} }
+  - If accepted: set Episode.air_date_dub = report.air_date, Episode.dub_source = "user:<username>"
+```
+
+**Acceptance:**
+- A regular user can submit; only flagged admin user can accept/reject
+- Accepting a report overrides existing dub data (regardless of Tier)
+- Activity feed gets a new event kind `dub_report` (extend `ActivityKind` in Plan 3's frontend types)
+
+---
+
+### Task B4: /api/schedule/upcoming serves dub episodes
+
+**Files:**
+- Modify: `routes/schedule.py` *(extend to handle `?kind=dub`)*
+- Modify: `tests/test_schedule.py`
+
+**Behavior:**
+- `?kind=dub` returns `Episode` rows where `air_date_dub` falls in the date window, sorted ascending
+- `?kind=both` returns both kinds in one merged stream, each with `kind: "sub" | "dub"`
+- The endpoint shape is the same as Phase A (Task A3); only the filter changes
+
+---
+
+### Task B5: Frontend dub UX
+
+**Files:**
+- Modify: `frontend/src/features/schedule/SchedulePage.tsx` *(enable Dub tab)*
+- Modify: `frontend/src/features/anime/NextEpisodeWidget.tsx` *(show both sub + dub badges if available)*
+- Create: `frontend/src/features/anime/DubReportButton.tsx` *(report-a-dub-date dialog)*
+- Modify: `frontend/src/features/anime/AnimeDetailPage.tsx` *(thread in DubReportButton)*
+- Create: `frontend/src/features/admin/DubReportsQueue.tsx` *(admin moderation page)*
+
+**Acceptance:**
+- /schedule "Dub" tab now lists dub episodes
+- AnimeDetail shows `📺 Episode 5 sub airs in 2d` and (separately) `🇺🇸 Episode 5 dub airs in 5d`
+- "Report missing dub date" button on AnimeDetail opens a small dialog (episode picker, date input, optional note)
+- Admin page shows pending reports; accept/reject buttons update Episode
+
+---
+
+### Task B6: Scheduled re-syncs for dub sources
+
+**Files:**
+- Modify: `.github/workflows/anilist-resync.yml` *(if Task A10 shipped)* OR `render.yaml` cron job
+- Add jobs:
+  - `sync_dub_crunchyroll.py` — every 6 hours
+  - `sync_dub_animeschedule.py` — every 24 hours
+  - `sync_anilist.py --resume` — weekly (already in Task A10)
+
+---
+
+### Task B7: Tests + verification
+
+- `tests/test_dub_crunchyroll.py` — captured-fixture parsing, fuzzy match, idempotency
+- `tests/test_dub_animeschedule.py` — captured-fixture parsing, Tier 1 precedence
+- `tests/test_dub_reports.py` — submission, dedup, moderation flow
+- Manual: run all three ingesters against live data; verify /schedule "Dub" tab renders sensible data
+- Manual: submit a dub report as a non-admin user, accept it as admin, verify Episode.air_date_dub updated
+
+---
+
+## Phase B — Dub data source options (decision: **B-iv chosen**)
+
+| | Source | Coverage | Effort | Risk | Status |
+|---|---|---|---|---|---|
+| **B-i** | Crunchyroll RSS feeds | ~70% (recent CR-distributed dubs) | Medium (parser + cron) | Medium — format undocumented, can break | ✅ Used as Tier 1 in B-iv |
+| **B-ii** | Manual user submissions | Variable — depends on community | High (moderation UX) | Low — fully under your control | ✅ Used as Tier 3 in B-iv |
+| **B-iii** | AnimeSchedule.net | ~85% (covers most dubs in single feed) | Low (single fetch) | High — semi-public API, ToS gray area | ✅ Used as Tier 2 in B-iv |
+| **B-iv** | **Hybrid: CR RSS + AnimeSchedule fallback + manual fill** | **~95%** | **Very high (three sources)** | **Mixed** | **🎯 CHOSEN** |
+| **B-v** | Sub-only (defer dub to Plan 5) | 0% (dub) | Zero | Zero | ❌ Rejected |
 
 ### B-i: Crunchyroll RSS feeds (recommended for ethical clarity + automation)
 
@@ -370,11 +548,11 @@ export interface ScheduleResponse {
 
 ---
 
-## Open questions
+## Open questions (resolved)
 
-1. **Which dub source (B-i through B-v)?**
-2. **Do you want Phase A to include the initial 5-hour sync run, or just ship the script and run it yourself overnight?**
-3. **Is the existing 20-row seed DB worth preserving as fallback test data, or can `seed.py` be deleted entirely once sync is in place?**
+1. ~~Which dub source?~~ **B-iv (Hybrid: CR RSS + AnimeSchedule + manual)**
+2. ~~5-hour sync run during session?~~ **User will run it overnight on their dev machine. Runbook in Task A9 below.**
+3. ~~seed.py role?~~ **Kept as-is. Documented as fresh-DB dev bootstrap only. Production deploys do not run it.**
 
 ## Out of scope (could be Plan 5)
 
