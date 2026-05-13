@@ -1,3 +1,4 @@
+import { useState } from "react";
 import { Link } from "react-router-dom";
 import { motion } from "framer-motion";
 import type { AnimeSummary } from "@/types/models";
@@ -13,9 +14,12 @@ interface Props {
 }
 
 export function AnimeCard({ anime, index = 0, compact }: Props) {
+  const [loaded, setLoaded] = useState(false);
   const score = anime.community_score ?? anime.api_score;
   const genres = (anime.official_genres ?? anime.genres ?? [])
-    .map((g: { name?: string } | string) => (typeof g === "string" ? g : g.name ?? ""))
+    .map((g: { name?: string } | string) =>
+      typeof g === "string" ? g : g.name ?? ""
+    )
     .filter(Boolean)
     .slice(0, 3);
   return (
@@ -38,15 +42,21 @@ export function AnimeCard({ anime, index = 0, compact }: Props) {
             compact ? "aspect-[3/4]" : "aspect-[2/3]"
           )}
         >
+          <div className="absolute inset-0 bg-gradient-to-br from-white/[0.04] to-black/20" />
           {anime.image_url ? (
             <img
               src={anime.image_url}
               alt={anime.title}
               loading="lazy"
-              className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-[1.04]"
+              onLoad={() => setLoaded(true)}
+              className={cn(
+                "relative w-full h-full object-cover transition-all duration-500",
+                "group-hover:scale-[1.04]",
+                loaded ? "opacity-100 blur-0" : "opacity-0 blur-md"
+              )}
             />
           ) : (
-            <div className="w-full h-full flex items-center justify-center text-text-dim text-xs">
+            <div className="relative w-full h-full flex items-center justify-center text-text-dim text-xs">
               No image
             </div>
           )}
