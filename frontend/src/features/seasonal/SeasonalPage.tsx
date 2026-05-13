@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { Link } from "react-router-dom";
 import { AnimeGrid } from "@/features/discover/AnimeGrid";
 import { currentSeason, useSeasonal } from "@/hooks/useSeasonal";
 import { SeasonPicker } from "./SeasonPicker";
@@ -29,7 +30,14 @@ export function SeasonalPage() {
       <AnimeGrid
         anime={q.data?.anime ?? []}
         loading={q.isLoading}
-        empty="No anime found for this season."
+        empty={
+          <span>
+            No anime found for this season.{" "}
+            <Link to="/discover" className="text-amber hover:underline">
+              Browse all anime →
+            </Link>
+          </span>
+        }
       />
     </div>
   );
