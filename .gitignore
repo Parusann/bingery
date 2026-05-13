@@ -29,7 +29,7 @@ frontend/*.tsbuildinfo
 # Editor/tooling notes that must never enter the public repo
 CLAUDE.md
 claude.md
-.plan2-spec.tmp.md
+.plan*-spec.tmp.md
 .task*-spec.tmp.md
 
 # Local tooling dirs

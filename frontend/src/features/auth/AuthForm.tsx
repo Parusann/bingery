@@ -10,6 +10,7 @@ export function AuthForm({ onSuccess }: { onSuccess?: () => void }) {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [username, setUsername] = useState("");
+  const [displayName, setDisplayName] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const signIn = useAuth((s) => s.signIn);
@@ -20,7 +21,13 @@ export function AuthForm({ onSuccess }: { onSuccess?: () => void }) {
     setLoading(true);
     try {
       if (mode === "login") await signIn({ email, password });
-      else await signUp({ email, password, username });
+      else
+        await signUp({
+          email,
+          password,
+          username,
+          display_name: displayName.trim() || undefined,
+        });
       onSuccess?.();
     } catch (e) {
       setError((e as Error).message);
@@ -60,18 +67,26 @@ export function AuthForm({ onSuccess }: { onSuccess?: () => void }) {
               : "text-text-muted hover:text-text")
           }
         >
-          Create account
+          Sign up
         </button>
       </div>
 
       {mode === "register" ? (
-        <Input
-          label="Username"
-          value={username}
-          onChange={(e) => setUsername(e.target.value)}
-          autoComplete="username"
-          required
-        />
+        <>
+          <Input
+            label="Username"
+            value={username}
+            onChange={(e) => setUsername(e.target.value)}
+            autoComplete="username"
+            required
+          />
+          <Input
+            label="Display name (optional)"
+            value={displayName}
+            onChange={(e) => setDisplayName(e.target.value)}
+            autoComplete="nickname"
+          />
+        </>
       ) : null}
       <Input
         label="Email"

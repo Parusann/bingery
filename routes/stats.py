@@ -1,5 +1,6 @@
 """Stats dashboard routes."""
 from collections import Counter
+from datetime import date, datetime, timedelta, timezone
 
 from flask import Blueprint, jsonify
 from flask_jwt_extended import jwt_required, get_jwt_identity
@@ -168,3 +169,187 @@ def timeline():
         for year, count, avg in rows
     ]
     return jsonify({"timeline": out})
+
+
+def _to_utc_date(value):
+    """Return the UTC calendar date for a datetime. Naive datetimes are
+    treated as UTC (DB columns use ``datetime.now(timezone.utc)``)."""
+    if value is None:
+        return None
+    if isinstance(value, datetime):
+        if value.tzinfo is None:
+            return value.date()
+        return value.astimezone(timezone.utc).date()
+    return value
+
+
+def _activity_dates_for_user(user_id):
+    """Return a Counter[date -> int] of per-day activity events for a user.
+
+    "Activity" is any Rating.created_at, FanGenreVote.created_at, or
+    WatchlistEntry.updated_at, bucketed by UTC date.
+    """
+    counter: Counter = Counter()
+
+    rating_times = (
+        db.session.query(Rating.created_at)
+        .filter(Rating.user_id == user_id)
+        .all()
+    )
+    for (ts,) in rating_times:
+        d = _to_utc_date(ts)
+        if d is not None:
+            counter[d] += 1
+
+    vote_times = (
+        db.session.query(FanGenreVote.created_at)
+        .filter(FanGenreVote.user_id == user_id)
+        .all()
+    )
+    for (ts,) in vote_times:
+        d = _to_utc_date(ts)
+        if d is not None:
+            counter[d] += 1
+
+    entry_times = (
+        db.session.query(WatchlistEntry.updated_at)
+        .filter(WatchlistEntry.user_id == user_id)
+        .all()
+    )
+    for (ts,) in entry_times:
+        d = _to_utc_date(ts)
+        if d is not None:
+            counter[d] += 1
+
+    return counter
+
+
+@stats_bp.route("/overview", methods=["GET"])
+@jwt_required()
+def overview():
+    user_id = int(get_jwt_identity())
+
+    # Totals: rated, watched, favorites
+    total_rated = (
+        db.session.query(func.count(Rating.id))
+        .filter(Rating.user_id == user_id)
+        .scalar()
+    ) or 0
+
+    total_watched = (
+        db.session.query(func.count(WatchlistEntry.id))
+        .filter(
+            WatchlistEntry.user_id == user_id,
+            WatchlistEntry.status.in_(("completed", "watching")),
+        )
+        .scalar()
+    ) or 0
+
+    favorite_count = (
+        db.session.query(func.count(WatchlistEntry.id))
+        .filter(
+            WatchlistEntry.user_id == user_id,
+            WatchlistEntry.is_favorite.is_(True),
+        )
+        .scalar()
+    ) or 0
+
+    # Average rating (null when no ratings)
+    avg_raw = (
+        db.session.query(func.avg(Rating.score))
+        .filter(Rating.user_id == user_id)
+        .scalar()
+    )
+    avg_rating = round(float(avg_raw), 2) if avg_raw is not None else None
+
+    # Hours watched — same formula as /stats dashboard
+    entries = (
+        db.session.query(WatchlistEntry, Anime)
+        .join(Anime, Anime.id == WatchlistEntry.anime_id)
+        .filter(WatchlistEntry.user_id == user_id)
+        .all()
+    )
+    total_minutes = 0.0
+    for w, anime in entries:
+        eps_total = anime.episodes or 0
+        if w.status == "watching" and (w.episodes_watched or 0) > 0:
+            minutes = w.episodes_watched * DEFAULT_EPISODE_MINUTES
+        else:
+            weight = COMPLETION_WEIGHTS.get(w.status, 0.0)
+            minutes = eps_total * DEFAULT_EPISODE_MINUTES * weight
+        total_minutes += minutes
+    hours_watched = round(total_minutes / 60.0, 1)
+
+    # Rating distribution: always 10 buckets, score 1..10
+    score_rows = (
+        db.session.query(Rating.score, func.count(Rating.id))
+        .filter(Rating.user_id == user_id)
+        .group_by(Rating.score)
+        .all()
+    )
+    score_counter = {int(s): int(c) for s, c in score_rows}
+    rating_distribution = [
+        {"score": s, "count": score_counter.get(s, 0)} for s in range(1, 11)
+    ]
+
+    # Top genres: from FanGenreVote, up to 8, sorted by count desc, tie-break by genre asc
+    genre_rows = (
+        db.session.query(FanGenreVote.genre_tag, func.count(FanGenreVote.id))
+        .filter(FanGenreVote.user_id == user_id)
+        .group_by(FanGenreVote.genre_tag)
+        .all()
+    )
+    genre_pairs = [(name, int(count)) for name, count in genre_rows]
+    genre_pairs.sort(key=lambda x: (-x[1], x[0]))
+    top_genres = [{"genre": name, "count": count} for name, count in genre_pairs[:8]]
+    top_genre = top_genres[0]["genre"] if top_genres else None
+
+    # Streak: consecutive days of activity ending today (UTC)
+    activity = _activity_dates_for_user(user_id)
+    today = datetime.now(timezone.utc).date()
+    streak_days = 0
+    cursor = today
+    while activity.get(cursor, 0) > 0:
+        streak_days += 1
+        cursor = cursor - timedelta(days=1)
+
+    return jsonify({
+        "overview": {
+            "total_rated": int(total_rated),
+            "total_watched": int(total_watched),
+            "hours_watched": hours_watched,
+            "favorite_count": int(favorite_count),
+            "avg_rating": avg_rating,
+            "top_genre": top_genre,
+            "streak_days": streak_days,
+        },
+        "rating_distribution": rating_distribution,
+        "top_genres": top_genres,
+    })
+
+
+@stats_bp.route("/heatmap", methods=["GET"])
+@jwt_required()
+def heatmap():
+    user_id = int(get_jwt_identity())
+
+    today = datetime.now(timezone.utc).date()
+    window_start = today - timedelta(days=364)  # 365-day inclusive window
+
+    activity = _activity_dates_for_user(user_id)
+    in_window = {
+        d: c for d, c in activity.items() if window_start <= d <= today and c > 0
+    }
+
+    cells = [
+        {"date": d.isoformat(), "count": c}
+        for d, c in sorted(in_window.items(), key=lambda kv: kv[0])
+    ]
+    max_count = max(in_window.values()) if in_window else 0
+
+    return jsonify({
+        "heatmap": {
+            "cells": cells,
+            "max": int(max_count),
+        }
+    })

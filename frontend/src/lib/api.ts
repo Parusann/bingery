@@ -81,7 +81,7 @@ export const api = {
       method: "POST",
       body: JSON.stringify(body),
     }),
-  register: (body: { email: string; password: string; username: string }) =>
+  register: (body: { email: string; password: string; username: string; display_name?: string }) =>
     request<AuthResponse>("/auth/register", {
       method: "POST",
       body: JSON.stringify(body),
@@ -134,4 +134,60 @@ export const api = {
       method: "POST",
       body: JSON.stringify(body),
     }),
+
+  getCollections: () =>
+    request<import("@/types/api").CollectionsListResponse>("/collections"),
+  getCollection: (id: number) =>
+    request<import("@/types/api").CollectionResponse>(`/collections/${id}`),
+  getSharedCollection: (token: string) =>
+    request<import("@/types/api").CollectionResponse>(`/collections/public/${token}`),
+  createCollection: (body: {
+    title: string;
+    description?: string;
+    is_public?: boolean;
+  }) =>
+    request<import("@/types/api").CollectionMutation>("/collections", {
+      method: "POST",
+      body: JSON.stringify(body),
+    }),
+  updateCollection: (
+    id: number,
+    body: { title?: string; description?: string; is_public?: boolean }
+  ) =>
+    request<import("@/types/api").CollectionMutation>(`/collections/${id}`, {
+      method: "PATCH",
+      body: JSON.stringify(body),
+    }),
+  deleteCollection: (id: number) =>
+    request<{ ok: boolean }>(`/collections/${id}`, { method: "DELETE" }),
+  addToCollection: (
+    id: number,
+    body: { anime_id: number; note?: string }
+  ) =>
+    request<{ item: import("@/types/models").CollectionItem }>(
+      `/collections/${id}/items`,
+      { method: "POST", body: JSON.stringify(body) }
+    ),
+  removeFromCollection: (id: number, animeId: number) =>
+    request<{ ok: boolean }>(`/collections/${id}/items/${animeId}`, {
+      method: "DELETE",
+    }),
+
+  getStatsOverview: () =>
+    request<import("@/types/api").StatsOverviewResp>("/stats/overview"),
+  getStatsHeatmap: () =>
+    request<import("@/types/api").StatsHeatmapResp>("/stats/heatmap"),
+
+  getSeasonal: (year?: number, season?: import("@/types/models").Season) =>
+    request<import("@/types/api").SeasonalResp>(
+      `/seasonal${year && season ? `?year=${year}&season=${season}` : ""}`
+    ),
+
+  getActivity: (page = 1) =>
+    request<import("@/types/api").ActivityResp>(`/activity?page=${page}`),
+
+  getCompare: (a: string, b: string) =>
+    request<import("@/types/api").CompareResp>(
+      `/compare/users?user_a=${encodeURIComponent(a)}&user_b=${encodeURIComponent(b)}`
+    ),
 };

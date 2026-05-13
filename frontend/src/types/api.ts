@@ -76,3 +76,33 @@ export interface ChatRequest {
 }
 
 export type { WatchStatus, ChatResponse };
+
+import type { Collection, CollectionDetail } from "./models";
+
+export interface CollectionsListResponse {
+  collections: Collection[];
+}
+
+export interface CollectionResponse {
+  collection: CollectionDetail;
+}
+
+export interface CollectionMutation {
+  collection: Collection;
+}
+
+import type { StatsHeatmap, StatsOverviewResponse } from "./models";
+
+export interface StatsOverviewResp extends StatsOverviewResponse {}
+export interface StatsHeatmapResp {
+  heatmap: StatsHeatmap;
+}
+
+import type { SeasonalResponse } from "./models";
+export interface SeasonalResp extends SeasonalResponse {}
+
+import type { ActivityResponse } from "./models";
+export interface ActivityResp extends ActivityResponse {}
+
+import type { CompareResponse } from "./models";
+export interface CompareResp extends CompareResponse {}

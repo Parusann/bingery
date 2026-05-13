@@ -26,13 +26,19 @@ def test_activity_feed_returns_recent_actions(client, auth_headers, app):
     r = client.get("/api/activity?limit=10", headers=headers)
     assert r.status_code == 200
     body = r.get_json()
-    kinds = {item["type"] for item in body["items"]}
-    assert {"rating", "genre_vote", "status"}.issubset(kinds)
+    assert "events" in body
+    kinds = {item["kind"] for item in body["events"]}
+    assert {"rating", "genre_vote", "watch_status"}.issubset(kinds)
 
-    for item in body["items"]:
-        assert "anime_id" in item
-        assert "anime_title" in item
-        assert "timestamp" in item
+    for item in body["events"]:
+        assert "id" in item
+        assert "anime" in item
+        if item["kind"] != "collection_create":
+            assert item["anime"] is not None
+            assert "id" in item["anime"]
+            assert "title" in item["anime"]
+            assert "image_url" in item["anime"]
+        assert "created_at" in item
 
 
 def test_activity_feed_respects_limit(client, auth_headers, app):
@@ -40,7 +46,11 @@ def test_activity_feed_respects_limit(client, auth_headers, app):
     _seed_activity(app, user.id)
     r = client.get("/api/activity?limit=1", headers=headers)
     assert r.status_code == 200
-    assert len(r.get_json()["items"]) == 1
+    body = r.get_json()
+    assert len(body["events"]) == 1
+    assert body["page"] == 1
+    # With 3 events and limit=1, pages should be 3.
+    assert body["pages"] == 3
 
 
 def test_activity_requires_auth(client):
@@ -49,11 +59,14 @@ def test_activity_requires_auth(client):
 
 
 def test_activity_feed_empty_user(client, auth_headers):
-    """A user with no actions gets an empty list, not an error."""
+    """A user with no actions gets an empty events list, not an error."""
     headers, _ = auth_headers
     r = client.get("/api/activity", headers=headers)
     assert r.status_code == 200
-    assert r.get_json() == {"items": []}
+    body = r.get_json()
+    assert body["events"] == []
+    assert body["page"] == 1
+    assert body["pages"] == 1
 
 
 def test_activity_feed_does_not_leak_other_users(app, client, auth_headers):
@@ -87,11 +100,14 @@ def test_activity_feed_does_not_leak_other_users(app, client, auth_headers):
 
     r = client.get("/api/activity", headers=headers)
     assert r.status_code == 200
-    assert r.get_json() == {"items": []}
+    body = r.get_json()
+    assert body["events"] == []
+    assert body["page"] == 1
+    assert body["pages"] == 1
 
 
 def test_activity_feed_orders_newest_first(app, client, auth_headers):
-    """Events are returned newest-first by timestamp."""
+    """Events are returned newest-first by created_at."""
     from models import db, Anime, Rating
     headers, user = auth_headers
 
@@ -114,8 +130,8 @@ def test_activity_feed_orders_newest_first(app, client, auth_headers):
         db.session.commit()
 
     r = client.get("/api/activity", headers=headers)
-    items = r.get_json()["items"]
-    timestamps = [item["timestamp"] for item in items if item["type"] == "rating"]
+    events = r.get_json()["events"]
+    timestamps = [item["created_at"] for item in events if item["kind"] == "rating"]
     assert timestamps == sorted(timestamps, reverse=True)
 
 
@@ -145,11 +161,11 @@ def test_activity_feed_before_filter(app, client, auth_headers):
     cutoff = "2022-01-01T00:00:00"
     r = client.get(f"/api/activity?before={cutoff}", headers=headers)
     assert r.status_code == 200
-    items = r.get_json()["items"]
+    events = r.get_json()["events"]
     # Only the 2020 rating is strictly older than 2022-01-01.
-    ratings = [item for item in items if item["type"] == "rating"]
+    ratings = [item for item in events if item["kind"] == "rating"]
     assert len(ratings) == 1
-    assert ratings[0]["anime_title"] == "A"
+    assert ratings[0]["anime"]["title"] == "A"
 
 
 def test_activity_feed_before_rejects_invalid_timestamp(client, auth_headers):
@@ -174,6 +190,208 @@ def test_activity_feed_limit_is_clamped(client, auth_headers, app):
     # Non-integer — should fall back to default, not crash.
     r = client.get("/api/activity?limit=abc", headers=headers)
     assert r.status_code == 200
+
+
+def test_activity_feed_page_pagination(app, client, auth_headers):
+    """?page=2&limit=2 returns the second slice with correct pages count."""
+    from models import db, Anime, Rating
+    headers, user = auth_headers
+
+    with app.app_context():
+        animes = []
+        for i in range(5):
+            an = Anime(
+                mal_id=100 + i, title=f"P{i}", synopsis="", year=2020,
+                episodes=12, studio="S", image_url="",
+                source="ORIGINAL", status="FINISHED",
+            )
+            db.session.add(an)
+            animes.append(an)
+        db.session.commit()
+        # Distinct timestamps so order is deterministic; descending index = newest.
+        for i, an in enumerate(animes):
+            ts = datetime(2024, 1, i + 1, 0, 0, 0)
+            db.session.add(
+                Rating(
+                    user_id=user.id, anime_id=an.id, score=5 + i,
+                    created_at=ts, updated_at=ts,
+                )
+            )
+        db.session.commit()
+
+    r1 = client.get("/api/activity?page=1&limit=2", headers=headers)
+    r2 = client.get("/api/activity?page=2&limit=2", headers=headers)
+    r3 = client.get("/api/activity?page=3&limit=2", headers=headers)
+    assert r1.status_code == r2.status_code == r3.status_code == 200
+
+    b1, b2, b3 = r1.get_json(), r2.get_json(), r3.get_json()
+    assert b1["page"] == 1
+    assert b2["page"] == 2
+    assert b3["page"] == 3
+    # 5 events / 2 per page => ceil = 3 pages.
+    assert b1["pages"] == b2["pages"] == b3["pages"] == 3
+
+    assert len(b1["events"]) == 2
+    assert len(b2["events"]) == 2
+    assert len(b3["events"]) == 1
+
+    # No overlap between pages.
+    ids = (
+        [e["id"] for e in b1["events"]]
+        + [e["id"] for e in b2["events"]]
+        + [e["id"] for e in b3["events"]]
+    )
+    assert len(ids) == len(set(ids)) == 5
+
+
+def test_activity_feed_pages_minimum_one(client, auth_headers):
+    """An empty feed still reports pages=1, page=1, events=[]."""
+    headers, _ = auth_headers
+    r = client.get("/api/activity", headers=headers)
+    assert r.status_code == 200
+    body = r.get_json()
+    assert body == {"events": [], "page": 1, "pages": 1}
+
+
+def test_activity_feed_page_invalid_clamps_to_one(client, auth_headers, app):
+    """page=abc and page=0 fall back to page 1."""
+    headers, user = auth_headers
+    _seed_activity(app, user.id)
+
+    for bad in ("abc", "0", "-3"):
+        r = client.get(f"/api/activity?page={bad}", headers=headers)
+        assert r.status_code == 200
+        assert r.get_json()["page"] == 1
+
+
+def test_activity_feed_event_id_is_unique_across_kinds(app, client, auth_headers):
+    """IDs synthesized for different kinds must never collide."""
+    from models import (
+        db, Anime, Rating, FanGenreVote, WatchlistEntry, Collection, CollectionItem,
+    )
+    headers, user = auth_headers
+
+    with app.app_context():
+        a = Anime(
+            mal_id=300, title="Multi", synopsis="", year=2022,
+            episodes=12, studio="S", image_url="",
+            source="ORIGINAL", status="FINISHED",
+        )
+        db.session.add(a)
+        db.session.commit()
+        # All sharing PK=1-ish across tables — collision target if IDs were
+        # taken straight from the primary key.
+        db.session.add(Rating(user_id=user.id, anime_id=a.id, score=8))
+        db.session.add(FanGenreVote(
+            user_id=user.id, anime_id=a.id, genre_tag="Test",
+        ))
+        db.session.add(WatchlistEntry(
+            user_id=user.id, anime_id=a.id, status="completed",
+            is_favorite=True,
+        ))
+        col = Collection(user_id=user.id, name="Faves")
+        db.session.add(col)
+        db.session.commit()
+        db.session.add(CollectionItem(collection_id=col.id, anime_id=a.id))
+        db.session.commit()
+
+    r = client.get("/api/activity?limit=100", headers=headers)
+    assert r.status_code == 200
+    events = r.get_json()["events"]
+    ids = [e["id"] for e in events]
+    assert len(ids) == len(set(ids))
+    # Sanity: we should see at least these distinct kinds.
+    kinds = {e["kind"] for e in events}
+    assert {
+        "rating", "genre_vote", "watch_status", "favorite",
+        "collection_item", "collection_create",
+    }.issubset(kinds)
+
+
+def test_activity_feed_emits_favorite_event_for_favorited_watchlist(
+    app, client, auth_headers,
+):
+    """A WatchlistEntry with is_favorite=True must emit BOTH watch_status and favorite."""
+    from models import db, Anime, WatchlistEntry
+    headers, user = auth_headers
+
+    with app.app_context():
+        a = Anime(
+            mal_id=400, title="Fav", synopsis="", year=2020,
+            episodes=12, studio="S", image_url="",
+            source="ORIGINAL", status="FINISHED",
+        )
+        db.session.add(a)
+        db.session.commit()
+        db.session.add(WatchlistEntry(
+            user_id=user.id, anime_id=a.id,
+            status="watching", is_favorite=True,
+        ))
+        db.session.commit()
+
+    r = client.get("/api/activity", headers=headers)
+    assert r.status_code == 200
+    events = r.get_json()["events"]
+    kinds = [e["kind"] for e in events]
+    assert "watch_status" in kinds
+    assert "favorite" in kinds
+
+    fav = next(e for e in events if e["kind"] == "favorite")
+    assert fav["meta"] == {}
+    assert fav["anime"] is not None
+    assert fav["anime"]["title"] == "Fav"
+
+
+def test_activity_feed_emits_collection_item_event(app, client, auth_headers):
+    """Adding an anime to a collection emits a collection_item event."""
+    from models import db, Anime, Collection, CollectionItem
+    headers, user = auth_headers
+
+    with app.app_context():
+        a = Anime(
+            mal_id=500, title="ColItem", synopsis="", year=2020,
+            episodes=12, studio="S", image_url="",
+            source="ORIGINAL", status="FINISHED",
+        )
+        db.session.add(a)
+        col = Collection(user_id=user.id, name="My List")
+        db.session.add_all([a, col])
+        db.session.commit()
+        db.session.add(CollectionItem(collection_id=col.id, anime_id=a.id))
+        db.session.commit()
+        col_id = col.id
+        anime_id = a.id
+
+    r = client.get("/api/activity?limit=100", headers=headers)
+    assert r.status_code == 200
+    events = r.get_json()["events"]
+    item_events = [e for e in events if e["kind"] == "collection_item"]
+    assert len(item_events) == 1
+    e = item_events[0]
+    assert e["anime"] is not None
+    assert e["anime"]["id"] == anime_id
+    assert e["meta"]["collection_id"] == col_id
+    assert e["meta"]["collection_title"] == "My List"
+
+
+def test_activity_feed_emits_collection_create_event(app, client, auth_headers):
+    """Creating a Collection emits a collection_create event with anime=null."""
+    from models import db, Collection
+    headers, user = auth_headers
+
+    with app.app_context():
+        col = Collection(user_id=user.id, name="Brand New")
+        db.session.add(col)
+        db.session.commit()
+
+    r = client.get("/api/activity?limit=100", headers=headers)
+    assert r.status_code == 200
+    events = r.get_json()["events"]
+    create_events = [e for e in events if e["kind"] == "collection_create"]
+    assert len(create_events) == 1
+    e = create_events[0]
+    assert e["anime"] is None
+    assert e["meta"] == {"title": "Brand New"}
 
 
 def test_on_this_day_returns_prior_year_matches(app, client, auth_headers):
@@ -208,7 +426,8 @@ def test_on_this_day_returns_prior_year_matches(app, client, auth_headers):
     r = client.get("/api/activity/on-this-day", headers=headers)
     assert r.status_code == 200
     items = r.get_json()["items"]
-    titles = {item["anime_title"] for item in items}
+    # /on-this-day still uses the same event shape now (anime nested object).
+    titles = {item["anime"]["title"] for item in items if item.get("anime")}
     assert "Match" in titles
     assert "NoMatch" not in titles
 
