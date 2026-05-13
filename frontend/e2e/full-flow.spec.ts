@@ -10,7 +10,7 @@ test("register → discover → detail navigation", async ({ page }) => {
   await page.getByRole("button", { name: "Create account" }).click();
   await expect(page).toHaveURL(/\/discover/);
 
-  const firstCard = page.getByRole("link").filter({ hasText: /./ }).first();
+  const firstCard = page.locator('a[href^="/anime/"]').first();
   if (await firstCard.count()) {
     await firstCard.click();
     await expect(page).toHaveURL(/\/anime\//);
