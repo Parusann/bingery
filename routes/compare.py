@@ -84,9 +84,8 @@ def _user_summary(user: User):
     return {
         "id": user.id,
         "username": user.username,
-        # User model has no `display_name` column today — return null so the
-        # frontend contract is stable if/when it's added.
-        "display_name": getattr(user, "display_name", None),
+        # `display_name` is optional; null when the user didn't set one.
+        "display_name": user.display_name,
     }
 
 

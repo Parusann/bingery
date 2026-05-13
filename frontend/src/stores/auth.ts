@@ -9,7 +9,7 @@ interface AuthState {
   status: AuthStatus;
   error: string | null;
   signIn: (body: { email: string; password: string }) => Promise<void>;
-  signUp: (body: { email: string; password: string; username: string }) => Promise<void>;
+  signUp: (body: { email: string; password: string; username: string; display_name?: string }) => Promise<void>;
   signOut: () => void;
   restore: () => Promise<void>;
 }
