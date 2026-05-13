@@ -51,6 +51,18 @@ def test_seasonal_returns_filtered_by_season_year(client, auth_headers, app):
     assert titles == {"Winter 2026 A"}
 
 
+def test_seasonal_echoes_year_and_season(client, auth_headers, app):
+    """Response includes the requested year and lowercased season."""
+    headers, _ = auth_headers
+    _seed_seasonal(app)
+    r = client.get("/api/seasonal?season=WINTER&year=2026", headers=headers)
+    assert r.status_code == 200
+    payload = r.get_json()
+    assert payload["year"] == 2026
+    assert payload["season"] == "winter"
+    assert "anime" in payload
+
+
 def test_seasonal_airing_now(client, auth_headers, app):
     headers, _ = auth_headers
     _seed_seasonal(app)

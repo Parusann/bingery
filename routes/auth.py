@@ -35,10 +35,16 @@ def register():
         return jsonify({"error": "Email already registered."}), 409
 
     # ── Create user ───────────────────────────────────────────────────────
+    display_name_raw = data.get("display_name")
+    display_name = (
+        display_name_raw.strip()[:80] if isinstance(display_name_raw, str) and display_name_raw.strip()
+        else None
+    )
     user = User(
         username=username,
         email=email,
         password_hash=bcrypt.generate_password_hash(data["password"]).decode("utf-8"),
+        display_name=display_name,
     )
     db.session.add(user)
     db.session.commit()
@@ -87,6 +93,9 @@ def update_profile():
         user.bio = (data["bio"] or "")[:500]
     if "avatar_url" in data:
         user.avatar_url = data["avatar_url"]
+    if "display_name" in data:
+        dn = data["display_name"]
+        user.display_name = dn.strip()[:80] if isinstance(dn, str) and dn.strip() else None
 
     db.session.commit()
     return jsonify({"user": user.to_dict(include_stats=True)}), 200

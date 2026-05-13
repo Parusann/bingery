@@ -1,21 +1,58 @@
 """Activity feed routes."""
 from datetime import datetime, timezone
+from math import ceil
+
 from flask import Blueprint, jsonify, request
 from flask_jwt_extended import jwt_required, get_jwt_identity
 
-from models import db, Anime, Rating, FanGenreVote, WatchlistEntry
+from models import (
+    db,
+    Anime,
+    Rating,
+    FanGenreVote,
+    WatchlistEntry,
+    Collection,
+    CollectionItem,
+)
 
 activity_bp = Blueprint("activity", __name__)
+
+
+# Stable per-kind code used to synthesize a globally unique event id.
+# id = KIND_CODE[kind] * 10**12 + model_pk
+KIND_CODE = {
+    "rating": 1,
+    "watch_status": 2,
+    "genre_vote": 3,
+    "favorite": 4,
+    "collection_item": 5,
+    "collection_create": 6,
+}
+
+_ID_OFFSET = 10**12
+
+
+def _synth_id(kind: str, pk: int) -> int:
+    return KIND_CODE[kind] * _ID_OFFSET + int(pk)
+
+
+def _anime_payload(anime):
+    if anime is None:
+        return None
+    return {
+        "id": anime.id,
+        "title": anime.title_english or anime.title,
+        "image_url": anime.image_url,
+    }
 
 
 def _rating_event(r: Rating, anime: Anime):
     dt = r.updated_at or r.created_at
     return dt, {
-        "type": "rating",
-        "anime_id": anime.id,
-        "anime_title": anime.title_english or anime.title,
-        "cover": anime.image_url,
-        "timestamp": dt.isoformat() if dt else None,
+        "id": _synth_id("rating", r.id),
+        "kind": "rating",
+        "created_at": dt.isoformat() if dt else None,
+        "anime": _anime_payload(anime),
         "meta": {"score": r.score, "has_review": bool(r.review)},
     }
 
@@ -23,32 +60,69 @@ def _rating_event(r: Rating, anime: Anime):
 def _genre_event(v: FanGenreVote, anime: Anime):
     dt = v.created_at
     return dt, {
-        "type": "genre_vote",
-        "anime_id": anime.id,
-        "anime_title": anime.title_english or anime.title,
-        "cover": anime.image_url,
-        "timestamp": dt.isoformat() if dt else None,
+        "id": _synth_id("genre_vote", v.id),
+        "kind": "genre_vote",
+        "created_at": dt.isoformat() if dt else None,
+        "anime": _anime_payload(anime),
         "meta": {"genre": v.genre_tag},
     }
 
 
-def _status_event(w: WatchlistEntry, anime: Anime):
+def _watch_status_event(w: WatchlistEntry, anime: Anime):
     dt = w.updated_at or w.created_at
     return dt, {
-        "type": "status",
-        "anime_id": anime.id,
-        "anime_title": anime.title_english or anime.title,
-        "cover": anime.image_url,
-        "timestamp": dt.isoformat() if dt else None,
-        "meta": {"status": w.status, "episodes_watched": w.episodes_watched},
+        "id": _synth_id("watch_status", w.id),
+        "kind": "watch_status",
+        "created_at": dt.isoformat() if dt else None,
+        "anime": _anime_payload(anime),
+        "meta": {
+            "status": w.status,
+            "episodes_watched": w.episodes_watched or 0,
+        },
+    }
+
+
+def _favorite_event(w: WatchlistEntry, anime: Anime):
+    dt = w.updated_at or w.created_at
+    return dt, {
+        "id": _synth_id("favorite", w.id),
+        "kind": "favorite",
+        "created_at": dt.isoformat() if dt else None,
+        "anime": _anime_payload(anime),
+        "meta": {},
+    }
+
+
+def _collection_item_event(ci: CollectionItem, anime: Anime, col: Collection):
+    dt = ci.added_at
+    return dt, {
+        "id": _synth_id("collection_item", ci.id),
+        "kind": "collection_item",
+        "created_at": dt.isoformat() if dt else None,
+        "anime": _anime_payload(anime),
+        "meta": {
+            "collection_id": col.id,
+            "collection_title": col.name,
+        },
+    }
+
+
+def _collection_create_event(col: Collection):
+    dt = col.created_at
+    return dt, {
+        "id": _synth_id("collection_create", col.id),
+        "kind": "collection_create",
+        "created_at": dt.isoformat() if dt else None,
+        "anime": None,
+        "meta": {"title": col.name},
     }
 
 
 def _fetch_events(user_id: int, before):
-    """Return list of (datetime, event_dict) pairs, newest first, optionally filtered by `before`.
+    """Return list of (datetime, event_dict) pairs, newest first.
 
-    `before` must be a tz-naive UTC datetime (callers normalize user input).
-    Sort uses (dt, type) for deterministic ordering when timestamps tie.
+    `before` must be tz-naive UTC datetime or None.
+    Sort: descending datetime, tiebreak ascending kind for stability.
     """
     pairs: list = []
 
@@ -68,17 +142,38 @@ def _fetch_events(user_id: int, before):
     )
     pairs.extend(_genre_event(v, a) for v, a in votes)
 
-    statuses = (
+    watchlist_rows = (
         db.session.query(WatchlistEntry, Anime)
         .join(Anime, Anime.id == WatchlistEntry.anime_id)
         .filter(WatchlistEntry.user_id == user_id)
         .all()
     )
-    pairs.extend(_status_event(w, a) for w, a in statuses)
+    for w, a in watchlist_rows:
+        pairs.append(_watch_status_event(w, a))
+        if w.is_favorite:
+            pairs.append(_favorite_event(w, a))
+
+    collection_items = (
+        db.session.query(CollectionItem, Anime, Collection)
+        .join(Collection, Collection.id == CollectionItem.collection_id)
+        .join(Anime, Anime.id == CollectionItem.anime_id)
+        .filter(Collection.user_id == user_id)
+        .all()
+    )
+    pairs.extend(_collection_item_event(ci, a, c) for ci, a, c in collection_items)
+
+    collections = (
+        db.session.query(Collection)
+        .filter(Collection.user_id == user_id)
+        .all()
+    )
+    pairs.extend(_collection_create_event(c) for c in collections)
 
     pairs = [(dt, e) for dt, e in pairs if dt is not None]
-    # Descending by datetime; tiebreak ascending by type for stable order.
-    pairs.sort(key=lambda p: (p[0], p[1]["type"]), reverse=True)
+    # Stable two-pass sort: ascending kind first (tiebreak), then descending dt.
+    # Python's sort is stable so the kind order is preserved for equal datetimes.
+    pairs.sort(key=lambda p: p[1]["kind"])
+    pairs.sort(key=lambda p: p[0], reverse=True)
     if before is not None:
         pairs = [(dt, e) for dt, e in pairs if dt < before]
     return pairs
@@ -105,10 +200,19 @@ def _parse_before(raw: str) -> datetime:
 @jwt_required()
 def feed():
     user_id = int(get_jwt_identity())
+
     try:
         limit = max(1, min(int(request.args.get("limit", 50)), 200))
     except (ValueError, TypeError):
         limit = 50
+
+    try:
+        page = int(request.args.get("page", 1))
+        if page < 1:
+            page = 1
+    except (ValueError, TypeError):
+        page = 1
+
     before_raw = request.args.get("before")
     before = None
     if before_raw:
@@ -117,8 +221,21 @@ def feed():
         except ValueError:
             return jsonify({"error": "invalid `before` timestamp"}), 400
 
-    pairs = _fetch_events(user_id, before)[:limit]
-    return jsonify({"items": [e for _dt, e in pairs]})
+    pairs = _fetch_events(user_id, before)
+    total = len(pairs)
+    pages = max(1, ceil(total / limit)) if total else 1
+
+    start = (page - 1) * limit
+    end = start + limit
+    sliced = pairs[start:end]
+
+    return jsonify(
+        {
+            "events": [e for _dt, e in sliced],
+            "page": page,
+            "pages": pages,
+        }
+    )
 
 
 @activity_bp.route("/on-this-day", methods=["GET"])

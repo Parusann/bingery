@@ -339,3 +339,295 @@ def test_stats_genres_handles_voted_but_unrated_anime(app, client, auth_headers)
     assert slice_entry["count"] == 1
     assert slice_entry["avg_score"] == 0.0
     assert slice_entry["weighted_score"] == 0.0
+
+
+# ────────────────────────────────────────────────────────────────────────────
+# /api/stats/overview
+# ────────────────────────────────────────────────────────────────────────────
+
+
+def test_stats_overview_requires_auth(client):
+    assert client.get("/api/stats/overview").status_code == 401
+
+
+def test_stats_overview_empty_user(client, auth_headers):
+    """No ratings, no votes, no watchlist → zeros / nulls."""
+    headers, _ = auth_headers
+    r = client.get("/api/stats/overview", headers=headers)
+    assert r.status_code == 200
+    body = r.get_json()
+    ov = body["overview"]
+    assert ov["total_rated"] == 0
+    assert ov["total_watched"] == 0
+    assert ov["hours_watched"] == 0.0
+    assert ov["favorite_count"] == 0
+    assert ov["avg_rating"] is None
+    assert ov["top_genre"] is None
+    assert ov["streak_days"] == 0
+    assert body["top_genres"] == []
+    # rating_distribution always has 10 entries (1..10)
+    assert len(body["rating_distribution"]) == 10
+    assert [b["score"] for b in body["rating_distribution"]] == list(range(1, 11))
+    assert all(b["count"] == 0 for b in body["rating_distribution"])
+
+
+def test_stats_overview_populated_user(client, auth_headers, app):
+    """User with ratings, watchlist, favorites — all fields compute correctly."""
+    from models import db, Anime, Rating, FanGenreVote, WatchlistEntry
+    headers, user = auth_headers
+
+    with app.app_context():
+        a = Anime(mal_id=901, title="A", synopsis="", year=2020, episodes=12,
+                  studio="S", image_url="", source="ORIGINAL", status="FINISHED")
+        b = Anime(mal_id=902, title="B", synopsis="", year=2021, episodes=24,
+                  studio="S", image_url="", source="ORIGINAL", status="FINISHED")
+        c = Anime(mal_id=903, title="C", synopsis="", year=2022, episodes=12,
+                  studio="S", image_url="", source="ORIGINAL", status="FINISHED")
+        db.session.add_all([a, b, c])
+        db.session.commit()
+        db.session.add_all([
+            Rating(user_id=user.id, anime_id=a.id, score=8),
+            Rating(user_id=user.id, anime_id=b.id, score=10),
+            FanGenreVote(user_id=user.id, anime_id=a.id, genre_tag="Fantasy"),
+            FanGenreVote(user_id=user.id, anime_id=b.id, genre_tag="Fantasy"),
+            FanGenreVote(user_id=user.id, anime_id=b.id, genre_tag="Drama"),
+            WatchlistEntry(user_id=user.id, anime_id=a.id,
+                           status="completed", is_favorite=True),
+            WatchlistEntry(user_id=user.id, anime_id=b.id, status="watching",
+                           episodes_watched=6),
+            WatchlistEntry(user_id=user.id, anime_id=c.id, status="plan_to_watch"),
+        ])
+        db.session.commit()
+
+    r = client.get("/api/stats/overview", headers=headers)
+    assert r.status_code == 200
+    body = r.get_json()
+    ov = body["overview"]
+    assert ov["total_rated"] == 2
+    # completed + watching (plan_to_watch excluded)
+    assert ov["total_watched"] == 2
+    assert ov["favorite_count"] == 1
+    assert ov["avg_rating"] == 9.0
+    # completed a: 12 * 24 * 1.0 = 288; watching b: 6 * 24 = 144; total 432 / 60 = 7.2
+    assert ov["hours_watched"] == 7.2
+    assert ov["top_genre"] == "Fantasy"
+
+
+def test_stats_overview_rating_distribution_always_ten(client, auth_headers, app):
+    """rating_distribution must always have exactly 10 entries (1..10)."""
+    from models import db, Anime, Rating
+    headers, user = auth_headers
+
+    with app.app_context():
+        a = Anime(mal_id=910, title="X", synopsis="", year=2020, episodes=12,
+                  studio="S", image_url="", source="ORIGINAL", status="FINISHED")
+        db.session.add(a)
+        db.session.commit()
+        db.session.add(Rating(user_id=user.id, anime_id=a.id, score=7))
+        db.session.commit()
+
+    r = client.get("/api/stats/overview", headers=headers)
+    body = r.get_json()
+    dist = body["rating_distribution"]
+    assert len(dist) == 10
+    by_score = {b["score"]: b["count"] for b in dist}
+    assert by_score[7] == 1
+    # All other scores are zero.
+    for s in range(1, 11):
+        if s != 7:
+            assert by_score[s] == 0
+
+
+def test_stats_overview_top_genres_sorted_desc(client, auth_headers, app):
+    """top_genres sorted by count desc, tie-break alphabetical."""
+    from models import db, Anime, FanGenreVote
+    headers, user = auth_headers
+
+    with app.app_context():
+        a = Anime(mal_id=920, title="A", synopsis="", year=2020, episodes=12,
+                  studio="S", image_url="", source="ORIGINAL", status="FINISHED")
+        b = Anime(mal_id=921, title="B", synopsis="", year=2020, episodes=12,
+                  studio="S", image_url="", source="ORIGINAL", status="FINISHED")
+        c = Anime(mal_id=922, title="C", synopsis="", year=2020, episodes=12,
+                  studio="S", image_url="", source="ORIGINAL", status="FINISHED")
+        db.session.add_all([a, b, c])
+        db.session.commit()
+        # Counts: Mecha=3, Action=2, Slice=2, Comedy=1
+        db.session.add_all([
+            FanGenreVote(user_id=user.id, anime_id=a.id, genre_tag="Mecha"),
+            FanGenreVote(user_id=user.id, anime_id=b.id, genre_tag="Mecha"),
+            FanGenreVote(user_id=user.id, anime_id=c.id, genre_tag="Mecha"),
+            FanGenreVote(user_id=user.id, anime_id=a.id, genre_tag="Action"),
+            FanGenreVote(user_id=user.id, anime_id=b.id, genre_tag="Action"),
+            FanGenreVote(user_id=user.id, anime_id=a.id, genre_tag="Slice"),
+            FanGenreVote(user_id=user.id, anime_id=b.id, genre_tag="Slice"),
+            FanGenreVote(user_id=user.id, anime_id=a.id, genre_tag="Comedy"),
+        ])
+        db.session.commit()
+
+    r = client.get("/api/stats/overview", headers=headers)
+    body = r.get_json()
+    top = body["top_genres"]
+    # Mecha (3), Action (2, tied with Slice → alpha asc), Slice (2), Comedy (1)
+    counts = [g["count"] for g in top]
+    assert counts == sorted(counts, reverse=True)
+    assert [g["genre"] for g in top[:4]] == ["Mecha", "Action", "Slice", "Comedy"]
+    assert body["overview"]["top_genre"] == "Mecha"
+
+
+def test_stats_overview_streak_counts_consecutive_days_ending_today(
+    app, client, auth_headers
+):
+    """streak_days = N when user has activity on today and the prior N-1 days."""
+    from datetime import datetime, timedelta, timezone
+    from models import db, Anime, Rating
+    headers, user = auth_headers
+
+    today = datetime.now(timezone.utc)
+    with app.app_context():
+        animes = []
+        for i in range(3):
+            anime = Anime(mal_id=1000 + i, title=f"S{i}", synopsis="", year=2020,
+                          episodes=12, studio="S", image_url="",
+                          source="ORIGINAL", status="FINISHED")
+            db.session.add(anime)
+            animes.append(anime)
+        db.session.commit()
+        # Activity on today, yesterday, day-before — 3-day streak
+        for offset, anime in enumerate(animes):
+            r = Rating(user_id=user.id, anime_id=anime.id, score=8)
+            r.created_at = today - timedelta(days=offset)
+            db.session.add(r)
+        db.session.commit()
+
+    r = client.get("/api/stats/overview", headers=headers)
+    body = r.get_json()
+    assert body["overview"]["streak_days"] == 3
+
+
+def test_stats_overview_streak_zero_when_today_inactive(
+    app, client, auth_headers
+):
+    """streak_days = 0 if today has no activity, even if prior days do."""
+    from datetime import datetime, timedelta, timezone
+    from models import db, Anime, Rating
+    headers, user = auth_headers
+
+    today = datetime.now(timezone.utc)
+    with app.app_context():
+        anime = Anime(mal_id=1100, title="Old", synopsis="", year=2020,
+                      episodes=12, studio="S", image_url="",
+                      source="ORIGINAL", status="FINISHED")
+        db.session.add(anime)
+        db.session.commit()
+        # Activity 2 days ago — nothing today.
+        rating = Rating(user_id=user.id, anime_id=anime.id, score=8)
+        rating.created_at = today - timedelta(days=2)
+        db.session.add(rating)
+        db.session.commit()
+
+    r = client.get("/api/stats/overview", headers=headers)
+    body = r.get_json()
+    assert body["overview"]["streak_days"] == 0
+
+
+# ────────────────────────────────────────────────────────────────────────────
+# /api/stats/heatmap
+# ────────────────────────────────────────────────────────────────────────────
+
+
+def test_stats_heatmap_requires_auth(client):
+    assert client.get("/api/stats/heatmap").status_code == 401
+
+
+def test_stats_heatmap_empty_user(client, auth_headers):
+    headers, _ = auth_headers
+    r = client.get("/api/stats/heatmap", headers=headers)
+    assert r.status_code == 200
+    body = r.get_json()
+    assert body["heatmap"]["cells"] == []
+    assert body["heatmap"]["max"] == 0
+
+
+def test_stats_heatmap_aggregates_and_sorts_cells(app, client, auth_headers):
+    """Cells in ascending date order; max is highest count."""
+    from datetime import datetime, timedelta, timezone
+    from models import db, Anime, Rating, FanGenreVote, WatchlistEntry
+    headers, user = auth_headers
+
+    today = datetime.now(timezone.utc)
+    with app.app_context():
+        a = Anime(mal_id=1200, title="A", synopsis="", year=2020, episodes=12,
+                  studio="S", image_url="", source="ORIGINAL", status="FINISHED")
+        b = Anime(mal_id=1201, title="B", synopsis="", year=2020, episodes=12,
+                  studio="S", image_url="", source="ORIGINAL", status="FINISHED")
+        c = Anime(mal_id=1202, title="C", synopsis="", year=2020, episodes=12,
+                  studio="S", image_url="", source="ORIGINAL", status="FINISHED")
+        db.session.add_all([a, b, c])
+        db.session.commit()
+
+        # today: 1 rating + 1 vote + 1 watchlist update = 3 events
+        r1 = Rating(user_id=user.id, anime_id=a.id, score=8)
+        r1.created_at = today
+        v1 = FanGenreVote(user_id=user.id, anime_id=a.id, genre_tag="Action")
+        v1.created_at = today
+        w1 = WatchlistEntry(user_id=user.id, anime_id=a.id, status="completed")
+        w1.updated_at = today
+        # 5 days ago: 1 rating
+        r2 = Rating(user_id=user.id, anime_id=b.id, score=7)
+        r2.created_at = today - timedelta(days=5)
+        # 10 days ago: 2 votes
+        v2 = FanGenreVote(user_id=user.id, anime_id=c.id, genre_tag="Drama")
+        v2.created_at = today - timedelta(days=10)
+        v3 = FanGenreVote(user_id=user.id, anime_id=c.id, genre_tag="Mecha")
+        v3.created_at = today - timedelta(days=10)
+
+        db.session.add_all([r1, v1, w1, r2, v2, v3])
+        db.session.commit()
+
+    r = client.get("/api/stats/heatmap", headers=headers)
+    body = r.get_json()
+    cells = body["heatmap"]["cells"]
+    # Ascending sort
+    dates = [c["date"] for c in cells]
+    assert dates == sorted(dates)
+    counts_by_date = {c["date"]: c["count"] for c in cells}
+    today_str = today.date().isoformat()
+    assert counts_by_date[today_str] == 3
+    assert counts_by_date[(today - timedelta(days=5)).date().isoformat()] == 1
+    assert counts_by_date[(today - timedelta(days=10)).date().isoformat()] == 2
+    assert body["heatmap"]["max"] == 3
+
+
+def test_stats_heatmap_excludes_activity_older_than_365_days(
+    app, client, auth_headers
+):
+    """Activity older than the 365-day window must not appear in cells."""
+    from datetime import datetime, timedelta, timezone
+    from models import db, Anime, Rating
+    headers, user = auth_headers
+
+    today = datetime.now(timezone.utc)
+    with app.app_context():
+        recent = Anime(mal_id=1300, title="Recent", synopsis="", year=2020,
+                       episodes=12, studio="S", image_url="",
+                       source="ORIGINAL", status="FINISHED")
+        ancient = Anime(mal_id=1301, title="Ancient", synopsis="", year=2020,
+                        episodes=12, studio="S", image_url="",
+                        source="ORIGINAL", status="FINISHED")
+        db.session.add_all([recent, ancient])
+        db.session.commit()
+        r_recent = Rating(user_id=user.id, anime_id=recent.id, score=8)
+        r_recent.created_at = today - timedelta(days=30)  # inside window
+        r_ancient = Rating(user_id=user.id, anime_id=ancient.id, score=5)
+        r_ancient.created_at = today - timedelta(days=400)  # outside window
+        db.session.add_all([r_recent, r_ancient])
+        db.session.commit()
+
+    r = client.get("/api/stats/heatmap", headers=headers)
+    body = r.get_json()
+    dates = [c["date"] for c in body["heatmap"]["cells"]]
+    assert (today - timedelta(days=30)).date().isoformat() in dates
+    assert (today - timedelta(days=400)).date().isoformat() not in dates
+    assert len(dates) == 1
+    assert body["heatmap"]["max"] == 1

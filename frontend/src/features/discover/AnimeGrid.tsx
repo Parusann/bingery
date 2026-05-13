@@ -1,5 +1,6 @@
 import type { AnimeSummary } from "@/types/models";
 import { Skeleton } from "@/design/Skeleton";
+import { ScrollReveal } from "@/design/ScrollReveal";
 import { AnimeCard } from "./AnimeCard";
 
 interface Props {
@@ -31,7 +32,9 @@ export function AnimeGrid({ anime, loading, empty }: Props) {
   return (
     <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-4">
       {anime.map((a, i) => (
-        <AnimeCard key={a.id} anime={a} index={i} />
+        <ScrollReveal key={a.id} delay={Math.min(i, 14) * 0.03}>
+          <AnimeCard anime={a} index={0} />
+        </ScrollReveal>
       ))}
     </div>
   );
