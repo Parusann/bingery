@@ -38,7 +38,8 @@ def seasonal():
     """List anime for a given season+year, with the caller's watchlist overlay.
 
     GET /api/seasonal?season=WINTER&year=2026
-    -> 200 {"anime": [{...anime fields, "user_status", "is_favorite"}]}
+    -> 200 {"year": 2026, "season": "winter",
+            "anime": [{...anime fields, "user_status", "is_favorite"}]}
     -> 400 if season is missing/invalid or year is missing/non-int.
 
     Season match is case-insensitive so it works against both the raw AniList
@@ -65,7 +66,11 @@ def seasonal():
         .order_by(Anime.title)
         .all()
     )
-    return jsonify({"anime": _with_status_overlay(user_id, rows)})
+    return jsonify({
+        "year": year,
+        "season": season.lower(),
+        "anime": _with_status_overlay(user_id, rows),
+    })
 
 
 @seasonal_bp.route("/airing-now", methods=["GET"])
