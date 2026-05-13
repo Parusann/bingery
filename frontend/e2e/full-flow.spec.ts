@@ -3,7 +3,7 @@ import { test, expect } from "@playwright/test";
 test("register → discover → detail navigation", async ({ page }) => {
   const suffix = Date.now();
   await page.goto("/auth");
-  await page.getByRole("button", { name: "Create account" }).click();
+  await page.getByRole("button", { name: "Sign up" }).click();
   await page.getByLabel("Username").fill(`e2e${suffix}`);
   await page.getByLabel("Email").fill(`e2e${suffix}@test.local`);
   await page.getByLabel("Password").fill("password123");
