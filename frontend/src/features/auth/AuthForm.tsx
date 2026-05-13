@@ -60,7 +60,7 @@ export function AuthForm({ onSuccess }: { onSuccess?: () => void }) {
               : "text-text-muted hover:text-text")
           }
         >
-          Create account
+          Sign up
         </button>
       </div>
 
