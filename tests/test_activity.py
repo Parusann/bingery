@@ -435,3 +435,88 @@ def test_on_this_day_returns_prior_year_matches(app, client, auth_headers):
 def test_on_this_day_requires_auth(client):
     r = client.get("/api/activity/on-this-day")
     assert r.status_code == 401
+
+
+# ─── dub_report events ───────────────────────────────────────────────────────
+
+
+def _seed_dub_report(app, user_id, *, status="pending", note=None):
+    from datetime import timezone
+    from models import Anime, DubReport, Episode, db
+
+    with app.app_context():
+        anime = Anime(
+            mal_id=42,
+            title="Mushishi",
+            synopsis="",
+            year=2005,
+            episodes=26,
+            studio="Artland",
+            image_url="",
+            source="MANGA",
+            status="FINISHED",
+        )
+        db.session.add(anime)
+        db.session.commit()
+        ep = Episode(anime_id=anime.id, episode_number=7)
+        db.session.add(ep)
+        db.session.commit()
+        report = DubReport(
+            episode_id=ep.id,
+            submitted_by=user_id,
+            air_date=datetime(2026, 6, 1, 12, 0, tzinfo=timezone.utc),
+            status=status,
+            note=note,
+        )
+        db.session.add(report)
+        db.session.commit()
+        return anime.id, ep.id, report.id
+
+
+def test_activity_feed_includes_user_dub_reports(client, auth_headers, app):
+    headers, user = auth_headers
+    _seed_dub_report(app, user.id, note="seen on the official channel")
+    r = client.get("/api/activity", headers=headers)
+    assert r.status_code == 200
+    events = r.get_json()["events"]
+    dub_events = [e for e in events if e["kind"] == "dub_report"]
+    assert len(dub_events) == 1
+    ev = dub_events[0]
+    assert ev["anime"]["title"] == "Mushishi"
+    assert ev["meta"]["episode_number"] == 7
+    assert ev["meta"]["status"] == "pending"
+    assert ev["meta"]["note"] == "seen on the official channel"
+    assert ev["meta"]["air_date"].startswith("2026-06-01T12:00:00")
+
+
+def test_activity_feed_dub_report_isolates_to_submitter(app, client, auth_headers):
+    from flask_bcrypt import Bcrypt
+    from models import User, db
+
+    headers, _owner = auth_headers
+    with app.app_context():
+        bcrypt = Bcrypt(app)
+        stranger = User(
+            username="stranger",
+            email="stranger@example.com",
+            password_hash=bcrypt.generate_password_hash("pw").decode("utf-8"),
+        )
+        db.session.add(stranger)
+        db.session.commit()
+        stranger_id = stranger.id
+
+    _seed_dub_report(app, stranger_id)
+    r = client.get("/api/activity", headers=headers)
+    assert r.status_code == 200
+    dub_events = [e for e in r.get_json()["events"] if e["kind"] == "dub_report"]
+    assert dub_events == []
+
+
+def test_activity_feed_dub_report_status_reflects_accepted(client, auth_headers, app):
+    headers, user = auth_headers
+    _seed_dub_report(app, user.id, status="accepted", note=None)
+    r = client.get("/api/activity", headers=headers)
+    dub_events = [e for e in r.get_json()["events"] if e["kind"] == "dub_report"]
+    assert len(dub_events) == 1
+    assert dub_events[0]["meta"]["status"] == "accepted"
+    assert dub_events[0]["meta"]["note"] is None
