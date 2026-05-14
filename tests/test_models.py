@@ -7,6 +7,8 @@ from models import (
     db,
     Anime,
     Episode,
+    DubReport,
+    User,
     AniListSyncState,
     get_or_create_sync_state,
 )
@@ -161,3 +163,132 @@ def test_sync_state_error_status_with_message(app):
         refetched = get_or_create_sync_state()
         assert refetched.status == "error"
         assert refetched.error_message == "AniList API returned 502"
+
+
+# ─── DubReport ───────────────────────────────────────────────────────────────
+
+
+def _make_user(app, username="u1", email="u1@example.com"):
+    with app.app_context():
+        u = User(username=username, email=email, password_hash="x")
+        db.session.add(u)
+        db.session.commit()
+        return u.id
+
+
+def _make_episode(app, anime_id, episode_number=1):
+    with app.app_context():
+        ep = Episode(anime_id=anime_id, episode_number=episode_number)
+        db.session.add(ep)
+        db.session.commit()
+        return ep.id
+
+
+def test_create_dub_report_defaults_pending(app):
+    aid = _make_anime(app)
+    eid = _make_episode(app, aid)
+    uid = _make_user(app)
+    with app.app_context():
+        report = DubReport(
+            episode_id=eid,
+            submitted_by=uid,
+            air_date=datetime(2026, 6, 1, 12, 0, tzinfo=timezone.utc),
+        )
+        db.session.add(report)
+        db.session.commit()
+        fetched = db.session.get(DubReport, report.id)
+        assert fetched.status == "pending"
+        assert fetched.note is None
+        assert fetched.reviewed_by is None
+        assert fetched.created_at is not None
+
+
+def test_dub_report_to_dict_iso_timestamps(app):
+    aid = _make_anime(app)
+    eid = _make_episode(app, aid)
+    uid = _make_user(app)
+    with app.app_context():
+        report = DubReport(
+            episode_id=eid,
+            submitted_by=uid,
+            air_date=datetime(2026, 6, 1, 12, 0, tzinfo=timezone.utc),
+            note="seen on Crunchyroll trailer",
+        )
+        db.session.add(report)
+        db.session.commit()
+        d = report.to_dict()
+        assert d["episode_id"] == eid
+        assert d["submitted_by"] == uid
+        assert d["air_date"].startswith("2026-06-01T12:00:00")
+        assert d["status"] == "pending"
+        assert d["note"] == "seen on Crunchyroll trailer"
+        assert d["reviewed_at"] is None
+
+
+def test_dub_report_relationships_resolve(app):
+    aid = _make_anime(app)
+    eid = _make_episode(app, aid)
+    submitter_id = _make_user(app, username="submitter", email="s@example.com")
+    reviewer_id = _make_user(app, username="reviewer", email="r@example.com")
+    with app.app_context():
+        report = DubReport(
+            episode_id=eid,
+            submitted_by=submitter_id,
+            reviewed_by=reviewer_id,
+            air_date=datetime(2026, 6, 1, 12, 0, tzinfo=timezone.utc),
+            status="accepted",
+            reviewed_at=datetime(2026, 6, 2, tzinfo=timezone.utc),
+        )
+        db.session.add(report)
+        db.session.commit()
+        fetched = db.session.get(DubReport, report.id)
+        assert fetched.episode.id == eid
+        assert fetched.submitter.username == "submitter"
+        assert fetched.reviewer.username == "reviewer"
+
+
+def test_dub_report_cascade_when_anime_deleted(app):
+    aid = _make_anime(app)
+    eid = _make_episode(app, aid)
+    uid = _make_user(app)
+    with app.app_context():
+        report = DubReport(
+            episode_id=eid,
+            submitted_by=uid,
+            air_date=datetime(2026, 6, 1, tzinfo=timezone.utc),
+        )
+        db.session.add(report)
+        db.session.commit()
+        report_id = report.id
+        assert db.session.get(DubReport, report_id) is not None
+        assert db.session.get(Episode, eid) is not None
+
+        anime = db.session.get(Anime, aid)
+        db.session.delete(anime)
+        db.session.commit()
+
+        assert db.session.get(Anime, aid) is None
+        assert db.session.get(Episode, eid) is None
+        assert db.session.get(DubReport, report_id) is None
+
+
+def test_dub_report_cascade_when_episode_deleted(app):
+    aid = _make_anime(app)
+    eid = _make_episode(app, aid)
+    uid = _make_user(app)
+    with app.app_context():
+        report = DubReport(
+            episode_id=eid,
+            submitted_by=uid,
+            air_date=datetime(2026, 6, 1, tzinfo=timezone.utc),
+        )
+        db.session.add(report)
+        db.session.commit()
+        report_id = report.id
+
+        ep = db.session.get(Episode, eid)
+        db.session.delete(ep)
+        db.session.commit()
+
+        assert db.session.get(Episode, eid) is None
+        assert db.session.get(DubReport, report_id) is None
