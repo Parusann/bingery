@@ -118,6 +118,32 @@ fragment AnimeFields on Media {
 """
 
 
+# Full-catalog paginated query used by sync_anilist.py.
+# Sorted by ID (ascending) so that pagination is stable across runs even when
+# new anime are added to AniList between resume cycles.
+CATALOG_QUERY = """
+query ($page: Int, $perPage: Int) {
+  Page(page: $page, perPage: $perPage) {
+    pageInfo { total currentPage lastPage hasNextPage perPage }
+    media(type: ANIME, sort: ID) {
+      ...AnimeFields
+      nextAiringEpisode {
+        airingAt
+        episode
+        timeUntilAiring
+      }
+      airingSchedule {
+        nodes {
+          episode
+          airingAt
+        }
+      }
+    }
+  }
+}
+"""
+
+
 class AniListClient:
     """Client for the AniList GraphQL API."""
 
@@ -299,6 +325,36 @@ class AniListClient:
             page, per_page, sort="POPULARITY_DESC",
             season=season.upper(), season_year=year,
         )
+
+    def fetch_catalog_page(self, page: int, per_page: int = 50) -> dict:
+        """
+        Fetch one page of the full AniList anime catalog, sorted by ID.
+
+        Returns a dict with:
+          - "media":      list of normalized anime dicts (same shape as
+                          _normalize_anime), plus "next_airing_episode" and
+                          "airing_schedule" keys for episode tracking.
+          - "page_info":  raw AniList pageInfo with hasNextPage, currentPage,
+                          lastPage, total, perPage.
+
+        Used by sync_anilist.py to drive the resumable full-catalog sync.
+        """
+        data = self._request(CATALOG_QUERY, {"page": page, "perPage": per_page})
+        page_data = data["Page"]
+
+        media_list = []
+        for raw in page_data["media"]:
+            normalized = self._normalize_anime(raw)
+            normalized["next_airing_episode"] = raw.get("nextAiringEpisode") or None
+            normalized["airing_schedule"] = (
+                (raw.get("airingSchedule") or {}).get("nodes") or []
+            )
+            media_list.append(normalized)
+
+        return {
+            "media": media_list,
+            "page_info": page_data["pageInfo"],
+        }
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
