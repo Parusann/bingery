@@ -2,15 +2,23 @@
 Full-catalog AniList sync script.
 
 Drives a resumable, rate-limited, idempotent sync of the entire AniList anime
-catalog into Bingery's database. Each page (50 anime) takes ~0.7s + DB write
-time; a full sync of ~25k anime takes ~5h wall-clock.
+catalog by **chunking the query by `seasonYear`** (1960 to current+1). Within
+each year, standard page-based pagination — no year has >5000 anime so we
+never approach AniList's deep-page-offset cap at 5000. `state.last_page` is
+repurposed as "last completed year"; resumes restart from `last_page + 1`.
+
+Wall-clock for the full ~25k-anime catalog: ~10-30 minutes depending on
+rate-limit retries.
+
+Known gap: anime with `seasonYear: null` (rare; mostly unscheduled specials)
+are not reachable via this query and remain unsynced.
 
 Usage:
     python sync_anilist.py                    # default: --resume
-    python sync_anilist.py --full             # start from page 1
-    python sync_anilist.py --resume           # continue from last_page + 1
+    python sync_anilist.py --full             # start from year=1960
+    python sync_anilist.py --resume           # continue from last_year + 1
     python sync_anilist.py --dry-run          # print what would be written
-    python sync_anilist.py --max-pages 5      # cap for testing
+    python sync_anilist.py --max-pages 5      # cap total API calls (testing)
     python sync_anilist.py --since 2026-01-01 # incremental (best-effort)
 """
 
@@ -140,9 +148,13 @@ def _format_eta(seconds_remaining: float) -> str:
     return f"{hours}h {minutes}m"
 
 
+DEFAULT_END_YEAR_OFFSET = 1  # how many years past current year to include
+
+
 def run_sync(
     client,
-    start_page: int,
+    start_year: int,
+    end_year: int,
     max_pages: Optional[int] = None,
     dry_run: bool = False,
     since: Optional[datetime] = None,
@@ -151,8 +163,16 @@ def run_sync(
     log: callable = print,
 ) -> dict:
     """
-    Core sync loop. Pulled out into its own function so tests can drive it
-    with a mocked client and no real sleeps.
+    Core sync loop chunking by seasonYear.
+
+    Outer loop walks years from `start_year` to `end_year` inclusive. Inner
+    loop paginates within each year (standard page-based, never deep enough
+    to hit the 5000-offset wall since no year has >5000 anime). After
+    completing all pages for a year, advances state.last_page (repurposed as
+    "last completed year"). Pulled out into its own function so tests can
+    drive it with a mocked client and no real sleeps.
+
+    `max_pages` means "max total API calls" across all years (CLI compat).
 
     Returns a summary dict.
     """
@@ -169,107 +189,127 @@ def run_sync(
     media_processed = 0
     episodes_processed = 0
     last_page_info: Optional[dict] = None
+    last_year_seen: Optional[int] = None
     started = time.time()
 
-    current_page = start_page
     try:
-        while True:
-            if max_pages is not None and pages_processed >= max_pages:
-                log(f"Reached --max-pages={max_pages}, stopping.")
-                break
+        for year in range(start_year, end_year + 1):
+            last_year_seen = year
+            page = 1
+            while True:
+                if max_pages is not None and pages_processed >= max_pages:
+                    log(f"Reached --max-pages={max_pages}, stopping.")
+                    # Don't advance last_page; we didn't finish this year.
+                    raise StopIteration
 
-            if pages_processed > 0:
-                time.sleep(sleep_seconds)
+                if pages_processed > 0:
+                    time.sleep(sleep_seconds)
 
-            result = client.fetch_catalog_page(current_page)
-            page_info = result["page_info"]
-            last_page_info = page_info
-            media_list = result["media"]
+                result = client.fetch_catalog_page(season_year=year, page=page)
+                page_info = result["page_info"]
+                last_page_info = page_info
+                media_list = result["media"]
 
-            page_media_count = 0
-            page_episode_count = 0
-            for media in media_list:
-                # Optional --since: skip if AniList updatedAt is older than the
-                # cutoff. AniList doesn't always expose updatedAt in our
-                # fragment, so this is best-effort and may be a no-op.
-                if since is not None:
-                    raw_updated = media.get("updatedAt") or media.get("updated_at")
-                    if raw_updated:
-                        try:
-                            up_dt = datetime.fromtimestamp(
-                                int(raw_updated), tz=timezone.utc
-                            )
-                            if up_dt < since:
-                                continue
-                        except (TypeError, ValueError, OverflowError):
-                            pass
+                page_media_count = 0
+                page_episode_count = 0
+                for media in media_list:
+                    # Optional --since: skip if AniList updatedAt is older
+                    # than the cutoff. Best-effort: AniList's fragment doesn't
+                    # always expose updatedAt.
+                    if since is not None:
+                        raw_updated = (
+                            media.get("updatedAt") or media.get("updated_at")
+                        )
+                        if raw_updated:
+                            try:
+                                up_dt = datetime.fromtimestamp(
+                                    int(raw_updated), tz=timezone.utc
+                                )
+                                if up_dt < since:
+                                    continue
+                            except (TypeError, ValueError, OverflowError):
+                                pass
 
-                summary = process_media_entry(media, dry_run=dry_run)
-                page_media_count += 1
-                page_episode_count += summary["episodes_upserted"]
+                    summary = process_media_entry(media, dry_run=dry_run)
+                    page_media_count += 1
+                    page_episode_count += summary["episodes_upserted"]
 
+                if not dry_run:
+                    state.total_synced = (
+                        (state.total_synced or 0) + page_media_count
+                    )
+                    db.session.commit()
+
+                pages_processed += 1
+                media_processed += page_media_count
+                episodes_processed += page_episode_count
+
+                # Progress every 10 API calls.
+                if pages_processed % 10 == 0:
+                    elapsed = time.time() - started
+                    rate = media_processed / elapsed if elapsed > 0 else 0
+                    # ETA based on remaining years assuming similar density.
+                    years_done = year - start_year
+                    years_left = max(0, end_year - year)
+                    avg_per_year = (
+                        media_processed / max(1, years_done) if years_done else 0
+                    )
+                    items_left = years_left * avg_per_year
+                    eta_seconds = items_left / rate if rate > 0 else 0
+                    log(
+                        f"Year {year} page {page}, "
+                        f"~{media_processed} anime synced, "
+                        f"~{episodes_processed} episodes, "
+                        f"ETA {_format_eta(eta_seconds)}"
+                    )
+
+                if not page_info.get("hasNextPage", False):
+                    break
+
+                page += 1
+
+            # Year complete — advance state.last_page (= last completed year).
             if not dry_run:
-                state.last_page = current_page
-                state.total_synced = (state.total_synced or 0) + page_media_count
+                state.last_page = year
                 db.session.commit()
 
-            pages_processed += 1
-            media_processed += page_media_count
-            episodes_processed += page_episode_count
-
-            # Progress every 10 pages, plus on the final page.
-            if pages_processed % 10 == 0 or not page_info.get("hasNextPage", False):
-                elapsed = time.time() - started
-                last_page_num = page_info.get("lastPage") or 0
-                pages_left = max(0, last_page_num - current_page)
-                if max_pages is not None:
-                    pages_left = min(pages_left, max_pages - pages_processed)
-                rate = pages_processed / elapsed if elapsed > 0 else 0
-                eta_seconds = pages_left / rate if rate > 0 else 0
-                log(
-                    f"Page {current_page}/{last_page_num}, "
-                    f"~{media_processed} anime synced, "
-                    f"~{episodes_processed} episodes, "
-                    f"ETA {_format_eta(eta_seconds)}"
-                )
-
-            if not page_info.get("hasNextPage", False):
-                break
-
-            current_page += 1
-
-        # Success path.
-        if not dry_run:
-            state.status = "idle"
-            state.error_message = None
-            if is_full:
-                state.last_full_at = _utcnow()
-            db.session.commit()
-
-        return {
-            "ok": True,
-            "pages_processed": pages_processed,
-            "media_processed": media_processed,
-            "episodes_processed": episodes_processed,
-            "last_page": current_page if pages_processed > 0 else (start_page - 1),
-            "page_info": last_page_info,
-            "dry_run": dry_run,
-        }
-
+    except StopIteration:
+        # max_pages cap hit. Don't mark sync as failed.
+        pass
     except KeyboardInterrupt:
         if not dry_run:
             state.status = "idle"
             db.session.commit()
         log("Interrupted by user (Ctrl-C). State saved.")
         raise
-
-    except Exception as exc:  # network errors, 4xx/5xx, etc.
+    except Exception as exc:
         if not dry_run:
             state.status = "error"
             state.error_message = f"{type(exc).__name__}: {exc}"
             db.session.commit()
         log(f"ERROR: {state.error_message if not dry_run else exc}")
         raise
+
+    # Success path.
+    if not dry_run:
+        state.status = "idle"
+        state.error_message = None
+        if is_full:
+            state.last_full_at = _utcnow()
+        db.session.commit()
+
+    return {
+        "ok": True,
+        "pages_processed": pages_processed,
+        "media_processed": media_processed,
+        "episodes_processed": episodes_processed,
+        "last_year_completed": (
+            (last_year_seen - 1) if last_year_seen and last_year_seen < end_year
+            else last_year_seen
+        ),
+        "page_info": last_page_info,
+        "dry_run": dry_run,
+    }
 
 
 def main(argv: Optional[list] = None) -> int:
@@ -280,12 +320,15 @@ def main(argv: Optional[list] = None) -> int:
     mode.add_argument(
         "--full",
         action="store_true",
-        help="Start from page 1 (overwrites existing sync state's last_page).",
+        help="Start from id_greater=0 (re-scans entire catalog from scratch).",
     )
     mode.add_argument(
         "--resume",
         action="store_true",
-        help="Continue from AniListSyncState.last_page + 1 (default).",
+        help=(
+            "Continue from the max anilist_id currently in the DB (default). "
+            "Idempotent: rows already present are upserted, not duplicated."
+        ),
     )
     parser.add_argument(
         "--dry-run",
@@ -296,7 +339,10 @@ def main(argv: Optional[list] = None) -> int:
         "--max-pages",
         type=int,
         default=None,
-        help="Cap how many pages this run processes (useful for testing).",
+        help=(
+            "Cap how many fetch iterations this run processes (useful for "
+            "testing). One iteration = up to 50 anime."
+        ),
     )
     parser.add_argument(
         "--since",
@@ -339,19 +385,42 @@ def main(argv: Optional[list] = None) -> int:
     ctx.push()
 
     try:
-        state = get_or_create_sync_state()
-        if args.full:
-            start_page = 1
-        else:
-            start_page = (state.last_page or 0) + 1
+        # AniList's catalog starts circa 1917 (silent-era specials). We start
+        # from 1960 — the practical "modern anime" floor; anything earlier is
+        # vanishingly rare and AniList coverage is spotty there.
+        FIRST_YEAR = 1960
+        end_year = datetime.now(timezone.utc).year + DEFAULT_END_YEAR_OFFSET
 
-        print(f"Starting AniList sync. start_page={start_page}, dry_run={args.dry_run}")
+        if args.full:
+            start_year = FIRST_YEAR
+        else:
+            # Resume from the year AFTER the last completed year. state.last_page
+            # is repurposed as "last completed year".
+            state = get_or_create_sync_state()
+            last_done = state.last_page or 0
+            if last_done < FIRST_YEAR:
+                start_year = FIRST_YEAR
+            else:
+                start_year = last_done + 1
+
+        if start_year > end_year:
+            print(
+                f"Already synced through {start_year - 1} (end_year={end_year}). "
+                "Use --full to re-sync from scratch."
+            )
+            return 0
+
+        print(
+            f"Starting AniList sync. years={start_year}-{end_year}, "
+            f"dry_run={args.dry_run}"
+        )
 
         client = AniListClient()
         try:
             summary = run_sync(
                 client,
-                start_page=start_page,
+                start_year=start_year,
+                end_year=end_year,
                 max_pages=args.max_pages,
                 dry_run=args.dry_run,
                 since=since_dt,
@@ -364,10 +433,11 @@ def main(argv: Optional[list] = None) -> int:
             return 1
 
         print(
-            f"Done. Pages={summary['pages_processed']}, "
+            f"Done. API_calls={summary['pages_processed']}, "
             f"anime={summary['media_processed']}, "
             f"episodes={summary['episodes_processed']}, "
-            f"last_page={summary['last_page']}, dry_run={summary['dry_run']}"
+            f"last_year_completed={summary['last_year_completed']}, "
+            f"dry_run={summary['dry_run']}"
         )
         return 0
     finally:
