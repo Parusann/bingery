@@ -118,6 +118,38 @@ fragment AnimeFields on Media {
 """
 
 
+# Full-catalog paginated query used by sync_anilist.py — chunked by seasonYear.
+#
+# IMPORTANT: AniList caps deep page-based pagination at offset 5000 (page 100
+# with perPage=50) AND does not expose `id_greater` on Media. The workaround
+# is to chunk by `seasonYear`; each year has well under 5000 anime, so
+# standard page-based pagination works cleanly within each year. We iterate
+# years one at a time. Anime with `seasonYear: null` (rare; mostly unscheduled
+# specials and OVAs) are not reachable via this query and remain unsynced —
+# known coverage gap.
+CATALOG_QUERY = """
+query ($page: Int, $perPage: Int, $seasonYear: Int) {
+  Page(page: $page, perPage: $perPage) {
+    pageInfo { hasNextPage currentPage lastPage perPage }
+    media(type: ANIME, sort: ID, seasonYear: $seasonYear) {
+      ...AnimeFields
+      nextAiringEpisode {
+        airingAt
+        episode
+        timeUntilAiring
+      }
+      airingSchedule {
+        nodes {
+          episode
+          airingAt
+        }
+      }
+    }
+  }
+}
+"""
+
+
 class AniListClient:
     """Client for the AniList GraphQL API."""
 
@@ -299,6 +331,46 @@ class AniListClient:
             page, per_page, sort="POPULARITY_DESC",
             season=season.upper(), season_year=year,
         )
+
+    def fetch_catalog_page(
+        self, season_year: int, page: int = 1, per_page: int = 50
+    ) -> dict:
+        """
+        Fetch one page of AniList anime for a given seasonYear.
+
+        AniList caps deep pagination at offset 5000 AND does not expose
+        `id_greater`, so the only way to walk the entire catalog is to chunk by
+        `seasonYear`. Each year has well under 5000 anime, so standard
+        page-based pagination works cleanly within each year.
+
+        Returns a dict with:
+          - "media":      list of normalized anime dicts (same shape as
+                          _normalize_anime), plus "next_airing_episode" and
+                          "airing_schedule" keys for episode tracking.
+          - "page_info":  raw AniList pageInfo with hasNextPage, currentPage,
+                          lastPage, perPage.
+
+        Used by sync_anilist.py to drive the resumable full-catalog sync.
+        """
+        data = self._request(
+            CATALOG_QUERY,
+            {"page": page, "perPage": per_page, "seasonYear": season_year},
+        )
+        page_data = data["Page"]
+
+        media_list = []
+        for raw in page_data["media"]:
+            normalized = self._normalize_anime(raw)
+            normalized["next_airing_episode"] = raw.get("nextAiringEpisode") or None
+            normalized["airing_schedule"] = (
+                (raw.get("airingSchedule") or {}).get("nodes") or []
+            )
+            media_list.append(normalized)
+
+        return {
+            "media": media_list,
+            "page_info": page_data["pageInfo"],
+        }
 
 
 # ═══════════════════════════════════════════════════════════════════════════════

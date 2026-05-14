@@ -368,3 +368,135 @@ class CollectionItem(db.Model):
             "added_at": self.added_at.isoformat() if self.added_at else None,
             "anime": self.anime.to_dict(include_community=False) if self.anime else None,
         }
+
+
+# ─── Episode (per-episode air dates, sub + dub) ─────────────────────────────
+
+class Episode(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    anime_id = db.Column(
+        db.Integer, db.ForeignKey("anime.id"), nullable=False, index=True
+    )
+    episode_number = db.Column(db.Integer, nullable=False)
+    air_date_sub = db.Column(db.DateTime, nullable=True, index=True)
+    air_date_dub = db.Column(db.DateTime, nullable=True, index=True)
+    sub_source = db.Column(db.String(40), default="anilist")
+    dub_source = db.Column(db.String(40), nullable=True)
+    created_at = db.Column(
+        db.DateTime, nullable=False, default=lambda: datetime.now(timezone.utc)
+    )
+    updated_at = db.Column(
+        db.DateTime,
+        nullable=False,
+        default=lambda: datetime.now(timezone.utc),
+        onupdate=lambda: datetime.now(timezone.utc),
+    )
+
+    anime = db.relationship(
+        "Anime",
+        backref=db.backref(
+            "episodes_list",
+            lazy="dynamic",
+            cascade="all, delete-orphan",
+        ),
+    )
+
+    __table_args__ = (
+        db.UniqueConstraint(
+            "anime_id", "episode_number", name="unique_anime_episode"
+        ),
+    )
+
+    def to_dict(self):
+        return {
+            "id": self.id,
+            "anime_id": self.anime_id,
+            "episode_number": self.episode_number,
+            "air_date_sub": self.air_date_sub.isoformat() if self.air_date_sub else None,
+            "air_date_dub": self.air_date_dub.isoformat() if self.air_date_dub else None,
+        }
+
+
+# ─── DubReport (user-submitted dub air-date submissions) ────────────────────
+
+class DubReport(db.Model):
+    """User-submitted dub air-date submissions, awaiting moderation or auto-accepted."""
+
+    id = db.Column(db.Integer, primary_key=True)
+    episode_id = db.Column(
+        db.Integer, db.ForeignKey("episode.id"), nullable=False, index=True
+    )
+    submitted_by = db.Column(
+        db.Integer, db.ForeignKey("user.id"), nullable=False
+    )
+    air_date = db.Column(db.DateTime, nullable=False)
+    status = db.Column(db.String(20), default="pending")  # pending | accepted | rejected
+    note = db.Column(db.String(500), nullable=True)
+    created_at = db.Column(
+        db.DateTime, default=lambda: datetime.now(timezone.utc)
+    )
+    reviewed_at = db.Column(db.DateTime, nullable=True)
+    reviewed_by = db.Column(
+        db.Integer, db.ForeignKey("user.id"), nullable=True
+    )
+
+    episode = db.relationship(
+        "Episode",
+        backref=db.backref(
+            "dub_reports", lazy="dynamic", cascade="all, delete-orphan"
+        ),
+    )
+    submitter = db.relationship("User", foreign_keys=[submitted_by])
+    reviewer = db.relationship("User", foreign_keys=[reviewed_by])
+
+    def to_dict(self):
+        return {
+            "id": self.id,
+            "episode_id": self.episode_id,
+            "submitted_by": self.submitted_by,
+            "air_date": self.air_date.isoformat() if self.air_date else None,
+            "status": self.status,
+            "note": self.note,
+            "created_at": self.created_at.isoformat() if self.created_at else None,
+            "reviewed_at": self.reviewed_at.isoformat() if self.reviewed_at else None,
+            "reviewed_by": self.reviewed_by,
+        }
+
+
+# ─── AniListSyncState (singleton row tracking last successful sync) ─────────
+
+class AniListSyncState(db.Model):
+    """Singleton row tracking the state of the AniList full-catalog sync."""
+
+    id = db.Column(db.Integer, primary_key=True)
+    last_page = db.Column(db.Integer, default=0)
+    last_run_at = db.Column(db.DateTime, nullable=True)
+    last_full_at = db.Column(db.DateTime, nullable=True)
+    total_synced = db.Column(db.Integer, default=0)
+    status = db.Column(db.String(20), default="idle")  # idle | running | error
+    error_message = db.Column(db.Text, nullable=True)
+
+    def to_dict(self):
+        return {
+            "id": self.id,
+            "last_page": self.last_page,
+            "last_run_at": self.last_run_at.isoformat() if self.last_run_at else None,
+            "last_full_at": self.last_full_at.isoformat() if self.last_full_at else None,
+            "total_synced": self.total_synced,
+            "status": self.status,
+            "error_message": self.error_message,
+        }
+
+
+def get_or_create_sync_state():
+    """Return the singleton AniListSyncState row, creating it on first call."""
+    state = AniListSyncState.query.order_by(AniListSyncState.id.asc()).first()
+    if state is None:
+        state = AniListSyncState(
+            last_page=0,
+            total_synced=0,
+            status="idle",
+        )
+        db.session.add(state)
+        db.session.commit()
+    return state
