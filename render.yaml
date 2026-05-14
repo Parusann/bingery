@@ -87,6 +87,8 @@ services:
         value: claude-sonnet-4-6
       - key: ANTHROPIC_API_KEY
         sync: false
+      - key: ANIMESCHEDULE_API_KEY
+        sync: false
       - key: JWT_SECRET_KEY
         fromService:
           type: web

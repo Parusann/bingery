@@ -9,6 +9,7 @@ dub_source is set to "animeschedule" for rows this ingester writes.
 from __future__ import annotations
 
 import json
+import os
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from typing import Iterable, Optional
@@ -18,6 +19,7 @@ import requests
 from utils.dub_sources.crunchyroll import best_match  # reuse fuzzy matcher
 
 ANIMESCHEDULE_URL = "https://animeschedule.net/api/v3/timetables/dub"
+ANIMESCHEDULE_API_KEY_ENV = "ANIMESCHEDULE_API_KEY"
 DUB_SOURCE = "animeschedule"
 MATCH_THRESHOLD = 80.0
 FETCH_TIMEOUT = 30
@@ -64,12 +66,22 @@ class IngestSummary:
 
 
 def fetch_payload(
-    url: str = ANIMESCHEDULE_URL, *, timeout: int = FETCH_TIMEOUT
+    url: str = ANIMESCHEDULE_URL,
+    *,
+    timeout: int = FETCH_TIMEOUT,
+    api_key: Optional[str] = None,
 ) -> str:
-    """GET the timetable and return raw JSON text. Raises on HTTP error."""
-    resp = requests.get(
-        url, timeout=timeout, headers={"User-Agent": USER_AGENT}
-    )
+    """GET the timetable and return raw JSON text. Raises on HTTP error.
+
+    AnimeSchedule.net's v3 API requires a Bearer token. Pass it via `api_key`
+    or set the ANIMESCHEDULE_API_KEY env var. Without a key the live endpoint
+    returns 401; tests don't require a key (they mock the HTTP layer).
+    """
+    headers = {"User-Agent": USER_AGENT}
+    token = api_key or os.environ.get(ANIMESCHEDULE_API_KEY_ENV)
+    if token:
+        headers["Authorization"] = f"Bearer {token}"
+    resp = requests.get(url, timeout=timeout, headers=headers)
     resp.raise_for_status()
     return resp.text
 
