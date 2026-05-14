@@ -190,7 +190,22 @@ export type ActivityKind =
   | "favorite"
   | "collection_item"
   | "collection_create"
-  | "genre_vote";
+  | "genre_vote"
+  | "dub_report";
+
+export type DubReportStatus = "pending" | "accepted" | "rejected";
+
+export interface DubReport {
+  id: number;
+  episode_id: number;
+  submitted_by: number;
+  air_date: string;
+  status: DubReportStatus;
+  note: string | null;
+  created_at: string;
+  reviewed_at: string | null;
+  reviewed_by: number | null;
+}
 
 export interface ActivityEvent {
   id: number;
