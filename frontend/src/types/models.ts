@@ -219,3 +219,33 @@ export interface CompareResponse {
   user_b: { id: number; username: string; display_name: string | null };
   taste: CompareTaste;
 }
+
+export interface Episode {
+  id: number;
+  episode_number: number;
+  air_date_sub: string | null;
+  air_date_dub: string | null;
+}
+
+export interface ScheduleEpisode {
+  id: number;
+  episode_number: number;
+  air_at: string;
+  anime: AnimeSummary;
+  kind: "sub" | "dub";
+}
+
+export interface ScheduleDay {
+  date: string;
+  episodes: ScheduleEpisode[];
+}
+
+export interface ScheduleResponse {
+  days: ScheduleDay[];
+}
+
+export interface AnimeEpisodesResponse {
+  episodes: Episode[];
+  next_sub: Episode | null;
+  next_dub: Episode | null;
+}
