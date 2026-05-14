@@ -48,6 +48,54 @@ services:
         fromDatabase:
           name: bingery-db
           property: connectionString
+  - type: cron
+    name: bingery-dub-crunchyroll
+    env: python
+    schedule: "0 */6 * * *"
+    buildCommand: "pip install -r requirements.txt"
+    startCommand: "python sync_dub_crunchyroll.py"
+    envVars:
+      - key: PYTHON_VERSION
+        value: "3.12.3"
+      - key: AI_PROVIDER
+        value: anthropic
+      - key: ANTHROPIC_MODEL
+        value: claude-sonnet-4-6
+      - key: ANTHROPIC_API_KEY
+        sync: false
+      - key: JWT_SECRET_KEY
+        fromService:
+          type: web
+          name: bingery
+          envVarKey: JWT_SECRET_KEY
+      - key: DATABASE_URL
+        fromDatabase:
+          name: bingery-db
+          property: connectionString
+  - type: cron
+    name: bingery-dub-animeschedule
+    env: python
+    schedule: "0 4 * * *"
+    buildCommand: "pip install -r requirements.txt"
+    startCommand: "python sync_dub_animeschedule.py"
+    envVars:
+      - key: PYTHON_VERSION
+        value: "3.12.3"
+      - key: AI_PROVIDER
+        value: anthropic
+      - key: ANTHROPIC_MODEL
+        value: claude-sonnet-4-6
+      - key: ANTHROPIC_API_KEY
+        sync: false
+      - key: JWT_SECRET_KEY
+        fromService:
+          type: web
+          name: bingery
+          envVarKey: JWT_SECRET_KEY
+      - key: DATABASE_URL
+        fromDatabase:
+          name: bingery-db
+          property: connectionString
 databases:
   - name: bingery-db
     plan: free
