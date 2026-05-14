@@ -110,3 +110,19 @@ export interface CompareResp extends CompareResponse {}
 import type { ScheduleResponse, AnimeEpisodesResponse } from "./models";
 export interface ScheduleResp extends ScheduleResponse {}
 export interface AnimeEpisodesResp extends AnimeEpisodesResponse {}
+
+import type { DubReport } from "./models";
+export interface DubReportListResp {
+  reports: DubReport[];
+}
+export interface DubReportResp {
+  report: DubReport;
+}
+export interface CreateDubReportRequest {
+  episode_id: number;
+  air_date: string;
+  note?: string;
+}
+export interface UpdateDubReportRequest {
+  status: "accepted" | "rejected";
+}
