@@ -190,4 +190,31 @@ export const api = {
     request<import("@/types/api").CompareResp>(
       `/compare/users?user_a=${encodeURIComponent(a)}&user_b=${encodeURIComponent(b)}`
     ),
+
+  getSchedule: (days = 7, kind: "sub" | "dub" | "both" = "sub") =>
+    request<import("@/types/api").ScheduleResp>(
+      `/schedule/upcoming?days=${days}&kind=${kind}`
+    ),
+  getAnimeEpisodes: (animeId: number) =>
+    request<import("@/types/api").AnimeEpisodesResp>(`/anime/${animeId}/episodes`),
+
+  createDubReport: (body: import("@/types/api").CreateDubReportRequest) =>
+    request<import("@/types/api").DubReportResp>("/dub-reports", {
+      method: "POST",
+      body: JSON.stringify(body),
+    }),
+
+  listDubReports: (status?: import("@/types/models").DubReportStatus) =>
+    request<import("@/types/api").DubReportListResp>(
+      "/dub-reports" + (status ? `?status=${status}` : "")
+    ),
+
+  updateDubReport: (
+    id: number,
+    body: import("@/types/api").UpdateDubReportRequest
+  ) =>
+    request<import("@/types/api").DubReportResp>(`/dub-reports/${id}`, {
+      method: "PATCH",
+      body: JSON.stringify(body),
+    }),
 };

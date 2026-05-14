@@ -44,6 +44,14 @@ const ActivityPage = lazy(() =>
 const ComparePage = lazy(() =>
   import("@/features/compare/ComparePage").then((m) => ({ default: m.ComparePage }))
 );
+const SchedulePage = lazy(() =>
+  import("@/features/schedule/SchedulePage").then((m) => ({ default: m.SchedulePage }))
+);
+const DubReportsQueue = lazy(() =>
+  import("@/features/admin/DubReportsQueue").then((m) => ({
+    default: m.DubReportsQueue,
+  }))
+);
 
 const withSuspense = (node: React.ReactNode) => (
   <Suspense fallback={<RouteSkeleton />}>{node}</Suspense>
@@ -67,6 +75,8 @@ export const router = createBrowserRouter([
       { path: "seasonal", element: withSuspense(<SeasonalPage />) },
       { path: "activity", element: withSuspense(<ActivityPage />) },
       { path: "compare", element: withSuspense(<ComparePage />) },
+      { path: "schedule", element: withSuspense(<SchedulePage />) },
+      { path: "admin/dub-reports", element: withSuspense(<DubReportsQueue />) },
       { path: "*", element: <Navigate to="/" replace /> },
     ],
   },

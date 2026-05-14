@@ -6,7 +6,9 @@ import { WatchStatusSelector } from "@/features/watchlist/WatchStatusSelector";
 import { AddToCollection } from "@/features/collections/AddToCollection";
 import { useAuth } from "@/stores/auth";
 import { DetailHero } from "./DetailHero";
+import { DubReportButton } from "./DubReportButton";
 import { FanGenreBars } from "./FanGenreBars";
+import { NextEpisodeWidget } from "./NextEpisodeWidget";
 import { RatingPanel } from "./RatingPanel";
 import { SimilarStrip } from "./SimilarStrip";
 
@@ -40,6 +42,12 @@ export function AnimeDetailPage() {
   return (
     <article>
       <DetailHero anime={anime} actions={actions} />
+      <NextEpisodeWidget animeId={anime.id} />
+      {user ? (
+        <div className="mt-3">
+          <DubReportButton animeId={anime.id} />
+        </div>
+      ) : null}
       <div className="grid md:grid-cols-[1fr_420px] gap-8">
         <section>
           <h2 className="font-display text-2xl mb-4">Community fan genres</h2>

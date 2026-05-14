@@ -1,0 +1,389 @@
+"""Tests for sync_anilist.py — driven by a mocked AniListClient.
+
+The real sync chunks by `seasonYear` to sidestep AniList's deep-page-offset
+cap at 5000 (and the absence of `id_greater` on Media). The mock simulates
+that API: each call gets `(season_year, page)` and returns a slice of media
+with hasNextPage flag.
+"""
+from datetime import datetime, timezone
+
+import pytest
+
+from models import db, Anime, Episode, AniListSyncState, get_or_create_sync_state
+from sync_anilist import run_sync, process_media_entry, main
+
+
+# ─── Fixture helpers ─────────────────────────────────────────────────────────
+
+
+def _airing_at(year, month, day, hour=14, minute=30):
+    return int(
+        datetime(year, month, day, hour, minute, tzinfo=timezone.utc).timestamp()
+    )
+
+
+def _media(anilist_id, title, year=2024, episodes_schedule=None, next_airing=None):
+    return {
+        "anilist_id": anilist_id,
+        "mal_id": None,
+        "title": title,
+        "title_english": None,
+        "title_japanese": None,
+        "synopsis": f"Synopsis for {title}",
+        "api_score": 7.5,
+        "year": year,
+        "season": "spring",
+        "episodes": 12,
+        "studio": "Studio S",
+        "image_url": f"https://example.com/{anilist_id}.jpg",
+        "banner_url": None,
+        "status": "Currently Airing",
+        "source": "Manga",
+        "genres": ["Action"],
+        "tags": [],
+        "popularity": 100,
+        "favourites": 50,
+        "next_airing_episode": next_airing,
+        "airing_schedule": episodes_schedule or [],
+    }
+
+
+class FakeClient:
+    """Year-chunked stand-in for AniListClient.fetch_catalog_page.
+
+    Holds media grouped by year. Returns up to `per_page` items per call,
+    paginated within the requested year.
+    """
+
+    def __init__(self, media_by_year, per_page_default=50):
+        # media_by_year: dict[int, list[media]]
+        self.media_by_year = {y: list(items) for y, items in media_by_year.items()}
+        self.calls = []
+
+    def fetch_catalog_page(self, season_year, page=1, per_page=50):
+        self.calls.append(
+            {"season_year": season_year, "page": page, "per_page": per_page}
+        )
+        year_media = self.media_by_year.get(season_year, [])
+        start = (page - 1) * per_page
+        end = start + per_page
+        batch = year_media[start:end]
+        has_next = end < len(year_media)
+        return {
+            "media": batch,
+            "page_info": {
+                "currentPage": page,
+                "lastPage": max(1, -(-len(year_media) // per_page)),
+                "hasNextPage": has_next,
+                "perPage": per_page,
+            },
+        }
+
+
+class ExplodingClient:
+    def __init__(self, message="502 Bad Gateway"):
+        self.message = message
+
+    def fetch_catalog_page(self, season_year, page=1, per_page=50):
+        raise RuntimeError(self.message)
+
+
+# ─── Fresh sync ──────────────────────────────────────────────────────────────
+
+
+def test_fresh_sync_persists_anime_and_episodes(app):
+    with app.app_context():
+        media = [
+            _media(
+                anilist_id=100 + i,
+                title=f"Anime {i}",
+                year=2024,
+                episodes_schedule=[
+                    {"episode": 1, "airingAt": _airing_at(2024, 4, 5)},
+                    {"episode": 2, "airingAt": _airing_at(2024, 4, 12)},
+                ],
+                next_airing={"episode": 3, "airingAt": _airing_at(2024, 4, 19)},
+            )
+            for i in range(5)
+        ]
+        client = FakeClient({2024: media})
+
+        summary = run_sync(
+            client,
+            start_year=2024,
+            end_year=2024,
+            sleep_seconds=0,
+            log=lambda *_: None,
+        )
+
+        assert summary["ok"] is True
+        assert summary["pages_processed"] == 1
+        assert summary["media_processed"] == 5
+
+        anime_rows = Anime.query.order_by(Anime.anilist_id).all()
+        assert len(anime_rows) == 5
+        assert Episode.query.count() == 5 * 3
+
+        state = get_or_create_sync_state()
+        assert state.last_page == 2024  # last completed year
+        assert state.status == "idle"
+
+
+# ─── Pagination within a single year ─────────────────────────────────────────
+
+
+def test_year_with_multiple_pages_paginates_correctly(app):
+    """120 anime in one year → 3 pages at per_page=50."""
+    with app.app_context():
+        media = [
+            _media(anilist_id=1000 + i, title=f"A{i}", year=2023)
+            for i in range(120)
+        ]
+        client = FakeClient({2023: media})
+
+        summary = run_sync(
+            client,
+            start_year=2023,
+            end_year=2023,
+            sleep_seconds=0,
+            log=lambda *_: None,
+        )
+
+        assert summary["media_processed"] == 120
+        assert summary["pages_processed"] == 3  # 50 + 50 + 20
+        # Pages requested are 1, 2, 3 of seasonYear=2023.
+        assert [c["page"] for c in client.calls] == [1, 2, 3]
+        assert all(c["season_year"] == 2023 for c in client.calls)
+
+
+# ─── Iterating across multiple years ─────────────────────────────────────────
+
+
+def test_iterates_across_years(app):
+    with app.app_context():
+        client = FakeClient(
+            {
+                2022: [_media(anilist_id=2200, title="22A", year=2022)],
+                2023: [_media(anilist_id=2300, title="23A", year=2023)],
+                2024: [_media(anilist_id=2400, title="24A", year=2024)],
+            }
+        )
+
+        summary = run_sync(
+            client,
+            start_year=2022,
+            end_year=2024,
+            sleep_seconds=0,
+            log=lambda *_: None,
+        )
+
+        assert summary["media_processed"] == 3
+        assert summary["pages_processed"] == 3  # one page per year
+        years_called = [c["season_year"] for c in client.calls]
+        assert years_called == [2022, 2023, 2024]
+        state = get_or_create_sync_state()
+        assert state.last_page == 2024
+
+
+# ─── Resume from last_year + 1 ───────────────────────────────────────────────
+
+
+def test_resume_starts_at_year_after_last_completed(app):
+    """If state.last_page=2022 (last completed year), resume starts at 2023."""
+    with app.app_context():
+        # Caller computes start_year = state.last_page + 1 in main(); here we
+        # exercise run_sync directly with the resolved year.
+        client = FakeClient(
+            {
+                2023: [_media(anilist_id=2300, title="23A", year=2023)],
+                2024: [_media(anilist_id=2400, title="24A", year=2024)],
+            }
+        )
+
+        summary = run_sync(
+            client,
+            start_year=2023,
+            end_year=2024,
+            sleep_seconds=0,
+            log=lambda *_: None,
+        )
+
+        assert summary["media_processed"] == 2
+        years_called = [c["season_year"] for c in client.calls]
+        # First call should be 2023, not 2022.
+        assert 2022 not in years_called
+        assert years_called == [2023, 2024]
+
+
+# ─── Idempotency ─────────────────────────────────────────────────────────────
+
+
+def test_idempotent_double_run_produces_no_duplicates(app):
+    with app.app_context():
+        media = [
+            _media(
+                anilist_id=42,
+                title="Same Anime",
+                year=2024,
+                episodes_schedule=[
+                    {"episode": 1, "airingAt": _airing_at(2024, 4, 5)},
+                    {"episode": 2, "airingAt": _airing_at(2024, 4, 12)},
+                ],
+            )
+        ]
+
+        client1 = FakeClient({2024: media})
+        run_sync(
+            client1, start_year=2024, end_year=2024,
+            sleep_seconds=0, log=lambda *_: None,
+        )
+        assert Anime.query.count() == 1
+        assert Episode.query.count() == 2
+
+        client2 = FakeClient({2024: media})
+        run_sync(
+            client2, start_year=2024, end_year=2024,
+            sleep_seconds=0, log=lambda *_: None,
+        )
+        assert Anime.query.count() == 1
+        assert Episode.query.count() == 2
+
+
+# ─── Upsert updates existing fields ─────────────────────────────────────────
+
+
+def test_upsert_updates_anime_synopsis_on_rerun(app):
+    with app.app_context():
+        original = _media(anilist_id=7, title="Anime 7", year=2024)
+        client1 = FakeClient({2024: [original]})
+        run_sync(
+            client1, start_year=2024, end_year=2024,
+            sleep_seconds=0, log=lambda *_: None,
+        )
+
+        a = Anime.query.filter_by(anilist_id=7).first()
+        assert a is not None
+        assert a.synopsis == "Synopsis for Anime 7"
+
+        updated = _media(anilist_id=7, title="Anime 7 (updated)", year=2024)
+        updated["synopsis"] = "Brand new synopsis."
+        client2 = FakeClient({2024: [updated]})
+        run_sync(
+            client2, start_year=2024, end_year=2024,
+            sleep_seconds=0, log=lambda *_: None,
+        )
+
+        a2 = Anime.query.filter_by(anilist_id=7).first()
+        assert a2.id == a.id
+        assert a2.synopsis == "Brand new synopsis."
+        assert a2.title == "Anime 7 (updated)"
+
+
+# ─── Episode unique constraint ──────────────────────────────────────────────
+
+
+def test_episode_unique_constraint_prevents_duplicates(app):
+    with app.app_context():
+        media = _media(
+            anilist_id=99,
+            title="Dup Test",
+            year=2024,
+            episodes_schedule=[{"episode": 1, "airingAt": _airing_at(2024, 4, 5)}],
+            next_airing={"episode": 1, "airingAt": _airing_at(2024, 4, 5)},
+        )
+        client = FakeClient({2024: [media]})
+        run_sync(
+            client, start_year=2024, end_year=2024,
+            sleep_seconds=0, log=lambda *_: None,
+        )
+
+        a = Anime.query.filter_by(anilist_id=99).first()
+        eps = Episode.query.filter_by(anime_id=a.id).all()
+        assert len(eps) == 1
+        assert eps[0].episode_number == 1
+
+
+# ─── Dry run ─────────────────────────────────────────────────────────────────
+
+
+def test_dry_run_writes_nothing(app):
+    with app.app_context():
+        media = [
+            _media(
+                anilist_id=200,
+                title="Dry Anime",
+                year=2024,
+                episodes_schedule=[{"episode": 1, "airingAt": _airing_at(2024, 4, 5)}],
+            )
+        ]
+        client = FakeClient({2024: media})
+
+        summary = run_sync(
+            client,
+            start_year=2024,
+            end_year=2024,
+            dry_run=True,
+            sleep_seconds=0,
+            log=lambda *_: None,
+        )
+
+        assert summary["ok"] is True
+        assert summary["dry_run"] is True
+        assert Anime.query.count() == 0
+        assert Episode.query.count() == 0
+        state = get_or_create_sync_state()
+        assert state.last_page == 0
+
+
+# ─── Error path ──────────────────────────────────────────────────────────────
+
+
+def test_error_path_records_status_and_message(app):
+    with app.app_context():
+        client = ExplodingClient("502 Bad Gateway")
+        with pytest.raises(RuntimeError):
+            run_sync(
+                client, start_year=2024, end_year=2024,
+                sleep_seconds=0, log=lambda *_: None,
+            )
+
+        state = AniListSyncState.query.first()
+        assert state is not None
+        assert state.status == "error"
+        assert state.error_message is not None
+        assert "502" in state.error_message
+
+
+# ─── CLI parses cleanly ──────────────────────────────────────────────────────
+
+
+def test_cli_main_with_max_pages_zero_exits_cleanly(monkeypatch):
+    rc = main(["--max-pages", "0"])
+    assert rc == 0
+
+
+def test_cli_main_invalid_since_returns_error_code():
+    rc = main(["--since", "not-a-date"])
+    assert rc == 2
+
+
+# ─── process_media_entry directly ────────────────────────────────────────────
+
+
+def test_process_media_entry_dry_run_returns_episode_count(app):
+    with app.app_context():
+        m = _media(
+            anilist_id=1,
+            title="X",
+            year=2024,
+            episodes_schedule=[
+                {"episode": 1, "airingAt": _airing_at(2024, 4, 5)},
+                {"episode": 2, "airingAt": _airing_at(2024, 4, 12)},
+            ],
+            next_airing={"episode": 3, "airingAt": _airing_at(2024, 4, 19)},
+        )
+        summary = process_media_entry(m, dry_run=True)
+        assert summary["dry_run"] is True
+        assert summary["episodes_upserted"] == 3
+        assert Anime.query.count() == 0
+        assert Episode.query.count() == 0
