@@ -8,6 +8,8 @@ from flask_jwt_extended import jwt_required, get_jwt_identity
 from models import (
     db,
     Anime,
+    DubReport,
+    Episode,
     Rating,
     FanGenreVote,
     WatchlistEntry,
@@ -27,6 +29,7 @@ KIND_CODE = {
     "favorite": 4,
     "collection_item": 5,
     "collection_create": 6,
+    "dub_report": 7,
 }
 
 _ID_OFFSET = 10**12
@@ -118,6 +121,22 @@ def _collection_create_event(col: Collection):
     }
 
 
+def _dub_report_event(r: DubReport, episode: Episode, anime: Anime):
+    dt = r.created_at
+    return dt, {
+        "id": _synth_id("dub_report", r.id),
+        "kind": "dub_report",
+        "created_at": dt.isoformat() if dt else None,
+        "anime": _anime_payload(anime),
+        "meta": {
+            "episode_number": episode.episode_number,
+            "air_date": r.air_date.isoformat() if r.air_date else None,
+            "status": r.status,
+            "note": r.note,
+        },
+    }
+
+
 def _fetch_events(user_id: int, before):
     """Return list of (datetime, event_dict) pairs, newest first.
 
@@ -168,6 +187,15 @@ def _fetch_events(user_id: int, before):
         .all()
     )
     pairs.extend(_collection_create_event(c) for c in collections)
+
+    dub_reports = (
+        db.session.query(DubReport, Episode, Anime)
+        .join(Episode, Episode.id == DubReport.episode_id)
+        .join(Anime, Anime.id == Episode.anime_id)
+        .filter(DubReport.submitted_by == user_id)
+        .all()
+    )
+    pairs.extend(_dub_report_event(r, ep, a) for r, ep, a in dub_reports)
 
     pairs = [(dt, e) for dt, e in pairs if dt is not None]
     # Stable two-pass sort: ascending kind first (tiebreak), then descending dt.
