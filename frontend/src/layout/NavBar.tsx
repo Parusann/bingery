@@ -4,6 +4,7 @@ import { cn } from "@/lib/cn";
 const items = [
   { to: "/discover", label: "Discover" },
   { to: "/seasonal", label: "Seasonal" },
+  { to: "/schedule", label: "Schedule" },
   { to: "/watchlist", label: "Watchlist" },
   { to: "/collections", label: "Collections" },
   { to: "/for-you", label: "For you" },

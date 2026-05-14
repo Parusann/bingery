@@ -7,6 +7,7 @@ import { AddToCollection } from "@/features/collections/AddToCollection";
 import { useAuth } from "@/stores/auth";
 import { DetailHero } from "./DetailHero";
 import { FanGenreBars } from "./FanGenreBars";
+import { NextEpisodeWidget } from "./NextEpisodeWidget";
 import { RatingPanel } from "./RatingPanel";
 import { SimilarStrip } from "./SimilarStrip";
 
@@ -40,6 +41,7 @@ export function AnimeDetailPage() {
   return (
     <article>
       <DetailHero anime={anime} actions={actions} />
+      <NextEpisodeWidget animeId={anime.id} />
       <div className="grid md:grid-cols-[1fr_420px] gap-8">
         <section>
           <h2 className="font-display text-2xl mb-4">Community fan genres</h2>

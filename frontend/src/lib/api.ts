@@ -190,4 +190,11 @@ export const api = {
     request<import("@/types/api").CompareResp>(
       `/compare/users?user_a=${encodeURIComponent(a)}&user_b=${encodeURIComponent(b)}`
     ),
+
+  getSchedule: (days = 7, kind: "sub" | "dub" | "both" = "sub") =>
+    request<import("@/types/api").ScheduleResp>(
+      `/schedule/upcoming?days=${days}&kind=${kind}`
+    ),
+  getAnimeEpisodes: (animeId: number) =>
+    request<import("@/types/api").AnimeEpisodesResp>(`/anime/${animeId}/episodes`),
 };
