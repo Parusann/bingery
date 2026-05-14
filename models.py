@@ -392,7 +392,14 @@ class Episode(db.Model):
         onupdate=lambda: datetime.now(timezone.utc),
     )
 
-    anime = db.relationship("Anime", backref=db.backref("episodes_list", lazy="dynamic"))
+    anime = db.relationship(
+        "Anime",
+        backref=db.backref(
+            "episodes_list",
+            lazy="dynamic",
+            cascade="all, delete-orphan",
+        ),
+    )
 
     __table_args__ = (
         db.UniqueConstraint(
@@ -407,6 +414,52 @@ class Episode(db.Model):
             "episode_number": self.episode_number,
             "air_date_sub": self.air_date_sub.isoformat() if self.air_date_sub else None,
             "air_date_dub": self.air_date_dub.isoformat() if self.air_date_dub else None,
+        }
+
+
+# ─── DubReport (user-submitted dub air-date submissions) ────────────────────
+
+class DubReport(db.Model):
+    """User-submitted dub air-date submissions, awaiting moderation or auto-accepted."""
+
+    id = db.Column(db.Integer, primary_key=True)
+    episode_id = db.Column(
+        db.Integer, db.ForeignKey("episode.id"), nullable=False, index=True
+    )
+    submitted_by = db.Column(
+        db.Integer, db.ForeignKey("user.id"), nullable=False
+    )
+    air_date = db.Column(db.DateTime, nullable=False)
+    status = db.Column(db.String(20), default="pending")  # pending | accepted | rejected
+    note = db.Column(db.String(500), nullable=True)
+    created_at = db.Column(
+        db.DateTime, default=lambda: datetime.now(timezone.utc)
+    )
+    reviewed_at = db.Column(db.DateTime, nullable=True)
+    reviewed_by = db.Column(
+        db.Integer, db.ForeignKey("user.id"), nullable=True
+    )
+
+    episode = db.relationship(
+        "Episode",
+        backref=db.backref(
+            "dub_reports", lazy="dynamic", cascade="all, delete-orphan"
+        ),
+    )
+    submitter = db.relationship("User", foreign_keys=[submitted_by])
+    reviewer = db.relationship("User", foreign_keys=[reviewed_by])
+
+    def to_dict(self):
+        return {
+            "id": self.id,
+            "episode_id": self.episode_id,
+            "submitted_by": self.submitted_by,
+            "air_date": self.air_date.isoformat() if self.air_date else None,
+            "status": self.status,
+            "note": self.note,
+            "created_at": self.created_at.isoformat() if self.created_at else None,
+            "reviewed_at": self.reviewed_at.isoformat() if self.reviewed_at else None,
+            "reviewed_by": self.reviewed_by,
         }
 
 
