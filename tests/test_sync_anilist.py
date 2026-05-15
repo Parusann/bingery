@@ -387,3 +387,132 @@ def test_process_media_entry_dry_run_returns_episode_count(app):
         assert summary["episodes_upserted"] == 3
         assert Anime.query.count() == 0
         assert Episode.query.count() == 0
+
+
+# ─── Orphan-catcher (format-based pagination) ────────────────────────────────
+
+
+class FakeFormatClient:
+    """Stand-in for AniListClient.fetch_catalog_page_by_format."""
+
+    def __init__(self, media_by_format, per_page_default=50):
+        self.media_by_format = {
+            f: list(items) for f, items in media_by_format.items()
+        }
+        self.calls = []
+
+    def fetch_catalog_page_by_format(self, media_format, page=1, per_page=50):
+        self.calls.append(
+            {"format": media_format, "page": page, "per_page": per_page}
+        )
+        items = self.media_by_format.get(media_format, [])
+        start = (page - 1) * per_page
+        end = start + per_page
+        batch = items[start:end]
+        has_next = end < len(items)
+        return {
+            "media": batch,
+            "page_info": {
+                "currentPage": page,
+                "lastPage": max(1, -(-len(items) // per_page)),
+                "hasNextPage": has_next,
+                "perPage": per_page,
+            },
+        }
+
+
+def test_run_format_sync_upserts_media(app):
+    from sync_anilist import run_format_sync
+
+    with app.app_context():
+        media = [
+            _media(anilist_id=9000 + i, title=f"Special {i}", year=2010)
+            for i in range(3)
+        ]
+        client = FakeFormatClient({"SPECIAL": media})
+        summary = run_format_sync(
+            client, media_format="SPECIAL", sleep_seconds=0
+        )
+        assert summary["ok"] is True
+        assert summary["format"] == "SPECIAL"
+        assert summary["pages_processed"] == 1
+        assert summary["media_processed"] == 3
+        assert Anime.query.count() == 3
+        # FakeFormatClient was called exactly once because hasNextPage=False.
+        assert len(client.calls) == 1
+        assert client.calls[0]["format"] == "SPECIAL"
+
+
+def test_run_format_sync_paginates_multiple_pages(app):
+    from sync_anilist import run_format_sync
+
+    with app.app_context():
+        # 60 entries → 2 pages at perPage=50.
+        media = [
+            _media(anilist_id=9100 + i, title=f"OVA {i}", year=2010)
+            for i in range(60)
+        ]
+        client = FakeFormatClient({"OVA": media})
+        summary = run_format_sync(client, media_format="OVA", sleep_seconds=0)
+        assert summary["pages_processed"] == 2
+        assert summary["media_processed"] == 60
+        assert Anime.query.count() == 60
+        assert [c["page"] for c in client.calls] == [1, 2]
+
+
+def test_run_format_sync_max_pages_cap(app):
+    from sync_anilist import run_format_sync
+
+    with app.app_context():
+        media = [
+            _media(anilist_id=9200 + i, title=f"ONA {i}", year=2010)
+            for i in range(200)
+        ]
+        client = FakeFormatClient({"ONA": media})
+        summary = run_format_sync(
+            client, media_format="ONA", max_pages=2, sleep_seconds=0
+        )
+        assert summary["pages_processed"] == 2
+        # Only 100 of 200 written.
+        assert Anime.query.count() == 100
+
+
+def test_run_format_sync_dry_run_does_not_write(app):
+    from sync_anilist import run_format_sync
+
+    with app.app_context():
+        media = [
+            _media(anilist_id=9300 + i, title=f"Music {i}", year=2010)
+            for i in range(5)
+        ]
+        client = FakeFormatClient({"MUSIC": media})
+        summary = run_format_sync(
+            client, media_format="MUSIC", dry_run=True, sleep_seconds=0
+        )
+        assert summary["dry_run"] is True
+        assert summary["media_processed"] == 5
+        assert Anime.query.count() == 0
+
+
+def test_run_format_sync_idempotent_on_rerun(app):
+    from sync_anilist import run_format_sync
+
+    with app.app_context():
+        media = [
+            _media(anilist_id=9400 + i, title=f"TVShort {i}", year=2010)
+            for i in range(4)
+        ]
+        client = FakeFormatClient({"TV_SHORT": media})
+
+        first = run_format_sync(
+            client, media_format="TV_SHORT", sleep_seconds=0
+        )
+        count_after_first = Anime.query.count()
+        # Reset the call log and re-run; idempotent upserts should not
+        # produce duplicate rows.
+        client.calls.clear()
+        second = run_format_sync(
+            client, media_format="TV_SHORT", sleep_seconds=0
+        )
+        assert first["media_processed"] == second["media_processed"]
+        assert Anime.query.count() == count_after_first
