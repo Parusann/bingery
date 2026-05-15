@@ -312,6 +312,96 @@ def run_sync(
     }
 
 
+# AniList MediaFormat enum values most likely to host `seasonYear: null` orphans.
+ORPHAN_FORMATS = ("SPECIAL", "OVA", "ONA", "MUSIC", "TV_SHORT")
+# Per AniList docs: deep page-based pagination caps out at offset 5000
+# (page 100 with perPage=50). Bail at that page to avoid a server-side error.
+MAX_PAGES_PER_FORMAT = 100
+
+
+def run_format_sync(
+    client,
+    media_format: str,
+    *,
+    max_pages: Optional[int] = None,
+    dry_run: bool = False,
+    sleep_seconds: float = PAGE_SLEEP_SECONDS,
+    log: callable = print,
+) -> dict:
+    """Page through every anime of one AniList MediaFormat and upsert it.
+
+    Counterpart to `run_sync` (which chunks by seasonYear). Used to reach
+    entries with `seasonYear: null` — typically older SPECIAL / OVA / ONA /
+    MUSIC entries that the year-chunker can never see. Idempotent: upserts
+    by anilist_id so re-running just refreshes existing rows.
+
+    Stops when AniList reports no more pages OR we hit the 5000-offset cap
+    (page 100). Honors `--max-pages` for testing.
+    """
+    pages_processed = 0
+    media_processed = 0
+    episodes_processed = 0
+    last_page_info: Optional[dict] = None
+    started = time.time()
+
+    page = 1
+    while True:
+        if max_pages is not None and pages_processed >= max_pages:
+            log(f"Reached --max-pages={max_pages}, stopping.")
+            break
+        if page > MAX_PAGES_PER_FORMAT:
+            log(
+                f"Reached AniList deep-page cap (page {MAX_PAGES_PER_FORMAT}) "
+                f"for format={media_format}. Stopping to avoid 5000-offset error."
+            )
+            break
+
+        if pages_processed > 0:
+            time.sleep(sleep_seconds)
+
+        result = client.fetch_catalog_page_by_format(
+            media_format=media_format, page=page
+        )
+        page_info = result["page_info"]
+        last_page_info = page_info
+        media_list = result["media"]
+
+        page_media_count = 0
+        page_episode_count = 0
+        for media in media_list:
+            summary = process_media_entry(media, dry_run=dry_run)
+            page_media_count += 1
+            page_episode_count += summary["episodes_upserted"]
+
+        pages_processed += 1
+        media_processed += page_media_count
+        episodes_processed += page_episode_count
+
+        if pages_processed % 10 == 0:
+            elapsed = time.time() - started
+            rate = media_processed / elapsed if elapsed > 0 else 0
+            log(
+                f"format={media_format} page {page}, "
+                f"~{media_processed} anime processed, "
+                f"~{episodes_processed} episodes, "
+                f"rate {rate:.1f}/s"
+            )
+
+        if not page_info.get("hasNextPage", False):
+            break
+        page += 1
+
+    return {
+        "ok": True,
+        "format": media_format,
+        "pages_processed": pages_processed,
+        "media_processed": media_processed,
+        "episodes_processed": episodes_processed,
+        "page_info": last_page_info,
+        "dry_run": dry_run,
+    }
+
+
 def main(argv: Optional[list] = None) -> int:
     parser = argparse.ArgumentParser(
         description="Full-catalog AniList sync for Bingery."
@@ -354,6 +444,27 @@ def main(argv: Optional[list] = None) -> int:
             "expose updatedAt."
         ),
     )
+    parser.add_argument(
+        "--format",
+        type=str,
+        default=None,
+        dest="media_format",
+        metavar="FMT",
+        help=(
+            "Orphan-catcher mode: paginate by AniList MediaFormat instead of "
+            "seasonYear. Use to reach entries with seasonYear=null (mostly "
+            "SPECIAL / OVA / ONA / MUSIC / TV_SHORT). Repeatable via "
+            "--all-orphan-formats."
+        ),
+    )
+    parser.add_argument(
+        "--all-orphan-formats",
+        action="store_true",
+        help=(
+            "Run orphan-catcher mode across every format likely to host "
+            f"seasonYear=null entries: {', '.join(ORPHAN_FORMATS)}."
+        ),
+    )
 
     args = parser.parse_args(argv)
 
@@ -385,6 +496,48 @@ def main(argv: Optional[list] = None) -> int:
     ctx.push()
 
     try:
+        # ── Orphan-catcher branch: --format / --all-orphan-formats ──────────
+        if args.media_format or args.all_orphan_formats:
+            if args.media_format and args.all_orphan_formats:
+                print(
+                    "ERROR: --format and --all-orphan-formats are mutually exclusive."
+                )
+                return 2
+            formats = (
+                [args.media_format] if args.media_format else list(ORPHAN_FORMATS)
+            )
+            from utils.anilist import AniListClient as _AniListClient
+            client = _AniListClient()
+            total_media = 0
+            total_pages = 0
+            for fmt in formats:
+                print(f"Starting orphan-catcher: format={fmt}, dry_run={args.dry_run}")
+                try:
+                    summary = run_format_sync(
+                        client,
+                        media_format=fmt,
+                        max_pages=args.max_pages,
+                        dry_run=args.dry_run,
+                    )
+                except KeyboardInterrupt:
+                    return 130
+                except Exception as exc:
+                    print(f"FATAL ({fmt}): {type(exc).__name__}: {exc}")
+                    return 1
+                print(
+                    f"  done. format={fmt} pages={summary['pages_processed']} "
+                    f"anime={summary['media_processed']} "
+                    f"episodes={summary['episodes_processed']} "
+                    f"dry_run={summary['dry_run']}"
+                )
+                total_media += summary["media_processed"]
+                total_pages += summary["pages_processed"]
+            print(
+                f"All formats done. total_pages={total_pages} "
+                f"total_anime={total_media} dry_run={args.dry_run}"
+            )
+            return 0
+
         # AniList's catalog starts circa 1917 (silent-era specials). We start
         # from 1960 — the practical "modern anime" floor; anything earlier is
         # vanishingly rare and AniList coverage is spotty there.

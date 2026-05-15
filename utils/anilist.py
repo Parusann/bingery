@@ -150,6 +150,34 @@ query ($page: Int, $perPage: Int, $seasonYear: Int) {
 """
 
 
+# Orphan-catcher query — paginates by `format` instead of `seasonYear` so we
+# can reach entries with `seasonYear: null` (typically older SPECIAL / OVA /
+# ONA / MUSIC entries that the year-chunker misses). Per-format catalogs are
+# small enough that page-based pagination fits under AniList's 5000-offset
+# cap — verified for SPECIAL, OVA, ONA, MUSIC, TV_SHORT.
+CATALOG_QUERY_BY_FORMAT = """
+query ($page: Int, $perPage: Int, $format: MediaFormat) {
+  Page(page: $page, perPage: $perPage) {
+    pageInfo { hasNextPage currentPage lastPage perPage }
+    media(type: ANIME, sort: ID, format: $format) {
+      ...AnimeFields
+      nextAiringEpisode {
+        airingAt
+        episode
+        timeUntilAiring
+      }
+      airingSchedule {
+        nodes {
+          episode
+          airingAt
+        }
+      }
+    }
+  }
+}
+"""
+
+
 class AniListClient:
     """Client for the AniList GraphQL API."""
 
@@ -355,6 +383,36 @@ class AniListClient:
         data = self._request(
             CATALOG_QUERY,
             {"page": page, "perPage": per_page, "seasonYear": season_year},
+        )
+        page_data = data["Page"]
+
+        media_list = []
+        for raw in page_data["media"]:
+            normalized = self._normalize_anime(raw)
+            normalized["next_airing_episode"] = raw.get("nextAiringEpisode") or None
+            normalized["airing_schedule"] = (
+                (raw.get("airingSchedule") or {}).get("nodes") or []
+            )
+            media_list.append(normalized)
+
+        return {
+            "media": media_list,
+            "page_info": page_data["pageInfo"],
+        }
+
+    def fetch_catalog_page_by_format(
+        self, media_format: str, page: int = 1, per_page: int = 50
+    ) -> dict:
+        """Fetch one page of AniList anime filtered by `format` (MediaFormat enum).
+
+        Used by sync_anilist.py's orphan-catcher mode to reach entries with
+        `seasonYear: null` — typically older SPECIAL / OVA / ONA / MUSIC entries.
+
+        Returns the same shape as `fetch_catalog_page`.
+        """
+        data = self._request(
+            CATALOG_QUERY_BY_FORMAT,
+            {"page": page, "perPage": per_page, "format": media_format},
         )
         page_data = data["Page"]
 
