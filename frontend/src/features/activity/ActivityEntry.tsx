@@ -22,6 +22,18 @@ function label(ev: ActivityEvent): string {
       }`;
     case "genre_vote":
       return `Voted ${ev.meta.genre as string} on ${title}`;
+    case "dub_report": {
+      const epNum = ev.meta.episode_number as number | undefined;
+      const status = ev.meta.status as string | undefined;
+      const tail =
+        status === "accepted"
+          ? " · accepted"
+          : status === "rejected"
+            ? " · rejected"
+            : " · pending review";
+      const epPart = epNum != null ? ` ep ${epNum}` : "";
+      return `Reported dub date for ${title}${epPart}${tail}`;
+    }
     default:
       return "Activity";
   }
