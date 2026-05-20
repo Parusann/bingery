@@ -16,11 +16,21 @@ interface Props extends Omit<ButtonHTMLAttributes<HTMLButtonElement>, "children"
   children: ReactNode;
 }
 
+// Glass-peach button family — matches the landing page's `.btn` and
+// `.btn.primary` aesthetic: pill shape, soft amber border, backdrop blur,
+// inset top highlight, gentle lift on hover.
 const variantClass: Record<Variant, string> = {
   primary:
-    "bg-amber text-bg hover:bg-amber-soft focus-visible:ring-2 focus-visible:ring-amber/60",
+    "text-text border border-amber/55 bg-gradient-to-b from-amber/[0.18] to-amber/[0.06] " +
+    "backdrop-blur-md " +
+    "shadow-[0_14px_40px_-12px_rgba(244,182,144,0.45),inset_0_1px_0_rgba(255,220,200,0.20)] " +
+    "hover:from-amber/[0.28] hover:to-amber/[0.10] hover:border-amber/70 hover:-translate-y-px " +
+    "focus-visible:ring-2 focus-visible:ring-amber/60",
   ghost:
-    "bg-transparent text-text border border-border hover:border-border-strong hover:bg-white/[0.04]",
+    "text-text border border-amber/30 bg-white/[0.04] backdrop-blur-md " +
+    "shadow-[0_8px_30px_-10px_rgba(244,182,144,0.18),inset_0_1px_0_rgba(255,255,255,0.06)] " +
+    "hover:bg-amber/[0.08] hover:border-amber/55 hover:-translate-y-px " +
+    "hover:shadow-[0_14px_40px_-10px_rgba(244,182,144,0.35),inset_0_1px_0_rgba(255,255,255,0.10)]",
   glass:
     "bg-surface text-text border border-border backdrop-blur-md hover:bg-surface-strong glass-edge",
   danger:
@@ -28,9 +38,9 @@ const variantClass: Record<Variant, string> = {
 };
 
 const sizeClass: Record<Size, string> = {
-  sm: "h-8 px-3 text-xs rounded-md",
-  md: "h-10 px-4 text-sm rounded-lg",
-  lg: "h-12 px-6 text-base rounded-xl",
+  sm: "h-8 px-4 text-xs rounded-pill",
+  md: "h-10 px-5 text-sm rounded-pill",
+  lg: "h-12 px-7 text-base rounded-pill",
 };
 
 export const Button = forwardRef<HTMLButtonElement, Props>(function Button(
