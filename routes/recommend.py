@@ -11,6 +11,7 @@ from flask import Blueprint, request, jsonify
 from flask_jwt_extended import jwt_required, get_jwt_identity
 from sqlalchemy import func, desc
 from models import db, Anime, Rating, FanGenreVote, Genre, anime_genres, User
+from utils.nsfw import maybe_exclude_nsfw
 
 recommend_bp = Blueprint("recommend", __name__, url_prefix="/api/recommend")
 
@@ -131,21 +132,34 @@ def get_recommendations():
     if not profile:
         # New user — return popular anime
         popular = (
-            Anime.query
-            .filter(Anime.api_score.isnot(None))
+            maybe_exclude_nsfw(
+                Anime.query.filter(Anime.api_score.isnot(None))
+            )
             .order_by(Anime.api_score.desc())
             .limit(limit)
             .all()
         )
         return jsonify({
-            "recommendations": [a.to_dict() for a in popular],
+            "recommendations": [
+                {
+                    "anime": a.to_dict(),
+                    "reason": "Popular and highly rated — a good starting point.",
+                    "relevance_score": None,
+                }
+                for a in popular
+            ],
             "taste_profile": None,
-            "reason": "popular",
+            "source": "popular",
         }), 200
 
     # Get all anime the user hasn't rated
     rated_ids = set(profile["rated_ids"])
-    candidates = db.session.query(Anime).filter(~Anime.id.in_(rated_ids)).all()
+    candidates = (
+        maybe_exclude_nsfw(
+            db.session.query(Anime).filter(~Anime.id.in_(rated_ids))
+        )
+        .all()
+    )
 
     # Score each candidate
     scored = []
@@ -156,21 +170,53 @@ def get_recommendations():
     scored.sort(key=lambda x: x[1], reverse=True)
     top = scored[:limit]
 
+    top_genre_names = {g[0] for g in profile["top_genres"][:5]}
+
+    def _reason_for(anime, relevance: float) -> str:
+        overlap = [g.name for g in anime.official_genres if g.name in top_genre_names]
+        if overlap:
+            return (
+                f"{relevance:.0f}% match — overlaps with your top genres: "
+                + ", ".join(overlap[:3])
+                + "."
+            )
+        return f"{relevance:.0f}% match with your overall taste profile."
+
     recs = []
     for anime, relevance in top:
-        d = anime.to_dict(include_community=True)
-        d["relevance_score"] = relevance
-        recs.append(d)
+        recs.append({
+            "anime": anime.to_dict(include_community=True),
+            "reason": _reason_for(anime, relevance),
+            "relevance_score": relevance,
+        })
 
     return jsonify({
         "recommendations": recs,
-        "taste_profile": {
-            "top_genres": profile["top_genres"][:8],
-            "avg_score": profile["avg_score"],
-            "total_rated": profile["total_rated"],
-        },
-        "reason": "personalized",
+        "taste_profile": _serialize_taste_profile(profile),
+        "source": "personalized",
     }), 200
+
+
+def _serialize_taste_profile(profile: dict) -> dict:
+    """Shape the in-memory profile into the JSON shape the React UI expects.
+
+    Frontend `TasteProfile.tsx` reads:
+      - top_genres: [{ genre: str, weight: 0..1, score: 1..10 }]
+      - rating_count: int
+      - avg_score: float | null
+    """
+    return {
+        "top_genres": [
+            {
+                "genre": name,
+                "weight": round(min(1.0, max(0.0, score / 10.0)), 2),
+                "score": round(float(score), 2),
+            }
+            for name, score in profile["top_genres"][:8]
+        ],
+        "avg_score": profile["avg_score"],
+        "rating_count": profile["total_rated"],
+    }
 
 
 @recommend_bp.route("/taste-profile", methods=["GET"])
@@ -181,7 +227,7 @@ def get_taste_profile():
     profile = build_taste_profile(user_id)
     if not profile:
         return jsonify({"profile": None}), 200
-    return jsonify({"profile": profile}), 200
+    return jsonify({"profile": _serialize_taste_profile(profile)}), 200
 
 
 @recommend_bp.route("/similar/<int:anime_id>", methods=["GET"])
@@ -199,7 +245,10 @@ def get_similar_anime(anime_id):
     fan_genres = {fg["genre"] for fg in anime.get_fan_genres()[:5]}
     all_tags = genre_names | fan_genres
 
-    candidates = db.session.query(Anime).filter(Anime.id != anime_id).all()
+    candidates = (
+        maybe_exclude_nsfw(db.session.query(Anime).filter(Anime.id != anime_id))
+        .all()
+    )
     scored = []
     for c in candidates:
         c_genres = {g.name for g in c.official_genres}
