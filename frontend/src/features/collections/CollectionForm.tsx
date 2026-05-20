@@ -15,7 +15,7 @@ interface Props {
 
 export function CollectionForm({ initial, onSuccess }: Props) {
   const nav = useNavigate();
-  const [title, setTitle] = useState(initial?.title ?? "");
+  const [name, setName] = useState(initial?.name ?? "");
   const [description, setDescription] = useState(initial?.description ?? "");
   const [isPublic, setIsPublic] = useState(initial?.is_public ?? false);
   const create = useCreateCollection();
@@ -28,7 +28,7 @@ export function CollectionForm({ initial, onSuccess }: Props) {
       onSubmit={async (e) => {
         e.preventDefault();
         const body = {
-          title: title.trim(),
+          name: name.trim(),
           description: description.trim() || undefined,
           is_public: isPublic,
         };
@@ -47,9 +47,9 @@ export function CollectionForm({ initial, onSuccess }: Props) {
       }}
     >
       <Input
-        label="Title"
-        value={title}
-        onChange={(e) => setTitle(e.target.value)}
+        label="Name"
+        value={name}
+        onChange={(e) => setName(e.target.value)}
         required
       />
       <label className="flex flex-col gap-1.5 text-sm">
@@ -71,7 +71,7 @@ export function CollectionForm({ initial, onSuccess }: Props) {
         </span>
       </label>
       <div className="flex gap-3">
-        <Button type="submit" loading={busy} disabled={!title.trim()}>
+        <Button type="submit" loading={busy} disabled={!name.trim()}>
           {initial ? "Save changes" : "Create collection"}
         </Button>
         {create.isError || update.isError ? (

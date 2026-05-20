@@ -31,7 +31,7 @@ export function AddToCollection({ animeId }: Props) {
           ) : (
             <div className="max-h-56 overflow-y-auto">
               {collections.map((c) => (
-                <AddRow key={c.id} collectionId={c.id} title={c.title} animeId={animeId} />
+                <AddRow key={c.id} collectionId={c.id} title={c.name} animeId={animeId} />
               ))}
             </div>
           )}
@@ -40,7 +40,7 @@ export function AddToCollection({ animeId }: Props) {
             onSubmit={async (e) => {
               e.preventDefault();
               if (!newTitle.trim()) return;
-              const r = await create.mutateAsync({ title: newTitle.trim() });
+              const r = await create.mutateAsync({ name: newTitle.trim() });
               setNewTitle("");
               await new Promise((res) => setTimeout(res, 60));
               const item = document.querySelector<HTMLButtonElement>(

@@ -99,6 +99,7 @@ export interface ChatAnimeRef {
   id: number | null;
   title: string;
   image_url: string | null;
+  year?: number | null;
   genres?: string[];
 }
 
@@ -112,17 +113,19 @@ export interface ChatMessage {
 export interface ChatResponse {
   response: string;
   suggested_anime?: ChatAnimeRef[];
+  suggested_actions?: string[];
 }
 
 export interface Collection {
   id: number;
-  owner_id: number;
-  title: string;
+  user_id: number;
+  name: string;
   description: string | null;
+  color: string;
+  icon: string;
   is_public: boolean;
   share_token: string | null;
-  item_count: number;
-  cover_image_url: string | null;
+  items_count: number;
   created_at: string;
   updated_at: string;
 }
@@ -137,7 +140,7 @@ export interface CollectionItem {
 
 export interface CollectionDetail extends Collection {
   items: CollectionItem[];
-  owner: { id: number; username: string; display_name: string | null };
+  owner?: { id: number; username: string; display_name: string | null };
 }
 
 export interface StatsOverview {
@@ -221,18 +224,35 @@ export interface ActivityResponse {
   pages: number;
 }
 
-export interface CompareTaste {
-  shared_genres: StatsGenreSlice[];
-  only_a_genres: StatsGenreSlice[];
-  only_b_genres: StatsGenreSlice[];
-  shared_anime: AnimeSummary[];
-  score_agreement: number;
+// Anime-vs-anime comparison (GET /api/compare?a=&b=). The backend payload
+// includes the caller's own per-anime rating + fan-genre votes so the UI can
+// show "your score" side-by-side without a second round-trip.
+
+export interface AnimeCompareUserSide {
+  score: number | null;
+  review: string | null;
+  fan_genres: string[];
 }
 
-export interface CompareResponse {
-  user_a: { id: number; username: string; display_name: string | null };
-  user_b: { id: number; username: string; display_name: string | null };
-  taste: CompareTaste;
+export interface AnimeCompareSide {
+  anime: AnimeSummary & {
+    studio?: string | null;
+  };
+  user: AnimeCompareUserSide;
+}
+
+export interface AnimeCompareResponse {
+  a: AnimeCompareSide;
+  b: AnimeCompareSide;
+  shared: {
+    official_genres: string[];
+    fan_genres: string[];
+    studios: string[];
+  };
+  unique: {
+    a_only_official_genres: string[];
+    b_only_official_genres: string[];
+  };
 }
 
 export interface Episode {

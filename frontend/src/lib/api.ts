@@ -14,6 +14,17 @@ import type {
   WatchlistResponse,
 } from "@/types/api";
 import type { ChatResponse } from "@/types/models";
+import { useNsfw } from "@/stores/nsfw";
+
+// Endpoints whose anime payloads should respect the global NSFW toggle.
+const NSFW_AWARE_PREFIXES = ["/anime", "/seasonal", "/recommend", "/schedule"];
+
+function applyNsfwParam(path: string): string {
+  if (!useNsfw.getState().visible) return path;
+  if (!NSFW_AWARE_PREFIXES.some((p) => path.startsWith(p))) return path;
+  if (/[?&]include_nsfw=/.test(path)) return path;
+  return path + (path.includes("?") ? "&" : "?") + "include_nsfw=true";
+}
 
 const BASE =
   typeof window !== "undefined" &&
@@ -60,7 +71,7 @@ async function request<T>(
   const t = getToken();
   if (t) headers["Authorization"] = `Bearer ${t}`;
 
-  const res = await fetch(BASE + path, { ...init, headers });
+  const res = await fetch(BASE + applyNsfwParam(path), { ...init, headers });
   const text = await res.text();
   const data = text ? JSON.parse(text) : {};
   if (!res.ok) {
@@ -127,10 +138,10 @@ export const api = {
 
   getMyRatings: () => request<RatingsResponse>("/ratings/me"),
 
-  getRecs: () => request<RecommendationsResponse>("/recommend"),
+  getRecs: () => request<RecommendationsResponse>("/recommend/for-me"),
 
   chatMessage: (body: ChatRequest) =>
-    request<ChatResponse>("/chat", {
+    request<ChatResponse>("/chat/message", {
       method: "POST",
       body: JSON.stringify(body),
     }),
@@ -142,7 +153,7 @@ export const api = {
   getSharedCollection: (token: string) =>
     request<import("@/types/api").CollectionResponse>(`/collections/public/${token}`),
   createCollection: (body: {
-    title: string;
+    name: string;
     description?: string;
     is_public?: boolean;
   }) =>
@@ -152,7 +163,7 @@ export const api = {
     }),
   updateCollection: (
     id: number,
-    body: { title?: string; description?: string; is_public?: boolean }
+    body: { name?: string; description?: string; is_public?: boolean }
   ) =>
     request<import("@/types/api").CollectionMutation>(`/collections/${id}`, {
       method: "PATCH",
@@ -186,9 +197,13 @@ export const api = {
   getActivity: (page = 1) =>
     request<import("@/types/api").ActivityResp>(`/activity?page=${page}`),
 
-  getCompare: (a: string, b: string) =>
+  // Anime-vs-anime comparison. The user-vs-user path is dropped because
+  // there's only one demo user; this hits the richer /api/compare?a=&b=
+  // endpoint which returns side-by-side anime payloads plus the caller's
+  // own ratings.
+  compareAnime: (aId: number, bId: number) =>
     request<import("@/types/api").CompareResp>(
-      `/compare/users?user_a=${encodeURIComponent(a)}&user_b=${encodeURIComponent(b)}`
+      `/compare?a=${aId}&b=${bId}`
     ),
 
   getSchedule: (days = 7, kind: "sub" | "dub" | "both" = "sub") =>

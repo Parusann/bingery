@@ -27,7 +27,7 @@ export function useSharedCollection(token: string | undefined) {
 export function useCreateCollection() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: (body: { title: string; description?: string; is_public?: boolean }) =>
+    mutationFn: (body: { name: string; description?: string; is_public?: boolean }) =>
       api.createCollection(body),
     onSuccess: () => qc.invalidateQueries({ queryKey: ["collections"] }),
   });
@@ -36,7 +36,7 @@ export function useCreateCollection() {
 export function useUpdateCollection(id: number) {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: (body: { title?: string; description?: string; is_public?: boolean }) =>
+    mutationFn: (body: { name?: string; description?: string; is_public?: boolean }) =>
       api.updateCollection(id, body),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["collections"] });
