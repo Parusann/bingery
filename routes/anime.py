@@ -2,6 +2,7 @@ from flask import Blueprint, request, jsonify
 from flask_jwt_extended import jwt_required, get_jwt_identity, verify_jwt_in_request
 from sqlalchemy import func
 from models import db, Anime, Genre, Rating, FanGenreVote, anime_genres, WatchlistEntry
+from utils.nsfw import maybe_exclude_nsfw
 
 anime_bp = Blueprint("anime", __name__, url_prefix="/api/anime")
 
@@ -33,6 +34,9 @@ def list_anime():
     # Filter by official genre
     if genre_filter:
         query = query.join(anime_genres).join(Genre).filter(Genre.name == genre_filter)
+
+    # Hide NSFW unless the caller opted in via ?include_nsfw=true
+    query = maybe_exclude_nsfw(query)
 
     # Sorting
     sort_column = {
@@ -148,9 +152,14 @@ def top_anime():
         .subquery()
     )
 
-    results = (
+    results_query = (
         db.session.query(Anime, subq.c.avg_score, subq.c.num_ratings)
         .join(subq, Anime.id == subq.c.anime_id)
+    )
+    results_query = maybe_exclude_nsfw(results_query)
+
+    results = (
+        results_query
         .order_by(subq.c.avg_score.desc())
         .limit(limit)
         .all()
