@@ -2,13 +2,182 @@
 from __future__ import annotations
 
 import json
+import re
 from flask import Blueprint, request, jsonify
 from flask_jwt_extended import jwt_required, get_jwt_identity, verify_jwt_in_request
 from flask_jwt_extended.exceptions import NoAuthorizationError
 
-from utils.ai_provider import Message, get_provider
+from models import db, Anime
+from utils.ai_provider import Message, ProviderUnavailableError, get_provider
 from utils.ai_tools import ALL_TOOLS
-from routes.chatbot_tools import execute_tool, BINGERY_SYSTEM
+from utils.nsfw import HARD_BLOCKED_GENRES, SOFT_BLOCKED_GENRES
+from routes.chatbot_tools import execute_tool, build_system_prompt
+
+
+# Stripped from the response text — model often emits these but their IDs
+# can't be trusted (the model hallucinates them). We resolve cards via the
+# bold-title pattern below instead.
+_ANIME_ID_RE = re.compile(r"\[ANIME_ID:\d+\]\s*")
+
+# Bold titles in the model's reply: **Title** on a single line.
+_BOLD_TITLE_RE = re.compile(r"\*\*([^*\n]{2,100}?)\*\*")
+
+# Clickable option pills: [OPTIONS: a | b | c]. The model emits this when
+# asking a multi-choice clarifying question; the frontend renders the pills.
+_OPTIONS_RE = re.compile(r"\[OPTIONS:\s*([^\]\n]+?)\s*\]")
+
+# Anime tagged with any of these are never surfaced as a card, period.
+_CARD_BLOCKED_GENRES = set(HARD_BLOCKED_GENRES) | set(SOFT_BLOCKED_GENRES)
+
+
+def _resolve_title(title: str) -> Anime | None:
+    """Best-effort lookup: exact title or title_english match, else fuzzy
+    substring match, ranked by api_score so popular entries win.
+    """
+    title = title.strip()
+    if not title:
+        return None
+    # Exact match (case-insensitive) preferred.
+    exact = (
+        Anime.query.filter(
+            db.or_(
+                Anime.title.ilike(title),
+                Anime.title_english.ilike(title),
+            )
+        )
+        .order_by(Anime.api_score.desc().nullslast())
+        .first()
+    )
+    if exact:
+        return exact
+    # Fuzzy substring fallback.
+    return (
+        Anime.query.filter(
+            db.or_(
+                Anime.title.ilike(f"%{title}%"),
+                Anime.title_english.ilike(f"%{title}%"),
+            )
+        )
+        .order_by(Anime.api_score.desc().nullslast())
+        .first()
+    )
+
+
+def _extract_anime_refs(text: str):
+    """Resolve the AI's recommendations into real anime cards.
+
+    Strategy: ignore the model's hallucinated [ANIME_ID:N] markers and look
+    up each **Title** mention in the DB by title. Hentai and Ecchi are
+    always filtered out of the card list (the toggle controls *list* views,
+    but card recommendations from chat are kept SFW unconditionally).
+    """
+    titles_in_order: list[str] = []
+    seen_titles: set[str] = set()
+    for m in _BOLD_TITLE_RE.finditer(text):
+        t = m.group(1).strip()
+        key = t.lower()
+        if t and key not in seen_titles:
+            seen_titles.add(key)
+            titles_in_order.append(t)
+
+    refs = []
+    for t in titles_in_order:
+        a = _resolve_title(t)
+        if a is None:
+            continue
+        if any(g.name in _CARD_BLOCKED_GENRES for g in a.official_genres):
+            continue
+        refs.append({
+            "id": a.id,
+            "title": a.title_english or a.title,
+            "image_url": a.image_url,
+            "year": a.year,
+            "genres": [g.name for g in a.official_genres[:3]],
+        })
+
+    # Strip stale ID markers from the prose; keep the bold formatting.
+    cleaned = _ANIME_ID_RE.sub("", text).strip()
+    return refs, cleaned
+
+
+def _extract_options(text: str):
+    """Return (options, cleaned_text).
+
+    Primary: explicit [OPTIONS: a | b | c] marker. Smaller local models
+    often ignore that instruction, so we also run a heuristic fallback
+    that detects ``X or Y?`` and ``X, Y, or Z?`` patterns at the end of
+    the assistant's reply.
+    """
+    options: list[str] = []
+    m = _OPTIONS_RE.search(text)
+    if m:
+        raw = m.group(1)
+        for part in raw.split("|"):
+            p = part.strip()
+            if p and len(p) <= 40:
+                options.append(p)
+    cleaned = _OPTIONS_RE.sub("", text).strip()
+
+    if not options:
+        options = _autofill_options_from_question(cleaned)
+
+    return options[:5], cleaned
+
+
+_LEADING_FILLER_RE = re.compile(
+    r"^(?:something|more|a|an|the|maybe|perhaps|kinda|sort\s+of)\s+",
+    re.IGNORECASE,
+)
+
+
+def _autofill_options_from_question(text: str) -> list[str]:
+    """Heuristically pull options from a multi-choice question.
+
+    Catches "Are you looking for grounded or magical?" and "Do you prefer
+    dark and gritty, whimsical, or action-packed?" — returns [] for
+    open-ended questions or anything that doesn't look like a clean choice.
+    """
+    body = text.rstrip()
+    if not body.endswith("?"):
+        return []
+    body = body[:-1].rstrip()
+
+    # Trim to the last clause — skip everything before an em-dash, colon,
+    # or sentence boundary so we don't grab the verb phrase.
+    for sep in ["—", "–", "—", "–", ":", ". ", "! ", "? "]:
+        idx = body.rfind(sep)
+        if idx != -1:
+            body = body[idx + len(sep):]
+            break
+
+    if not re.search(r"\bor\b", body, flags=re.IGNORECASE):
+        return []
+
+    raw_chunks = [c.strip() for c in body.split(",") if c.strip()]
+    expanded: list[str] = []
+    for chunk in raw_chunks:
+        for piece in re.split(r"\s+or\s+", chunk, flags=re.IGNORECASE):
+            p = piece.strip(" .?!,")
+            if p:
+                expanded.append(p)
+
+    seen: set[str] = set()
+    out: list[str] = []
+    for p in expanded:
+        p = _LEADING_FILLER_RE.sub("", p).strip()
+        if not p:
+            continue
+        if len(p) > 40 or len(p.split()) > 6:
+            continue
+        key = p.lower()
+        if key in seen:
+            continue
+        seen.add(key)
+        out.append(p)
+
+    if not (2 <= len(out) <= 5):
+        return []
+    return out
 
 
 chatbot_bp = Blueprint("chatbot", __name__, url_prefix="/api/chat")
@@ -33,7 +202,12 @@ def chat_message():
     if not user_msg:
         return jsonify({"error": "`message` is required"}), 400
 
-    history = data.get("history") or []
+    # The frontend hook posts `conversation`; older callers posted `history`.
+    # Accept either so existing thread context isn't silently dropped.
+    history = data.get("conversation") or data.get("history") or []
+    # Frontend sends `mode`: "recommend" | "rate" | "onboard". Each mode
+    # composes its own system prompt — see chatbot_tools.MODE_PROMPTS.
+    mode = data.get("mode")
     user_id = _optional_user_id()
 
     messages: list[Message] = []
@@ -44,43 +218,63 @@ def chat_message():
             messages.append(Message(role=role, content=content))
     messages.append(Message(role="user", content=user_msg))
 
-    system = BINGERY_SYSTEM
+    system = build_system_prompt(mode)
     if user_id:
         system += f"\n\n[authenticated user id: {user_id}]"
 
     provider = get_provider()
 
-    for _ in range(MAX_TOOL_LOOPS):
-        resp = provider.chat(messages=messages, tools=ALL_TOOLS, system=system)
+    try:
+        for _ in range(MAX_TOOL_LOOPS):
+            resp = provider.chat(messages=messages, tools=ALL_TOOLS, system=system)
 
-        if resp.tool_calls:
-            # Append the assistant's tool-use turn.
-            messages.append(Message(
-                role="assistant",
-                content=json.dumps([
-                    {"name": c.name, "arguments": c.arguments, "id": c.id}
-                    for c in resp.tool_calls
-                ]),
-            ))
-            for call in resp.tool_calls:
-                result = execute_tool(call.name, call.arguments, user_id)
+            if resp.tool_calls:
+                # Append the assistant's tool-use turn.
                 messages.append(Message(
-                    role="tool",
-                    tool_call_id=call.id,
-                    tool_name=call.name,
-                    content=json.dumps(result),
+                    role="assistant",
+                    content=json.dumps([
+                        {"name": c.name, "arguments": c.arguments, "id": c.id}
+                        for c in resp.tool_calls
+                    ]),
                 ))
-            continue
+                for call in resp.tool_calls:
+                    result = execute_tool(call.name, call.arguments, user_id)
+                    messages.append(Message(
+                        role="tool",
+                        tool_call_id=call.id,
+                        tool_name=call.name,
+                        content=json.dumps(result),
+                    ))
+                continue
+
+            refs, cleaned = _extract_anime_refs(resp.text or "")
+            options, cleaned = _extract_options(cleaned)
+            return jsonify({
+                "response": cleaned,
+                "suggested_anime": refs,
+                "suggested_actions": options,
+                "stop_reason": resp.stop_reason,
+            })
 
         return jsonify({
-            "response": resp.text,
-            "stop_reason": resp.stop_reason,
+            "response": "I kept reaching for tools but never settled. Try asking a narrower question.",
+            "stop_reason": "loop_limit",
         })
-
-    return jsonify({
-        "response": "I kept reaching for tools but never settled. Try asking a narrower question.",
-        "stop_reason": "loop_limit",
-    })
+    except ProviderUnavailableError as exc:
+        # Home PC asleep / cloudflared tunnel down / CF Access rejecting.
+        # Return a friendly 503 so the chat UI can show the offline state
+        # instead of a generic 500.
+        return jsonify({
+            "response": (
+                "The taste guide is offline right now — the home AI box "
+                "looks asleep. Try again in a minute, or browse Discover "
+                "while you wait."
+            ),
+            "suggested_anime": [],
+            "suggested_actions": [],
+            "stop_reason": "provider_unavailable",
+            "error": str(exc),
+        }), 503
 
 
 @chatbot_bp.route("/quick-recommend", methods=["GET"])
