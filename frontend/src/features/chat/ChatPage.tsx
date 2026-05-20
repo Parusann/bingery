@@ -1,9 +1,8 @@
 import { useEffect, useRef, useState } from "react";
 import { useSearchParams } from "react-router-dom";
-import { motion } from "framer-motion";
+import { motion, AnimatePresence } from "framer-motion";
 import { Button } from "@/design/Button";
 import { GlassCard } from "@/design/GlassCard";
-import { Input } from "@/design/Input";
 import { cn } from "@/lib/cn";
 import { useChat } from "@/hooks/useChat";
 import type { Turn } from "@/hooks/useChat";
@@ -11,29 +10,47 @@ import { ChatAnimeCard } from "./ChatAnimeCard";
 
 type Mode = "recommend" | "rate" | "onboard";
 
-const SEED: Record<Mode, Turn[]> = {
-  recommend: [
-    {
-      role: "assistant",
-      content:
-        "Hey — I'm your anime guide. Tell me what you're in the mood for and I'll pick three.",
-    },
-  ],
-  rate: [],
-  onboard: [
-    {
-      role: "assistant",
-      content:
-        "Let's build your taste profile. Name three anime you already love and a couple you disliked.",
-    },
-  ],
+const MODE_META: Record<Mode, { label: string; eyebrow: string; seed: Turn[] }> = {
+  recommend: {
+    label: "Recommend",
+    eyebrow: "Get a pick that fits your mood",
+    seed: [
+      {
+        role: "assistant",
+        content:
+          "Hey — I'm your anime guide. Tell me what you're in the mood for and I'll pick a few.",
+      },
+    ],
+  },
+  rate: {
+    label: "Rate with AI",
+    eyebrow: "Talk through a rating with the AI",
+    seed: [
+      {
+        role: "assistant",
+        content:
+          "Which anime did you just finish? Tell me how it felt and I'll suggest a score.",
+      },
+    ],
+  },
+  onboard: {
+    label: "Onboard",
+    eyebrow: "Build your taste profile in a few questions",
+    seed: [
+      {
+        role: "assistant",
+        content:
+          "Let's build your taste. Name three anime you already love and a couple you bounced off.",
+      },
+    ],
+  },
 };
 
 export function ChatPage() {
   const [params] = useSearchParams();
   const initialMode = (params.get("mode") as Mode) || "recommend";
   const [mode, setMode] = useState<Mode>(initialMode);
-  const { turns, send, loading, error } = useChat(mode, SEED[mode]);
+  const { turns, send, loading, error } = useChat(mode, MODE_META[mode].seed);
   const [input, setInput] = useState("");
   const scroller = useRef<HTMLDivElement | null>(null);
 
@@ -42,92 +59,241 @@ export function ChatPage() {
       top: scroller.current.scrollHeight,
       behavior: "smooth",
     });
-  }, [turns.length]);
+  }, [turns.length, loading]);
 
   return (
-    <div className="max-w-3xl mx-auto">
-      <div className="flex items-center gap-2 mb-4">
-        <h1 className="font-display text-4xl text-amber">Guide</h1>
-        <div className="ml-auto flex gap-1">
-          {(["recommend", "rate", "onboard"] as const).map((m) => (
-            <button
-              key={m}
-              onClick={() => setMode(m)}
-              className={cn(
-                "px-3 py-1.5 rounded-md text-sm",
-                mode === m
-                  ? "bg-white/[0.08] text-text"
-                  : "text-text-muted hover:text-text"
-              )}
-            >
-              {m === "recommend" ? "Recommend" : m === "rate" ? "Rate with AI" : "Onboard"}
-            </button>
-          ))}
-        </div>
-      </div>
-      <GlassCard className="h-[60vh] flex flex-col">
-        <div ref={scroller} className="flex-1 overflow-y-auto p-5 space-y-4">
-          {turns.map((t, i) => (
-            <motion.div
-              key={i}
-              initial={{ opacity: 0, y: 6 }}
-              animate={{ opacity: 1, y: 0 }}
-              className={cn(
-                "max-w-[85%]",
-                t.role === "user" ? "ml-auto" : "mr-auto"
-              )}
-            >
-              <div
+    <div className="max-w-4xl mx-auto">
+      {/* ─── Header ──────────────────────────────────────────────── */}
+      <header className="flex flex-col gap-3 mb-6">
+        <div className="flex items-end gap-3 flex-wrap">
+          <h1 className="font-display text-4xl md:text-5xl text-amber leading-none flex items-center gap-2.5">
+            <span
+              aria-hidden
+              className="inline-block w-2 h-2 rounded-full bg-amber shadow-[0_0_12px_rgba(244,182,144,0.7)]"
+            />
+            Guide
+          </h1>
+          <span className="text-sm text-text-muted mb-1">
+            {MODE_META[mode].eyebrow}
+          </span>
+          <div className="ml-auto flex gap-1.5">
+            {(Object.keys(MODE_META) as Mode[]).map((m) => (
+              <button
+                key={m}
+                onClick={() => setMode(m)}
                 className={cn(
-                  "px-4 py-3 rounded-2xl text-sm leading-relaxed",
-                  t.role === "user"
-                    ? "bg-amber text-bg"
-                    : "bg-white/[0.04] border border-border"
+                  "px-3.5 py-1.5 rounded-pill text-xs font-mono tracking-wider uppercase transition-all",
+                  mode === m
+                    ? "bg-amber/15 text-amber border border-amber/55"
+                    : "text-text-muted border border-border hover:border-border-strong hover:text-text"
                 )}
               >
-                {t.content}
-              </div>
-              {t.extra?.anime?.length ? (
-                <div className="mt-2 grid gap-2">
-                  {t.extra.anime.slice(0, 3).map((a, j) => (
-                    <ChatAnimeCard key={j} anime={a} />
-                  ))}
-                </div>
-              ) : null}
-            </motion.div>
-          ))}
+                {MODE_META[m].label}
+              </button>
+            ))}
+          </div>
+        </div>
+      </header>
+
+      {/* ─── Chat surface ────────────────────────────────────────── */}
+      <GlassCard tone="warm" elevated className="overflow-hidden">
+        <div
+          ref={scroller}
+          className="h-[68vh] overflow-y-auto px-5 md:px-7 py-6 space-y-5"
+        >
+          <AnimatePresence initial={false}>
+            {turns.map((t, i) => {
+              const isLatestAssistant =
+                t.role === "assistant" && i === turns.length - 1 && !loading;
+              return (
+                <motion.div
+                  key={i}
+                  initial={{ opacity: 0, y: 8 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  transition={{ duration: 0.25, ease: "easeOut" }}
+                  className={cn(
+                    "flex",
+                    t.role === "user" ? "justify-end" : "justify-start"
+                  )}
+                >
+                  <div
+                    className={cn(
+                      "max-w-[88%] md:max-w-[78%] flex flex-col gap-3",
+                      t.role === "user" ? "items-end" : "items-start"
+                    )}
+                  >
+                    <Bubble role={t.role}>{t.content}</Bubble>
+                    {isLatestAssistant && t.extra?.actions?.length ? (
+                      <div className="flex flex-wrap gap-2">
+                        {t.extra.actions.map((opt, j) => (
+                          <motion.button
+                            key={opt + j}
+                            type="button"
+                            onClick={() => {
+                              if (!loading) send(opt);
+                            }}
+                            disabled={loading}
+                            initial={{ opacity: 0, y: 4 }}
+                            animate={{ opacity: 1, y: 0 }}
+                            transition={{ delay: 0.05 * j, duration: 0.2 }}
+                            className={cn(
+                              "px-4 py-1.5 rounded-pill text-xs font-mono tracking-wider uppercase",
+                              "bg-white/[0.04] border border-amber/40 text-amber backdrop-blur-md",
+                              "hover:bg-amber/[0.12] hover:border-amber/70 hover:-translate-y-px",
+                              "disabled:opacity-40 disabled:hover:translate-y-0 transition-all"
+                            )}
+                          >
+                            {opt}
+                          </motion.button>
+                        ))}
+                      </div>
+                    ) : null}
+                    {t.role === "assistant" && t.extra?.anime?.length ? (
+                      <div className="grid sm:grid-cols-2 gap-2.5 w-full">
+                        {t.extra.anime.slice(0, 6).map((a, j) => (
+                          <motion.div
+                            key={`${a.id ?? j}`}
+                            initial={{ opacity: 0, y: 6 }}
+                            animate={{ opacity: 1, y: 0 }}
+                            transition={{ delay: 0.08 * j, duration: 0.25 }}
+                          >
+                            <ChatAnimeCard anime={a} />
+                          </motion.div>
+                        ))}
+                      </div>
+                    ) : null}
+                  </div>
+                </motion.div>
+              );
+            })}
+          </AnimatePresence>
           {loading ? (
-            <div className="mr-auto px-4 py-3 rounded-2xl bg-white/[0.04] border border-border text-sm text-text-muted">
-              <span className="inline-block w-1.5 h-1.5 rounded-full bg-amber animate-pulse mr-1" />
-              <span className="inline-block w-1.5 h-1.5 rounded-full bg-amber animate-pulse mr-1 [animation-delay:0.15s]" />
-              <span className="inline-block w-1.5 h-1.5 rounded-full bg-amber animate-pulse [animation-delay:0.3s]" />
+            <div className="flex justify-start">
+              <Bubble role="assistant" muted>
+                <span className="inline-flex items-center gap-1.5">
+                  <Dot delay={0} />
+                  <Dot delay={120} />
+                  <Dot delay={240} />
+                </span>
+              </Bubble>
             </div>
           ) : null}
         </div>
+
+        {/* ─── Composer ────────────────────────────────────────── */}
         <form
-          className="p-3 border-t border-border flex gap-2"
+          className="flex items-center gap-3 p-4 border-t border-border bg-bg/30 backdrop-blur-md"
           onSubmit={(e) => {
             e.preventDefault();
-            if (!loading) {
+            if (!loading && input.trim()) {
               send(input);
               setInput("");
             }
           }}
         >
-          <Input
-            className="flex-1"
-            placeholder="Type a message…"
+          <input
+            type="text"
+            placeholder="Tell me what you're in the mood for…"
             value={input}
             onChange={(e) => setInput(e.target.value)}
+            disabled={loading}
+            className="flex-1 h-11 px-5 rounded-pill bg-white/[0.04] border border-amber/30 backdrop-blur-md text-sm placeholder:text-text-dim focus:outline-none focus:border-amber/60 focus:bg-amber/[0.04] transition-colors disabled:opacity-50"
           />
           <Button type="submit" loading={loading} disabled={!input.trim()}>
             Send
           </Button>
         </form>
       </GlassCard>
+
       {error ? (
-        <p className="mt-3 text-sm text-danger">{error}</p>
+        <p className="mt-3 text-sm text-danger" role="alert">
+          {error}
+        </p>
       ) : null}
     </div>
+  );
+}
+
+// ─── Helpers ───────────────────────────────────────────────────────
+
+function Bubble({
+  role,
+  children,
+  muted,
+}: {
+  role: Turn["role"];
+  children: React.ReactNode;
+  muted?: boolean;
+}) {
+  // Lightweight inline markdown: **bold** and *italic*. We only render this
+  // on string children; React node children pass through untouched (used for
+  // the dot-typing indicator).
+  const content =
+    typeof children === "string" ? <Markdown text={children} /> : children;
+
+  if (role === "user") {
+    return (
+      <div
+        className={cn(
+          "px-4 py-2.5 rounded-2xl rounded-br-md text-sm leading-relaxed",
+          "bg-gradient-to-b from-amber/[0.22] to-amber/[0.08]",
+          "border border-amber/45 text-text shadow-[inset_0_1px_0_rgba(255,220,200,0.18)]"
+        )}
+      >
+        {content}
+      </div>
+    );
+  }
+  return (
+    <div
+      className={cn(
+        "relative pl-4 pr-4 py-3 rounded-2xl rounded-bl-md text-sm leading-relaxed",
+        "bg-white/[0.035] border border-border backdrop-blur-md",
+        muted && "text-text-muted"
+      )}
+    >
+      <span
+        aria-hidden
+        className="absolute left-0 top-3 bottom-3 w-[3px] rounded-r-sm bg-gradient-to-b from-amber to-amber/30"
+      />
+      <span className="block whitespace-pre-wrap">{content}</span>
+    </div>
+  );
+}
+
+// Tiny inline markdown renderer — supports **bold** and *italic* on a single
+// line. Multi-line content is preserved by the surrounding `whitespace-pre-wrap`.
+function Markdown({ text }: { text: string }) {
+  // Split on bold or italic spans, capturing the delimiters too.
+  const parts = text.split(/(\*\*[^*]+\*\*|\*[^*]+\*)/g);
+  return (
+    <>
+      {parts.map((part, i) => {
+        if (part.startsWith("**") && part.endsWith("**") && part.length > 4) {
+          return (
+            <strong key={i} className="font-display text-amber not-italic">
+              {part.slice(2, -2)}
+            </strong>
+          );
+        }
+        if (part.startsWith("*") && part.endsWith("*") && part.length > 2) {
+          return (
+            <em key={i} className="italic text-text">
+              {part.slice(1, -1)}
+            </em>
+          );
+        }
+        return <span key={i}>{part}</span>;
+      })}
+    </>
+  );
+}
+
+function Dot({ delay }: { delay: number }) {
+  return (
+    <span
+      className="inline-block w-1.5 h-1.5 rounded-full bg-amber animate-pulse"
+      style={{ animationDelay: `${delay}ms` }}
+    />
   );
 }
