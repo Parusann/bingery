@@ -37,9 +37,11 @@ const TOKEN_KEY = "bingery_token";
 
 export class ApiError extends Error {
   status: number;
-  constructor(message: string, status: number) {
+  code?: string;
+  constructor(message: string, status: number, code?: string) {
     super(message);
     this.status = status;
+    this.code = code;
   }
 }
 
@@ -75,7 +77,11 @@ async function request<T>(
   const text = await res.text();
   const data = text ? JSON.parse(text) : {};
   if (!res.ok) {
-    throw new ApiError(data.error ?? `Request failed (${res.status})`, res.status);
+    throw new ApiError(
+      data.error ?? `Request failed (${res.status})`,
+      res.status,
+      typeof data.stop_reason === "string" ? data.stop_reason : undefined,
+    );
   }
   return data as T;
 }

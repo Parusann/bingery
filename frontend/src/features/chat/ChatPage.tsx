@@ -50,7 +50,7 @@ export function ChatPage() {
   const [params] = useSearchParams();
   const initialMode = (params.get("mode") as Mode) || "recommend";
   const [mode, setMode] = useState<Mode>(initialMode);
-  const { turns, send, loading, error } = useChat(mode, MODE_META[mode].seed);
+  const { turns, send, loading, error, offline } = useChat(mode, MODE_META[mode].seed);
   const [input, setInput] = useState("");
   const scroller = useRef<HTMLDivElement | null>(null);
 
@@ -205,7 +205,29 @@ export function ChatPage() {
         </form>
       </GlassCard>
 
-      {error ? (
+      {offline ? (
+        <div
+          className="mt-3 rounded-lg border border-amber/40 bg-amber/[0.06] px-4 py-3 flex items-start gap-3"
+          role="status"
+        >
+          <svg
+            aria-hidden="true"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="1.8"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            className="w-5 h-5 mt-0.5 text-amber shrink-0"
+          >
+            <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z" />
+          </svg>
+          <div className="text-sm leading-snug">
+            <div className="font-medium text-text">Taste guide is offline</div>
+            <div className="text-text-muted mt-0.5">{error}</div>
+          </div>
+        </div>
+      ) : error ? (
         <p className="mt-3 text-sm text-danger" role="alert">
           {error}
         </p>
