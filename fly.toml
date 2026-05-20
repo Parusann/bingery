@@ -20,7 +20,7 @@
 #   put bingery.db /data/bingery.db
 
 app = "bingery"            # change this to your unique Fly app name
-primary_region = "ord"     # set to the region closest to your home PC
+primary_region = "yyz"     # Toronto — closest Fly region to the home PC in Toronto, ON
 
 [build]
   dockerfile = "Dockerfile"
