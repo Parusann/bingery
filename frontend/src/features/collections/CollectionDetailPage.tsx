@@ -33,16 +33,19 @@ export function CollectionDetailPage() {
     );
   }
   const c = data.collection;
-  const isOwner = user?.id === c.owner_id;
+  const isOwner = user?.id === c.user_id;
+  const ownerLabel = c.owner
+    ? c.owner.display_name ?? c.owner.username
+    : null;
 
   return (
     <article>
       <header className="flex flex-col gap-3 mb-6">
         <div className="flex flex-wrap items-baseline gap-3">
-          <h1 className="font-display text-4xl text-amber">{c.title}</h1>
-          <span className="text-sm text-text-muted">
-            by {c.owner.display_name ?? c.owner.username}
-          </span>
+          <h1 className="font-display text-4xl text-amber">{c.name}</h1>
+          {ownerLabel ? (
+            <span className="text-sm text-text-muted">by {ownerLabel}</span>
+          ) : null}
           <div className="ml-auto flex gap-2">
             <ShareButton token={c.share_token} />
             {isOwner ? (

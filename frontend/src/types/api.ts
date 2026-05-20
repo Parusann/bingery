@@ -104,8 +104,8 @@ export interface SeasonalResp extends SeasonalResponse {}
 import type { ActivityResponse } from "./models";
 export interface ActivityResp extends ActivityResponse {}
 
-import type { CompareResponse } from "./models";
-export interface CompareResp extends CompareResponse {}
+import type { AnimeCompareResponse } from "./models";
+export interface CompareResp extends AnimeCompareResponse {}
 
 import type { ScheduleResponse, AnimeEpisodesResponse } from "./models";
 export interface ScheduleResp extends ScheduleResponse {}
