@@ -26,12 +26,27 @@ function applyNsfwParam(path: string): string {
   return path + (path.includes("?") ? "&" : "?") + "include_nsfw=true";
 }
 
+// Honor VITE_API_URL when set — needed when the frontend is hosted on a
+// different origin from the backend (e.g. Cloudflare Pages frontend + Fly.io
+// backend). Set it to the backend origin without the /api suffix; we add
+// /api here. Strips trailing slashes so both forms work.
+//
+// When unset, default to localhost:5000 in dev and same-origin /api in prod
+// (the latter matches the Dockerfile setup where Flask serves the SPA).
+const ENV_API_URL = (
+  import.meta.env.VITE_API_URL as string | undefined
+)?.replace(/\/+$/, "");
+
 const BASE =
-  typeof window !== "undefined" &&
-  (window.location.hostname === "localhost" ||
-    window.location.hostname === "127.0.0.1")
-    ? "http://localhost:5000/api"
-    : window.location.origin + "/api";
+  ENV_API_URL && ENV_API_URL.length > 0
+    ? ENV_API_URL.endsWith("/api")
+      ? ENV_API_URL
+      : `${ENV_API_URL}/api`
+    : typeof window !== "undefined" &&
+        (window.location.hostname === "localhost" ||
+          window.location.hostname === "127.0.0.1")
+      ? "http://localhost:5000/api"
+      : window.location.origin + "/api";
 
 const TOKEN_KEY = "bingery_token";
 
