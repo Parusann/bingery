@@ -37,6 +37,11 @@ claude.md
 .claude/
 .rtk/
 
+# Local DB backups, runtime logs, and demo capture artifacts
+*.bak
+*.log
+demo-captures/
+
 # Editor/tooling notes that must never enter the public repo
 CLAUDE.md
 claude.md
