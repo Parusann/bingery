@@ -17,9 +17,9 @@ RUN npm run build
 # ── Stage 2: Python runtime ────────────────────────────────────────────────
 FROM python:3.13-slim AS runtime
 
-# System deps for psycopg2 (postgres optional fallback) + curl for healthcheck.
+# curl is used by the Docker HEALTHCHECK directive below.
 RUN apt-get update \
-    && apt-get install -y --no-install-recommends curl libpq5 \
+    && apt-get install -y --no-install-recommends curl \
     && rm -rf /var/lib/apt/lists/*
 
 ENV PYTHONDONTWRITEBYTECODE=1 \
@@ -33,7 +33,7 @@ WORKDIR /app
 # Install Python deps first for layer caching
 COPY requirements.txt ./
 RUN --mount=type=cache,target=/root/.cache/pip \
-    pip install --no-deps -r requirements.txt
+    pip install -r requirements.txt
 
 # Copy backend
 COPY app.py config.py models.py ./
