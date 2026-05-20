@@ -16,6 +16,7 @@ from flask import Blueprint, jsonify, request
 from flask_jwt_extended import jwt_required
 
 from models import db, Anime, Episode
+from utils.nsfw import maybe_exclude_nsfw
 
 
 schedule_bp = Blueprint("schedule", __name__)
@@ -109,10 +110,12 @@ def upcoming():
 
     def _collect(field, label: str) -> None:
         rows = (
-            db.session.query(Episode, Anime)
-            .join(Anime, Anime.id == Episode.anime_id)
-            .filter(field >= start_naive)
-            .filter(field < end_naive)
+            maybe_exclude_nsfw(
+                db.session.query(Episode, Anime)
+                .join(Anime, Anime.id == Episode.anime_id)
+                .filter(field >= start_naive)
+                .filter(field < end_naive)
+            )
             .all()
         )
         for episode, anime in rows:

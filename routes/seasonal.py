@@ -4,6 +4,7 @@ from flask_jwt_extended import jwt_required, get_jwt_identity
 from sqlalchemy import func
 
 from models import db, Anime, WatchlistEntry
+from utils.nsfw import maybe_exclude_nsfw
 
 
 seasonal_bp = Blueprint("seasonal", __name__)
@@ -58,10 +59,12 @@ def seasonal():
         return jsonify({"error": "year is required"}), 400
 
     rows = (
-        db.session.query(Anime)
-        .filter(
-            func.lower(Anime.season) == season.lower(),
-            Anime.year == year,
+        maybe_exclude_nsfw(
+            db.session.query(Anime)
+            .filter(
+                func.lower(Anime.season) == season.lower(),
+                Anime.year == year,
+            )
         )
         .order_by(Anime.title)
         .all()
@@ -87,8 +90,10 @@ def airing_now():
     """
     user_id = int(get_jwt_identity())
     rows = (
-        db.session.query(Anime)
-        .filter(func.lower(Anime.status).in_(AIRING_STATUSES))
+        maybe_exclude_nsfw(
+            db.session.query(Anime)
+            .filter(func.lower(Anime.status).in_(AIRING_STATUSES))
+        )
         .order_by(Anime.title)
         .all()
     )
