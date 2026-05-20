@@ -4,6 +4,7 @@ dist/
 .env.local
 playwright-report/
 test-results/
+e2e/demo/.auth/
 *.tsbuildinfo
 vite.config.js
 vite.config.d.ts
