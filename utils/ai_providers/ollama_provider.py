@@ -8,7 +8,68 @@ from typing import Any, Iterator
 
 import requests
 
-from utils.ai_provider import AIResponse, Message, ToolCall, ToolSchema
+from utils.ai_provider import (
+    AIResponse,
+    Message,
+    ProviderUnavailableError,
+    ToolCall,
+    ToolSchema,
+)
+
+
+# Exceptions that mean "Ollama is unreachable" — we swallow these into a
+# typed ProviderUnavailableError so the chatbot route can return a 503
+# instead of a generic 500. Includes the cases that show up when the home
+# PC is asleep, the cloudflared tunnel is down, or Cloudflare Access
+# rejects the service token.
+_UNAVAILABLE_EXC = (
+    requests.exceptions.ConnectionError,
+    requests.exceptions.Timeout,
+    requests.exceptions.ChunkedEncodingError,
+)
+
+
+def _resolve_base_url(explicit: str | None) -> str:
+    """Pick the Ollama base URL.
+
+    Accepts either `OLLAMA_BASE_URL` (the documented variable) or the
+    older `OLLAMA_URL` for back-compat. Trailing slash stripped.
+    """
+    raw = (
+        explicit
+        or os.getenv("OLLAMA_BASE_URL")
+        or os.getenv("OLLAMA_URL")
+        or "http://localhost:11434"
+    )
+    return raw.rstrip("/")
+
+
+def _resolve_extra_headers() -> dict[str, str]:
+    """Build the extra-headers dict sent on every Ollama request.
+
+    Two ways to populate:
+    1. `OLLAMA_EXTRA_HEADERS` — JSON object, e.g.
+       `{"CF-Access-Client-Id": "...", "CF-Access-Client-Secret": "..."}`.
+    2. The Cloudflare-Access shortcut pair:
+       `OLLAMA_CF_ACCESS_CLIENT_ID` + `OLLAMA_CF_ACCESS_CLIENT_SECRET`.
+
+    Both can be set; CF-Access values override matching keys in the JSON.
+    """
+    headers: dict[str, str] = {}
+    raw_json = os.getenv("OLLAMA_EXTRA_HEADERS")
+    if raw_json:
+        try:
+            parsed = json.loads(raw_json)
+            if isinstance(parsed, dict):
+                headers.update({str(k): str(v) for k, v in parsed.items()})
+        except json.JSONDecodeError:
+            pass  # ignore malformed; better to fail open than refuse to start
+    cf_id = os.getenv("OLLAMA_CF_ACCESS_CLIENT_ID")
+    cf_secret = os.getenv("OLLAMA_CF_ACCESS_CLIENT_SECRET")
+    if cf_id and cf_secret:
+        headers["CF-Access-Client-Id"] = cf_id
+        headers["CF-Access-Client-Secret"] = cf_secret
+    return headers
 
 
 class OllamaProvider:
@@ -18,10 +79,26 @@ class OllamaProvider:
         model: str | None = None,
         timeout: float = 120.0,
     ):
-        self.url = (url or os.getenv("OLLAMA_URL", "http://localhost:11434")).rstrip("/")
+        self.url = _resolve_base_url(url)
         self.model = model or os.getenv("OLLAMA_MODEL", "gemma4:31b")
         self.timeout = timeout
+        self.extra_headers = _resolve_extra_headers()
         self._supports_native_tools: bool | None = None
+
+    def _post(self, path: str, *, json_body: dict[str, Any], stream: bool = False):
+        """POST to Ollama with headers + offline-aware error handling."""
+        try:
+            return requests.post(
+                f"{self.url}{path}",
+                json=json_body,
+                headers=self.extra_headers or None,
+                stream=stream,
+                timeout=self.timeout,
+            )
+        except _UNAVAILABLE_EXC as exc:
+            raise ProviderUnavailableError(
+                f"Ollama at {self.url} is unreachable: {type(exc).__name__}"
+            ) from exc
 
     def chat(
         self,
@@ -40,7 +117,11 @@ class OllamaProvider:
         if tools:
             body["tools"] = [self._to_ollama_tool(t) for t in tools]
 
-        resp = requests.post(f"{self.url}/api/chat", json=body, timeout=self.timeout)
+        resp = self._post("/api/chat", json_body=body)
+        if resp.status_code in (502, 503, 504):
+            raise ProviderUnavailableError(
+                f"Ollama gateway returned {resp.status_code}"
+            )
         resp.raise_for_status()
         data = resp.json()
 
@@ -67,7 +148,11 @@ class OllamaProvider:
         if tools:
             body["tools"] = [self._to_ollama_tool(t) for t in tools]
 
-        with requests.post(f"{self.url}/api/chat", json=body, stream=True, timeout=self.timeout) as resp:
+        with self._post("/api/chat", json_body=body, stream=True) as resp:
+            if resp.status_code in (502, 503, 504):
+                raise ProviderUnavailableError(
+                    f"Ollama gateway returned {resp.status_code}"
+                )
             resp.raise_for_status()
             for line in resp.iter_lines():
                 if not line:
@@ -93,7 +178,11 @@ class OllamaProvider:
             "stream": False,
             "options": {"num_predict": max_tokens},
         }
-        resp = requests.post(f"{self.url}/api/chat", json=body, timeout=self.timeout)
+        resp = self._post("/api/chat", json_body=body)
+        if resp.status_code in (502, 503, 504):
+            raise ProviderUnavailableError(
+                f"Ollama gateway returned {resp.status_code}"
+            )
         resp.raise_for_status()
         data = resp.json()
 

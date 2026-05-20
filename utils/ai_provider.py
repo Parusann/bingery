@@ -46,6 +46,15 @@ class AIResponse:
     usage: dict[str, int] = field(default_factory=dict)
 
 
+class ProviderUnavailableError(RuntimeError):
+    """Raised when an AI provider is unreachable (network, timeout, gateway).
+
+    The chatbot route catches this and turns it into a 503 with a friendly
+    "AI temporarily offline" message instead of crashing into a 500. This
+    is the expected path when the home Ollama tunnel is down.
+    """
+
+
 class AIProvider(Protocol):
     def chat(
         self,

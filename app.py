@@ -6,6 +6,15 @@ Seed:         python seed.py
 """
 
 import os
+
+# Load .env BEFORE importing anything that reads os.environ — utils.ai_provider,
+# config.Config, and several blueprints resolve config at module top.
+try:
+    from dotenv import load_dotenv
+    load_dotenv()
+except ImportError:  # pragma: no cover — dotenv is optional in prod
+    pass
+
 from flask import Flask, jsonify, send_from_directory, request as flask_request
 from flask_cors import CORS
 from flask_jwt_extended import JWTManager
@@ -31,7 +40,13 @@ def create_app(config_class=Config):
 
     # ── Extensions ────────────────────────────────────────────────────────
     db.init_app(app)
-    CORS(app, resources={r"/api/*": {"origins": "*"}})
+    # CORS_ORIGINS is config-driven (env CORS_ORIGINS, comma-separated).
+    # Dev defaults to '*'; production refuses to boot with that (see config.py).
+    CORS(
+        app,
+        resources={r"/api/*": {"origins": app.config["CORS_ORIGINS"]}},
+        supports_credentials=False,
+    )
     JWTManager(app)
 
     # ── Blueprints ────────────────────────────────────────────────────────
@@ -105,8 +120,9 @@ def create_app(config_class=Config):
 app = create_app()
 
 if __name__ == "__main__":
-    print("\n  Bingery running at http://localhost:5000")
-    print("  Frontend:  http://localhost:5000/")
-    print("  API:       http://localhost:5000/api/health")
+    port = int(os.environ.get("FLASK_PORT", "5000"))
+    print(f"\n  Bingery running at http://localhost:{port}")
+    print(f"  Frontend:  http://localhost:{port}/")
+    print(f"  API:       http://localhost:{port}/api/health")
     print()
-    app.run(debug=True, port=5000)
+    app.run(debug=True, port=port)

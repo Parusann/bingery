@@ -1,0 +1,62 @@
+# Fly.io config for the Bingery backend.
+# Free tier: 3 shared-cpu-1x VMs (256 MB), 3 GB persistent storage.
+# We use one VM with one 1 GB volume mounted at /data for the SQLite file.
+#
+# First-time setup:
+#   fly launch --no-deploy   (skip the wizard's volume question; we set it here)
+#   fly volumes create bingery_data --size 1 --region <closest>
+#   fly secrets set \
+#       JWT_SECRET_KEY=$(python -c 'import secrets;print(secrets.token_urlsafe(48))') \
+#       SECRET_KEY=$(python -c 'import secrets;print(secrets.token_urlsafe(48))') \
+#       CORS_ORIGINS=https://YOUR-PAGES-DOMAIN \
+#       AI_PROVIDER=ollama \
+#       OLLAMA_BASE_URL=https://ollama.YOUR-DOMAIN \
+#       OLLAMA_MODEL=gemma4:e4b \
+#       OLLAMA_CF_ACCESS_CLIENT_ID=... \
+#       OLLAMA_CF_ACCESS_CLIENT_SECRET=...
+#   fly deploy
+#   # Then ship the SQLite file once:
+#   fly ssh sftp shell
+#   put bingery.db /data/bingery.db
+
+app = "bingery"            # change this to your unique Fly app name
+primary_region = "ord"     # set to the region closest to your home PC
+
+[build]
+  dockerfile = "Dockerfile"
+
+[env]
+  PORT = "5000"
+  FLASK_ENV = "production"
+  DATABASE_URL = "sqlite:////data/bingery.db"
+
+[[mounts]]
+  source = "bingery_data"
+  destination = "/data"
+  initial_size = "1gb"
+
+[http_service]
+  internal_port = 5000
+  force_https = true
+  auto_stop_machines = "stop"
+  auto_start_machines = true
+  min_machines_running = 0
+  processes = ["app"]
+
+  [http_service.concurrency]
+    type = "requests"
+    soft_limit = 50
+    hard_limit = 100
+
+[[http_service.checks]]
+  interval = "30s"
+  timeout = "5s"
+  grace_period = "20s"
+  method = "GET"
+  path = "/api/health"
+
+[[vm]]
+  size = "shared-cpu-1x"
+  memory = "256mb"
+  cpu_kind = "shared"
+  cpus = 1
