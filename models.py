@@ -38,6 +38,7 @@ class User(db.Model):
     created_at = db.Column(
         db.DateTime, nullable=False, default=lambda: datetime.now(timezone.utc)
     )
+    taste_profile_cache = db.Column(db.Text, nullable=True)
 
     # Relationships
     ratings = db.relationship("Rating", backref="user", lazy="dynamic")
