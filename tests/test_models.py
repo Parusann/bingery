@@ -292,3 +292,13 @@ def test_dub_report_cascade_when_episode_deleted(app):
 
         assert db.session.get(Episode, eid) is None
         assert db.session.get(DubReport, report_id) is None
+
+
+def test_user_has_taste_profile_cache_column(app):
+    with app.app_context():
+        u = User(email="x@x.com", username="x", password_hash="x")
+        u.taste_profile_cache = '{"foo": 1}'
+        db.session.add(u)
+        db.session.commit()
+        fetched = User.query.filter_by(email="x@x.com").first()
+        assert fetched.taste_profile_cache == '{"foo": 1}'
