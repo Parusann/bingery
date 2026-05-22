@@ -190,3 +190,53 @@ class TestDroppedTraitPenalty:
         from routes.rec_signals import _dropped_trait_penalty
         dropped = {"studios": ["Bad Studio"], "genres": ["Ecchi"]}
         assert _dropped_trait_penalty("Bad Studio", [], dropped) == 0.5
+
+
+class TestScoreCandidate:
+    def test_returns_signals_breakdown_and_total(self):
+        from routes.rec_signals import score_candidate
+        candidate = {
+            "id": 42, "title": "X", "studio": "MAPPA",
+            "genres": ["Drama"], "fan_genres": ["melancholy"],
+            "api_score": 8.6, "year": 2018, "episodes": 12,
+        }
+        profile = {
+            "top_genres": [["Drama", 1.0]],
+            "top_studios": [{"name": "MAPPA", "hit_rate": 1.0, "n": 5}],
+            "fan_genre_clusters": [["melancholy", 1]],
+            "era_lean_year": 2018,
+            "episode_fit_pref": {"short": 1.0, "medium": 0, "long": 0},
+            "dropped_traits": {"studios": [], "genres": []},
+            "watchlist_planning_ids": [],
+        }
+        top_100 = set()  # candidate 42 not in top-100
+        result = score_candidate(candidate, profile, top_100)
+        assert result["id"] == 42
+        assert result["signals"]["studio_affinity"] == 1.0
+        assert result["signals"]["genre_match"] == 1.0
+        assert result["signals"]["fan_genre_match"] == 1.0
+        assert abs(result["signals"]["era_fit"] - 1.0) < 1e-6
+        assert result["signals"]["episode_fit"] == 1.0
+        assert result["signals"]["surprise_factor"] == 1.0
+        assert result["signals"]["watchlist_aligned"] == 0
+        assert result["signals"]["dropped_trait_penalty"] == 0.0
+        # All signals max out: 25+20+15+10+10+10 = 90; no watchlist (0), no penalty (0)
+        assert abs(result["signals"]["total_score"] - 90.0) < 1e-6
+
+    def test_penalty_subtracts_from_total(self):
+        from routes.rec_signals import score_candidate
+        candidate = {
+            "id": 1, "title": "Y", "studio": "Bad", "genres": ["Ecchi"],
+            "fan_genres": [], "api_score": 6.0, "year": 2020, "episodes": 12,
+        }
+        profile = {
+            "top_genres": [], "top_studios": [], "fan_genre_clusters": [],
+            "era_lean_year": 2020,
+            "episode_fit_pref": {"short": 0, "medium": 0, "long": 0},
+            "dropped_traits": {"studios": ["Bad"], "genres": ["Ecchi"]},
+            "watchlist_planning_ids": [],
+        }
+        result = score_candidate(candidate, profile, {1})
+        # era_fit only (1.0 * 10 = 10), penalty (1.0 * 20 = -20) => -10 floored to 0
+        assert result["signals"]["dropped_trait_penalty"] == 1.0
+        assert result["signals"]["total_score"] == 0.0  # floor at 0

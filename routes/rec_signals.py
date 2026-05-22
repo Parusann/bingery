@@ -131,3 +131,46 @@ def _dropped_trait_penalty(candidate_studio, candidate_genres, user_dropped_trai
         genre_part = (overlap / max(1, len(candidate_genres))) * 0.5
 
     return min(1.0, studio_part + genre_part)
+
+
+def score_candidate(candidate, signal_profile, top_100_popular_ids):
+    """Compute the full per-signal breakdown and total score for one anime.
+
+    candidate: dict with id, title, studio, genres, fan_genres, api_score,
+               year, episodes (the shape returned by Anime.to_dict + fan_genres)
+    signal_profile: output of build_signal_profile
+    top_100_popular_ids: set of anime IDs ranked top 100 by popularity
+
+    Returns dict with the candidate fields plus a `signals` sub-dict containing
+    each component plus total_score (floored to 0, capped at 100).
+    """
+    studio = candidate.get("studio") or ""
+    genres = candidate.get("genres") or []
+    fan_genres = candidate.get("fan_genres") or []
+
+    sa = _studio_affinity(studio, signal_profile.get("top_studios", []))
+    gm = _genre_match(genres, signal_profile.get("top_genres", []))
+    fm = _fan_genre_match(fan_genres, signal_profile.get("fan_genre_clusters", []))
+    ef = _era_fit(candidate.get("year"), signal_profile.get("era_lean_year"))
+    epf = _episode_fit(candidate.get("episodes"), signal_profile.get("episode_fit_pref", {}))
+    sb = _surprise_bonus(candidate.get("api_score"), candidate.get("id"), top_100_popular_ids)
+    wc = _watchlist_coherence(candidate.get("id"), signal_profile.get("watchlist_planning_ids", []))
+    pen = _dropped_trait_penalty(studio, genres, signal_profile.get("dropped_traits", {}))
+
+    total = (25 * sa) + (20 * gm) + (15 * fm) + (10 * ef) + (10 * epf) + (10 * sb) + (5 * wc) - (20 * pen)
+    total = max(0.0, min(100.0, total))
+
+    return {
+        **{k: candidate.get(k) for k in ("id", "title", "studio", "genres", "fan_genres", "api_score", "year", "episodes", "image_url")},
+        "signals": {
+            "studio_affinity": round(sa, 4),
+            "genre_match": round(gm, 4),
+            "fan_genre_match": round(fm, 4),
+            "era_fit": round(ef, 4),
+            "episode_fit": round(epf, 4),
+            "surprise_factor": round(sb, 4),
+            "watchlist_aligned": wc,
+            "dropped_trait_penalty": round(pen, 4),
+            "total_score": round(total, 2),
+        },
+    }
