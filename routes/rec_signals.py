@@ -110,3 +110,24 @@ def _surprise_bonus(candidate_api_score, candidate_id, top_100_popular_ids):
 def _watchlist_coherence(candidate_id, planning_ids):
     """1 if user has this anime in 'planning' status, else 0."""
     return 1 if candidate_id in planning_ids else 0
+
+
+def _dropped_trait_penalty(candidate_studio, candidate_genres, user_dropped_traits):
+    """Penalty in [0, 1] for sharing traits with the user's dropped / low-rated set.
+
+    0.5 weight for studio match + 0.5 weight for candidate-genre share with
+    dropped genres.
+    """
+    studio_part = 0.0
+    if candidate_studio:
+        dropped_studios_lower = {s.lower() for s in user_dropped_traits.get("studios", [])}
+        if candidate_studio.lower() in dropped_studios_lower:
+            studio_part = 0.5
+
+    genre_part = 0.0
+    if candidate_genres:
+        dropped_genres_lower = {g.lower() for g in user_dropped_traits.get("genres", [])}
+        overlap = sum(1 for g in candidate_genres if g.lower() in dropped_genres_lower)
+        genre_part = (overlap / max(1, len(candidate_genres))) * 0.5
+
+    return min(1.0, studio_part + genre_part)
