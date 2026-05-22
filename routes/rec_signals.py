@@ -105,3 +105,8 @@ def _surprise_bonus(candidate_api_score, candidate_id, top_100_popular_ids):
     if is_high_quality or is_obscure:
         return 0.5
     return 0.0
+
+
+def _watchlist_coherence(candidate_id, planning_ids):
+    """1 if user has this anime in 'planning' status, else 0."""
+    return 1 if candidate_id in planning_ids else 0
