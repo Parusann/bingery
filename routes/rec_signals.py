@@ -11,6 +11,12 @@ See docs/superpowers/specs/2026-05-21-chat-rec-engine-design.md.
 """
 
 import math
+from datetime import datetime, timezone
+from collections import Counter
+
+from sqlalchemy import func
+
+from models import db, User, Anime, Rating, FanGenreVote, WatchlistEntry, Genre, anime_genres
 
 SIGNAL_PROFILE_SCHEMA_VERSION = 1
 
@@ -173,4 +179,183 @@ def score_candidate(candidate, signal_profile, top_100_popular_ids):
             "dropped_trait_penalty": round(pen, 4),
             "total_score": round(total, 2),
         },
+    }
+
+
+def build_signal_profile(user_id):
+    """Compute the user's signal profile from scratch.
+
+    See the spec (§4) for the schema. Pure read; does NOT write the cache.
+    Caller (get_signal_profile) is responsible for caching.
+    """
+    ratings = (
+        db.session.query(Rating, Anime)
+        .join(Anime, Anime.id == Rating.anime_id)
+        .filter(Rating.user_id == user_id)
+        .all()
+    )
+    rating_count = len(ratings)
+
+    if rating_count == 0:
+        return _empty_profile(rating_count)
+
+    # Top genres: weighted by rating score (>5 contributes positively)
+    genre_weights = Counter()
+    for r, a in ratings:
+        weight = max(0, r.score - 5)
+        for g in a.official_genres:
+            genre_weights[g.name] += weight
+    top_genres = sorted(genre_weights.items(), key=lambda x: -x[1])[:8]
+    top_genres = [[name, float(w)] for name, w in top_genres if w > 0]
+
+    # Top studios: hit_rate = (ratings >= 8) / (ratings for that studio); require n >= 2
+    studio_ratings = Counter()
+    studio_hits = Counter()
+    for r, a in ratings:
+        if not a.studio:
+            continue
+        studio_ratings[a.studio] += 1
+        if r.score >= 8:
+            studio_hits[a.studio] += 1
+    top_studios = []
+    for studio, n in studio_ratings.items():
+        if n < 2:
+            continue
+        top_studios.append({
+            "name": studio,
+            "hit_rate": studio_hits[studio] / n,
+            "n": n,
+        })
+    top_studios.sort(key=lambda s: (-s["hit_rate"], -s["n"]))
+    top_studios = top_studios[:5]
+
+    # Fan-genre clusters: count fan-genre votes by this user
+    fan_votes = (
+        db.session.query(FanGenreVote.genre_tag, func.count(FanGenreVote.id))
+        .filter(FanGenreVote.user_id == user_id)
+        .group_by(FanGenreVote.genre_tag)
+        .order_by(func.count(FanGenreVote.id).desc())
+        .limit(8)
+        .all()
+    )
+    fan_genre_clusters = [[tag, int(c)] for tag, c in fan_votes]
+
+    # Era lean: weighted average year, weight = max(0, score-5)
+    era_num, era_den = 0.0, 0.0
+    for r, a in ratings:
+        if a.year is None:
+            continue
+        w = max(0, r.score - 5)
+        era_num += w * a.year
+        era_den += w
+    era_lean_year = int(round(era_num / era_den)) if era_den else None
+
+    # Episode-fit pref: based on COMPLETED entries (status='completed' in watchlist
+    # OR rated >= 6 as a fallback). Bucket by episode count.
+    completed = (
+        db.session.query(Anime)
+        .join(WatchlistEntry, WatchlistEntry.anime_id == Anime.id)
+        .filter(WatchlistEntry.user_id == user_id, WatchlistEntry.status == "completed")
+        .all()
+    )
+    if not completed:
+        # Fallback: rated >= 6
+        completed = [a for r, a in ratings if r.score >= 6]
+    buckets = {"short": 0, "medium": 0, "long": 0}
+    for a in completed:
+        if not a.episodes:
+            continue
+        if a.episodes <= 13:
+            buckets["short"] += 1
+        elif a.episodes <= 26:
+            buckets["medium"] += 1
+        else:
+            buckets["long"] += 1
+    total_buckets = sum(buckets.values())
+    if total_buckets:
+        episode_fit_pref = {k: v / total_buckets for k, v in buckets.items()}
+    else:
+        episode_fit_pref = {"short": 0.0, "medium": 0.0, "long": 0.0}
+
+    # Dropped traits: studios + genres of rated <=5 OR dropped-status anime
+    dropped_studios, dropped_genres = set(), set()
+    for r, a in ratings:
+        if r.score <= 5:
+            if a.studio:
+                dropped_studios.add(a.studio)
+            for g in a.official_genres:
+                dropped_genres.add(g.name)
+    dropped_anime = (
+        db.session.query(Anime)
+        .join(WatchlistEntry, WatchlistEntry.anime_id == Anime.id)
+        .filter(WatchlistEntry.user_id == user_id, WatchlistEntry.status == "dropped")
+        .all()
+    )
+    for a in dropped_anime:
+        if a.studio:
+            dropped_studios.add(a.studio)
+        for g in a.official_genres:
+            dropped_genres.add(g.name)
+
+    # Loved (rated >= 8) + dropped_or_low (rated <= 5) examples — newest first
+    sorted_by_score = sorted(ratings, key=lambda ra: (-ra[0].score, -ra[0].id))
+    loved_examples = [
+        {"title": a.title, "score": r.score}
+        for r, a in sorted_by_score if r.score >= 8
+    ][:5]
+    dropped_or_low_examples = [
+        {"title": a.title, "score": r.score}
+        for r, a in sorted_by_score if r.score <= 5
+    ][:3]
+
+    # Currently watching + planning watchlist
+    currently_watching = (
+        db.session.query(Anime.title)
+        .join(WatchlistEntry, WatchlistEntry.anime_id == Anime.id)
+        .filter(WatchlistEntry.user_id == user_id, WatchlistEntry.status == "watching")
+        .limit(3)
+        .all()
+    )
+    currently_watching = [t[0] for t in currently_watching]
+
+    planning_ids = (
+        db.session.query(WatchlistEntry.anime_id)
+        .filter(WatchlistEntry.user_id == user_id, WatchlistEntry.status == "planning")
+        .limit(20)
+        .all()
+    )
+    planning_ids = [pid[0] for pid in planning_ids]
+
+    return {
+        "schema_version": SIGNAL_PROFILE_SCHEMA_VERSION,
+        "computed_at": datetime.now(timezone.utc).isoformat(),
+        "rating_count_at_compute": rating_count,
+        "top_genres": top_genres,
+        "top_studios": top_studios,
+        "fan_genre_clusters": fan_genre_clusters,
+        "era_lean_year": era_lean_year,
+        "episode_fit_pref": episode_fit_pref,
+        "dropped_traits": {"studios": sorted(dropped_studios), "genres": sorted(dropped_genres)},
+        "loved_examples": loved_examples,
+        "dropped_or_low_examples": dropped_or_low_examples,
+        "currently_watching": currently_watching,
+        "watchlist_planning_ids": planning_ids,
+    }
+
+
+def _empty_profile(rating_count):
+    return {
+        "schema_version": SIGNAL_PROFILE_SCHEMA_VERSION,
+        "computed_at": datetime.now(timezone.utc).isoformat(),
+        "rating_count_at_compute": rating_count,
+        "top_genres": [],
+        "top_studios": [],
+        "fan_genre_clusters": [],
+        "era_lean_year": None,
+        "episode_fit_pref": {"short": 0.0, "medium": 0.0, "long": 0.0},
+        "dropped_traits": {"studios": [], "genres": []},
+        "loved_examples": [],
+        "dropped_or_low_examples": [],
+        "currently_watching": [],
+        "watchlist_planning_ids": [],
     }
