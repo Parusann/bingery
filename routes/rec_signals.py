@@ -26,3 +26,20 @@ def _studio_affinity(candidate_studio, user_top_studios):
         if entry["name"].strip().lower() == key:
             return float(entry["hit_rate"])
     return 0.0
+
+
+def _genre_match(candidate_genres, user_top_genres):
+    """Weighted Jaccard: share of user's total genre-weight that the candidate covers.
+
+    candidate_genres: list[str]
+    user_top_genres: list of [name, weight] pairs
+    Returns float in [0, 1].
+    """
+    if not candidate_genres or not user_top_genres:
+        return 0.0
+    cand_set = {g.lower() for g in candidate_genres}
+    total = sum(w for _, w in user_top_genres)
+    if total == 0:
+        return 0.0
+    matched = sum(w for name, w in user_top_genres if name.lower() in cand_set)
+    return min(1.0, matched / total)

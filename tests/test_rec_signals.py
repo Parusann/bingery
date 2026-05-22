@@ -33,3 +33,30 @@ class TestStudioAffinity:
         top_studios = [{"name": "MAPPA", "hit_rate": 0.83, "n": 6}]
         assert _studio_affinity("", top_studios) == 0.0
         assert _studio_affinity(None, top_studios) == 0.0
+
+
+class TestGenreMatch:
+    def test_zero_when_no_overlap(self):
+        from routes.rec_signals import _genre_match
+        candidate_genres = ["Sports"]
+        user_top_genres = [["Drama", 4.2], ["Slice of Life", 3.1]]
+        assert _genre_match(candidate_genres, user_top_genres) == 0.0
+
+    def test_full_overlap_returns_one(self):
+        from routes.rec_signals import _genre_match
+        candidate_genres = ["Drama", "Slice of Life"]
+        user_top_genres = [["Drama", 4.2], ["Slice of Life", 3.1]]
+        assert _genre_match(candidate_genres, user_top_genres) == 1.0
+
+    def test_partial_overlap_returns_weighted_share(self):
+        from routes.rec_signals import _genre_match
+        candidate_genres = ["Drama"]
+        user_top_genres = [["Drama", 4.0], ["Slice of Life", 1.0]]
+        # 4.0 of total 5.0 in user weight matches => 0.8
+        assert abs(_genre_match(candidate_genres, user_top_genres) - 0.8) < 1e-6
+
+    def test_empty_inputs_zero(self):
+        from routes.rec_signals import _genre_match
+        assert _genre_match([], []) == 0.0
+        assert _genre_match(["Drama"], []) == 0.0
+        assert _genre_match([], [["Drama", 1.0]]) == 0.0
