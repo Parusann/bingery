@@ -519,7 +519,12 @@ def test_run_format_sync_idempotent_on_rerun(app):
 
 
 def test_upsert_persists_popularity(app):
-    """Verify that popularity from AniList payload is persisted to Anime.popularity."""
+    """Verify that popularity from AniList payload is persisted to Anime.popularity.
+
+    Tests both create and update branches:
+    - CREATE: First call with popularity=42000 creates new Anime record.
+    - UPDATE: Second call with same anilist_id but popularity=99999 updates existing record.
+    """
     from utils.anilist import sync_anime_to_db
     from models import Anime
 
@@ -543,6 +548,7 @@ def test_upsert_persists_popularity(app):
             "source": "Original",
             "genres": ["Drama"],
         }
+        # CREATE BRANCH: First call inserts new record.
         anime = sync_anime_to_db(payload)
         db.session.flush()
 
@@ -550,3 +556,13 @@ def test_upsert_persists_popularity(app):
         fetched = Anime.query.filter_by(anilist_id=555555).first()
         assert fetched is not None
         assert fetched.popularity == 42000
+
+        # UPDATE BRANCH: Second call with same anilist_id, new popularity value.
+        payload["popularity"] = 99999
+        sync_anime_to_db(payload)
+        db.session.flush()
+
+        # Refetch again to verify update persisted
+        fetched_again = Anime.query.filter_by(anilist_id=555555).first()
+        assert fetched_again is not None
+        assert fetched_again.popularity == 99999
