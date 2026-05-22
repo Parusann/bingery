@@ -288,3 +288,37 @@ class TestBuildSignalProfile:
         profile = build_signal_profile(u.id)
         assert any(e["title"] == "Frieren" for e in profile["loved_examples"])
         assert any(e["title"] == "Bad Show" for e in profile["dropped_or_low_examples"])
+
+
+class TestScoreCandidates:
+    def test_excludes_already_rated_anime(self, app):
+        from models import db, User, Anime, Rating
+        from routes.rec_signals import build_signal_profile, score_candidates
+        u = User(email="sc@x.com", username="sc", password_hash="x")
+        db.session.add(u); db.session.commit()
+        rated = Anime(title="Rated Already", anilist_id=801, studio="Z")
+        db.session.add(rated); db.session.commit()
+        db.session.add(Rating(user_id=u.id, anime_id=rated.id, score=9))
+        db.session.commit()
+        # Add an unrated candidate so the result isn't empty
+        unrated = Anime(title="Free", anilist_id=802, studio="Z")
+        db.session.add(unrated); db.session.commit()
+
+        profile = build_signal_profile(u.id)
+        candidates = score_candidates(u.id, profile, limit=10, include_nsfw=False)
+        ids = {c["id"] for c in candidates}
+        assert rated.id not in ids
+        assert unrated.id in ids
+
+    def test_returns_sorted_by_total_score_desc(self, app):
+        from models import db, User, Anime
+        from routes.rec_signals import build_signal_profile, score_candidates
+        u = User(email="sc2@x.com", username="sc2", password_hash="x")
+        db.session.add(u); db.session.commit()
+        for i in range(5):
+            db.session.add(Anime(title=f"Cand {i}", anilist_id=850 + i, api_score=7 + i * 0.1))
+        db.session.commit()
+        profile = build_signal_profile(u.id)
+        candidates = score_candidates(u.id, profile, limit=10, include_nsfw=False)
+        totals = [c["signals"]["total_score"] for c in candidates]
+        assert totals == sorted(totals, reverse=True)
