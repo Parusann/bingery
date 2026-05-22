@@ -322,3 +322,59 @@ class TestScoreCandidates:
         candidates = score_candidates(u.id, profile, limit=10, include_nsfw=False)
         totals = [c["signals"]["total_score"] for c in candidates]
         assert totals == sorted(totals, reverse=True)
+
+
+class TestGetSignalProfile:
+    def test_first_call_computes_and_caches(self, app):
+        from models import db, User
+        from routes.rec_signals import get_signal_profile
+        u = User(email="gp@x.com", username="gp", password_hash="x")
+        db.session.add(u); db.session.commit()
+        assert u.taste_profile_cache is None
+        profile = get_signal_profile(u.id)
+        db.session.refresh(u)
+        assert u.taste_profile_cache is not None
+        assert profile["rating_count_at_compute"] == 0
+
+    def test_second_call_reuses_cache_when_rating_count_unchanged(self, app):
+        from models import db, User
+        from routes.rec_signals import get_signal_profile
+        import json
+        u = User(email="gp2@x.com", username="gp2", password_hash="x")
+        db.session.add(u); db.session.commit()
+        first = get_signal_profile(u.id)
+        # Mutate the cache directly to confirm we read it back
+        cached = json.loads(u.taste_profile_cache)
+        cached["era_lean_year"] = 1999  # sentinel
+        u.taste_profile_cache = json.dumps(cached)
+        db.session.commit()
+        second = get_signal_profile(u.id)
+        assert second["era_lean_year"] == 1999
+
+    def test_cache_invalidated_when_rating_count_changes(self, app):
+        from models import db, User, Anime, Rating
+        from routes.rec_signals import get_signal_profile
+        u = User(email="gp3@x.com", username="gp3", password_hash="x")
+        db.session.add(u); db.session.commit()
+        get_signal_profile(u.id)
+        # Add a rating
+        a = Anime(title="X", anilist_id=909, studio="Y")
+        db.session.add(a); db.session.commit()
+        db.session.add(Rating(user_id=u.id, anime_id=a.id, score=9))
+        db.session.commit()
+        fresh = get_signal_profile(u.id)
+        assert fresh["rating_count_at_compute"] == 1
+
+    def test_cache_invalidated_when_schema_version_bumps(self, app):
+        from models import db, User
+        from routes.rec_signals import get_signal_profile
+        import json
+        u = User(email="gp4@x.com", username="gp4", password_hash="x")
+        # Pre-seed an old-schema-version cache
+        old = {"schema_version": 0, "rating_count_at_compute": 0,
+               "top_genres": [["STALE", 999]]}
+        u.taste_profile_cache = json.dumps(old)
+        db.session.add(u); db.session.commit()
+        fresh = get_signal_profile(u.id)
+        assert fresh["schema_version"] >= 1
+        assert fresh["top_genres"] == []
