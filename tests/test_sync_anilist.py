@@ -516,3 +516,37 @@ def test_run_format_sync_idempotent_on_rerun(app):
         )
         assert first["media_processed"] == second["media_processed"]
         assert Anime.query.count() == count_after_first
+
+
+def test_upsert_persists_popularity(app):
+    """Verify that popularity from AniList payload is persisted to Anime.popularity."""
+    from utils.anilist import sync_anime_to_db
+    from models import Anime
+
+    with app.app_context():
+        payload = {
+            "anilist_id": 555555,
+            "mal_id": None,
+            "title": "Test Show",
+            "title_english": None,
+            "title_japanese": None,
+            "synopsis": "Test synopsis",
+            "popularity": 42000,
+            "api_score": 80,
+            "year": 2024,
+            "season": "winter",
+            "episodes": 12,
+            "studio": "Studio T",
+            "image_url": "https://example.com/image.jpg",
+            "banner_url": None,
+            "status": "FINISHED",
+            "source": "Original",
+            "genres": ["Drama"],
+        }
+        anime = sync_anime_to_db(payload)
+        db.session.flush()
+
+        # Refetch to ensure it was persisted
+        fetched = Anime.query.filter_by(anilist_id=555555).first()
+        assert fetched is not None
+        assert fetched.popularity == 42000

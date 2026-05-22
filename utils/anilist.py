@@ -454,7 +454,7 @@ def sync_anime_to_db(anime_data: dict) -> "Anime":
         # Update existing record
         for key in [
             "title", "title_english", "title_japanese", "synopsis",
-            "api_score", "year", "season", "episodes", "studio",
+            "api_score", "popularity", "year", "season", "episodes", "studio",
             "image_url", "banner_url", "status", "source",
         ]:
             if anime_data.get(key) is not None:
@@ -473,6 +473,7 @@ def sync_anime_to_db(anime_data: dict) -> "Anime":
             title_japanese=anime_data.get("title_japanese"),
             synopsis=anime_data.get("synopsis", ""),
             api_score=anime_data.get("api_score"),
+            popularity=anime_data.get("popularity"),
             year=anime_data.get("year"),
             season=anime_data.get("season"),
             episodes=anime_data.get("episodes"),
