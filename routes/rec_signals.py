@@ -72,3 +72,20 @@ def _era_fit(candidate_year, user_era_lean_year):
         return 0.0
     delta = candidate_year - user_era_lean_year
     return math.exp(-(delta * delta) / (2 * 6 * 6))
+
+
+def _episode_fit(candidate_episodes, user_episode_pref):
+    """Look up the user's share for the candidate's episode-count bucket.
+
+    Buckets: short (<=13), medium (14-26), long (>26).
+    Returns 0.0 if candidate_episodes is None or 0.
+    """
+    if not candidate_episodes:
+        return 0.0
+    if candidate_episodes <= 13:
+        bucket = "short"
+    elif candidate_episodes <= 26:
+        bucket = "medium"
+    else:
+        bucket = "long"
+    return float(user_episode_pref.get(bucket, 0.0))

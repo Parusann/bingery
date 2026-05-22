@@ -97,3 +97,26 @@ class TestEraFit:
         import math
         # sigma=6, so |delta|=6 yields exp(-0.5) ~ 0.6065
         assert abs(_era_fit(2018, 2024) - math.exp(-0.5)) < 1e-3
+
+
+class TestEpisodeFit:
+    def test_returns_short_share_for_short_anime(self):
+        from routes.rec_signals import _episode_fit
+        prefs = {"short": 0.7, "medium": 0.2, "long": 0.1}
+        assert _episode_fit(12, prefs) == 0.7
+
+    def test_returns_medium_share_for_medium_anime(self):
+        from routes.rec_signals import _episode_fit
+        prefs = {"short": 0.7, "medium": 0.2, "long": 0.1}
+        assert _episode_fit(24, prefs) == 0.2
+
+    def test_returns_long_share_for_long_anime(self):
+        from routes.rec_signals import _episode_fit
+        prefs = {"short": 0.7, "medium": 0.2, "long": 0.1}
+        assert _episode_fit(60, prefs) == 0.1
+
+    def test_unknown_episode_count_returns_zero(self):
+        from routes.rec_signals import _episode_fit
+        prefs = {"short": 0.7, "medium": 0.2, "long": 0.1}
+        assert _episode_fit(None, prefs) == 0.0
+        assert _episode_fit(0, prefs) == 0.0
