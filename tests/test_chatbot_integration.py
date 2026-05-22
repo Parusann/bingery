@@ -47,3 +47,10 @@ def test_chat_message_executes_tool_then_replies(get_provider_mock, client, app)
 def test_chat_message_requires_body(client):
     resp = client.post("/api/chat/message", json={})
     assert resp.status_code == 400
+
+
+def test_system_prompt_includes_grounding_rules():
+    from routes.chatbot_tools import BINGERY_SYSTEM
+    assert "GROUNDING RULES" in BINGERY_SYSTEM
+    assert "PICK ONLY from the candidates" in BINGERY_SYSTEM or "PICK ONLY from `candidates`" in BINGERY_SYSTEM
+    assert "single highest-value signal" in BINGERY_SYSTEM.lower() or "single strongest signal" in BINGERY_SYSTEM.lower()
