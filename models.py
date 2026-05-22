@@ -78,6 +78,7 @@ class Anime(db.Model):
     title_japanese = db.Column(db.String(300), nullable=True)
     synopsis = db.Column(db.Text, default="")
     api_score = db.Column(db.Float, nullable=True)  # score from MAL/AniList
+    popularity = db.Column(db.Integer, nullable=True)  # AniList user-list count
     year = db.Column(db.Integer, nullable=True)
     season = db.Column(db.String(20), nullable=True)  # spring, summer, fall, winter
     episodes = db.Column(db.Integer, nullable=True)
@@ -155,6 +156,7 @@ class Anime(db.Model):
             "title_japanese": self.title_japanese,
             "synopsis": self.synopsis,
             "api_score": self.api_score,
+            "popularity": self.popularity,
             "year": self.year,
             "season": self.season,
             "episodes": self.episodes,

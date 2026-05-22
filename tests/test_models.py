@@ -302,3 +302,12 @@ def test_user_has_taste_profile_cache_column(app):
         db.session.commit()
         fetched = User.query.filter_by(email="x@x.com").first()
         assert fetched.taste_profile_cache == '{"foo": 1}'
+
+
+def test_anime_has_popularity_column(app):
+    with app.app_context():
+        a = Anime(title="Test Anime", anilist_id=999999, popularity=12345)
+        db.session.add(a)
+        db.session.commit()
+        fetched = Anime.query.filter_by(anilist_id=999999).first()
+        assert fetched.popularity == 12345
