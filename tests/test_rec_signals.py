@@ -120,3 +120,33 @@ class TestEpisodeFit:
         prefs = {"short": 0.7, "medium": 0.2, "long": 0.1}
         assert _episode_fit(None, prefs) == 0.0
         assert _episode_fit(0, prefs) == 0.0
+
+
+class TestSurpriseBonus:
+    def test_full_bonus_for_obscure_high_quality(self):
+        from routes.rec_signals import _surprise_bonus
+        top_100 = {1, 2, 3}
+        # api_score >= 8 AND not in top_100
+        assert _surprise_bonus(8.6, 999, top_100) == 1.0
+
+    def test_half_bonus_for_quality_alone(self):
+        from routes.rec_signals import _surprise_bonus
+        top_100 = {1, 999}
+        # api_score >= 8 but IS in top_100
+        assert _surprise_bonus(8.6, 999, top_100) == 0.5
+
+    def test_half_bonus_for_obscurity_alone(self):
+        from routes.rec_signals import _surprise_bonus
+        top_100 = {1}
+        # not in top_100 but api_score < 8
+        assert _surprise_bonus(7.0, 999, top_100) == 0.5
+
+    def test_no_bonus_for_neither(self):
+        from routes.rec_signals import _surprise_bonus
+        top_100 = {1, 999}
+        assert _surprise_bonus(7.0, 999, top_100) == 0.0
+
+    def test_handles_none_api_score(self):
+        from routes.rec_signals import _surprise_bonus
+        # api_score=None counts as low quality; obscurity alone gives 0.5
+        assert _surprise_bonus(None, 999, {1}) == 0.5

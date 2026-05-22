@@ -89,3 +89,19 @@ def _episode_fit(candidate_episodes, user_episode_pref):
     else:
         bucket = "long"
     return float(user_episode_pref.get(bucket, 0.0))
+
+
+def _surprise_bonus(candidate_api_score, candidate_id, top_100_popular_ids):
+    """Bonus for high-quality + obscure picks.
+
+    1.0 if api_score >= 8 AND not in top-100 popular
+    0.5 if exactly one of those is true
+    0.0 if neither
+    """
+    is_high_quality = candidate_api_score is not None and candidate_api_score >= 8
+    is_obscure = candidate_id not in top_100_popular_ids
+    if is_high_quality and is_obscure:
+        return 1.0
+    if is_high_quality or is_obscure:
+        return 0.5
+    return 0.0
