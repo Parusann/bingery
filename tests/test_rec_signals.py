@@ -240,3 +240,51 @@ class TestScoreCandidate:
         # era_fit only (1.0 * 10 = 10), penalty (1.0 * 20 = -20) => -10 floored to 0
         assert result["signals"]["dropped_trait_penalty"] == 1.0
         assert result["signals"]["total_score"] == 0.0  # floor at 0
+
+
+class TestBuildSignalProfile:
+    def test_empty_profile_for_user_with_no_ratings(self, app):
+        from models import db, User
+        from routes.rec_signals import build_signal_profile
+        u = User(email="new@x.com", username="newbie", password_hash="x")
+        db.session.add(u)
+        db.session.commit()
+        profile = build_signal_profile(u.id)
+        assert profile["rating_count_at_compute"] == 0
+        assert profile["top_genres"] == []
+        assert profile["top_studios"] == []
+        assert profile["loved_examples"] == []
+        assert profile["currently_watching"] == []
+        assert profile["watchlist_planning_ids"] == []
+
+    def test_extracts_top_studios_with_hit_rate(self, app):
+        """User rated 3 MAPPA shows: 9, 8, 5. hit_rate = 2/3 ~ 0.667."""
+        from models import db, User, Anime, Rating
+        from routes.rec_signals import build_signal_profile
+        u = User(email="r@x.com", username="rater", password_hash="x")
+        db.session.add(u); db.session.commit()
+        for i, score in enumerate([9, 8, 5]):
+            a = Anime(title=f"MAPPA Show {i}", anilist_id=900 + i, studio="MAPPA")
+            db.session.add(a); db.session.commit()
+            db.session.add(Rating(user_id=u.id, anime_id=a.id, score=score))
+        db.session.commit()
+        profile = build_signal_profile(u.id)
+        mappa = next((s for s in profile["top_studios"] if s["name"] == "MAPPA"), None)
+        assert mappa is not None
+        assert mappa["n"] == 3
+        assert abs(mappa["hit_rate"] - 2/3) < 1e-3
+
+    def test_loved_and_dropped_examples_populated(self, app):
+        from models import db, User, Anime, Rating
+        from routes.rec_signals import build_signal_profile
+        u = User(email="r2@x.com", username="r2", password_hash="x")
+        db.session.add(u); db.session.commit()
+        loved = Anime(title="Frieren", anilist_id=701, studio="Madhouse")
+        dropped_anime = Anime(title="Bad Show", anilist_id=702, studio="Other")
+        db.session.add_all([loved, dropped_anime]); db.session.commit()
+        db.session.add(Rating(user_id=u.id, anime_id=loved.id, score=9))
+        db.session.add(Rating(user_id=u.id, anime_id=dropped_anime.id, score=3))
+        db.session.commit()
+        profile = build_signal_profile(u.id)
+        assert any(e["title"] == "Frieren" for e in profile["loved_examples"])
+        assert any(e["title"] == "Bad Show" for e in profile["dropped_or_low_examples"])
