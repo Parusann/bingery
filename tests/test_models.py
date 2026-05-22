@@ -311,3 +311,4 @@ def test_anime_has_popularity_column(app):
         db.session.commit()
         fetched = Anime.query.filter_by(anilist_id=999999).first()
         assert fetched.popularity == 12345
+        assert fetched.to_dict()["popularity"] == 12345
