@@ -60,3 +60,17 @@ class TestGenreMatch:
         assert _genre_match([], []) == 0.0
         assert _genre_match(["Drama"], []) == 0.0
         assert _genre_match([], [["Drama", 1.0]]) == 0.0
+
+
+class TestFanGenreMatch:
+    def test_partial_match_returns_weighted_share(self):
+        from routes.rec_signals import _fan_genre_match
+        cand = ["melancholy", "talky"]
+        user_fan = [["melancholy", 4], ["talky", 3], ["weird", 1]]
+        # 7 of total 8 user weight matches => 0.875
+        assert abs(_fan_genre_match(cand, user_fan) - 7/8) < 1e-6
+
+    def test_empty_returns_zero(self):
+        from routes.rec_signals import _fan_genre_match
+        assert _fan_genre_match([], [["x", 1]]) == 0.0
+        assert _fan_genre_match(["x"], []) == 0.0
