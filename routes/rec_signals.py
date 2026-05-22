@@ -17,6 +17,7 @@ from collections import Counter
 from sqlalchemy import func
 
 from models import db, User, Anime, Rating, FanGenreVote, WatchlistEntry, Genre, anime_genres
+from utils.nsfw import maybe_exclude_nsfw, HARD_BLOCKED_GENRES
 
 SIGNAL_PROFILE_SCHEMA_VERSION = 1
 
@@ -341,6 +342,65 @@ def build_signal_profile(user_id):
         "currently_watching": currently_watching,
         "watchlist_planning_ids": planning_ids,
     }
+
+
+def score_candidates(user_id, signal_profile, limit=40, include_nsfw=False):
+    """Score all unwatched anime for this user, return the top `limit` candidates.
+
+    Hard-filters out anything the user has already engaged with (rated or
+    in watchlist with non-planning status). Respects NSFW rules.
+    """
+    # Anime IDs the user has already touched
+    rated_ids = {
+        r[0] for r in
+        db.session.query(Rating.anime_id).filter(Rating.user_id == user_id).all()
+    }
+    blocked_watchlist_ids = {
+        w[0] for w in
+        db.session.query(WatchlistEntry.anime_id)
+        .filter(WatchlistEntry.user_id == user_id,
+                WatchlistEntry.status.in_(["watching", "completed", "dropped", "on_hold"]))
+        .all()
+    }
+    excluded = rated_ids | blocked_watchlist_ids
+
+    # Pull the candidate universe
+    query = db.session.query(Anime).filter(~Anime.id.in_(excluded)) if excluded else db.session.query(Anime)
+    if not include_nsfw:
+        query = maybe_exclude_nsfw(query)
+    # We still exclude hard-blocked genres regardless of include_nsfw flag
+    # (Hentai). maybe_exclude_nsfw handles that when include_nsfw=False; do
+    # nothing extra here.
+
+    candidates_raw = query.all()
+
+    # Top-100 popular IDs for surprise_bonus
+    top_100_ids = {
+        a[0] for a in
+        db.session.query(Anime.id)
+        .filter(Anime.popularity.isnot(None))
+        .order_by(Anime.popularity.desc())
+        .limit(100)
+        .all()
+    }
+
+    scored = []
+    for a in candidates_raw:
+        cand = {
+            "id": a.id,
+            "title": a.title,
+            "studio": a.studio,
+            "genres": [g.name for g in a.official_genres],
+            "fan_genres": [fg["genre"] for fg in (a.get_fan_genres() or [])[:5]],
+            "api_score": a.api_score,
+            "year": a.year,
+            "episodes": a.episodes,
+            "image_url": getattr(a, "image_url", None),
+        }
+        scored.append(score_candidate(cand, signal_profile, top_100_ids))
+
+    scored.sort(key=lambda c: c["signals"]["total_score"], reverse=True)
+    return scored[:limit]
 
 
 def _empty_profile(rating_count):
