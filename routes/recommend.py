@@ -152,42 +152,42 @@ def get_recommendations():
             "source": "popular",
         }), 200
 
-    # Get all anime the user hasn't rated
-    rated_ids = set(profile["rated_ids"])
-    candidates = (
-        maybe_exclude_nsfw(
-            db.session.query(Anime).filter(~Anime.id.in_(rated_ids))
-        )
-        .all()
-    )
+    # Personalized branch: defer to the multi-signal engine so chat and
+    # the For You page rank with identical math.
+    from routes.rec_signals import get_signal_profile, score_candidates
 
-    # Score each candidate
-    scored = []
-    for anime in candidates:
-        s = score_anime_for_user(anime, profile)
-        scored.append((anime, s))
+    signal_profile = get_signal_profile(user_id)
+    scored = score_candidates(user_id, signal_profile, limit=limit, include_nsfw=False)
 
-    scored.sort(key=lambda x: x[1], reverse=True)
-    top = scored[:limit]
-
-    top_genre_names = {g[0] for g in profile["top_genres"][:5]}
-
-    def _reason_for(anime, relevance: float) -> str:
-        overlap = [g.name for g in anime.official_genres if g.name in top_genre_names]
-        if overlap:
-            return (
-                f"{relevance:.0f}% match — overlaps with your top genres: "
-                + ", ".join(overlap[:3])
-                + "."
-            )
-        return f"{relevance:.0f}% match with your overall taste profile."
+    def _reason_for(c):
+        signals = c["signals"]
+        contributions = [
+            (25 * signals["studio_affinity"],
+             f"matches your top studio ({c['studio']})" if c["studio"] else None),
+            (20 * signals["genre_match"],
+             f"matches {len(c['genres'])} of your top genres" if c["genres"] else None),
+            (15 * signals["fan_genre_match"],
+             "matches your fan-genre cluster"),
+            (10 * signals["surprise_factor"],
+             "underrated pick outside the top-100"),
+            (5 * signals["watchlist_aligned"],
+             "already in your planning list"),
+        ]
+        contributions = [(v, r) for v, r in contributions if r and v > 0]
+        if not contributions:
+            return f"{signals['total_score']:.0f}% match with your overall taste."
+        contributions.sort(key=lambda x: -x[0])
+        return contributions[0][1]
 
     recs = []
-    for anime, relevance in top:
+    for c in scored:
+        anime_obj = db.session.get(Anime, c["id"])
+        if anime_obj is None:
+            continue
         recs.append({
-            "anime": anime.to_dict(include_community=True),
-            "reason": _reason_for(anime, relevance),
-            "relevance_score": relevance,
+            "anime": anime_obj.to_dict(include_community=True),
+            "reason": _reason_for(c),
+            "relevance_score": c["signals"]["total_score"] / 100.0,
         })
 
     return jsonify({
