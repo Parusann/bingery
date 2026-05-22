@@ -43,3 +43,18 @@ def _genre_match(candidate_genres, user_top_genres):
         return 0.0
     matched = sum(w for name, w in user_top_genres if name.lower() in cand_set)
     return min(1.0, matched / total)
+
+
+def _fan_genre_match(candidate_fan_genres, user_fan_genre_clusters):
+    """Same shape as _genre_match but over user-applied fan-genre clusters.
+
+    user_fan_genre_clusters: list of [tag, count] pairs from the profile.
+    """
+    if not candidate_fan_genres or not user_fan_genre_clusters:
+        return 0.0
+    cand_set = {g.lower() for g in candidate_fan_genres}
+    total = sum(c for _, c in user_fan_genre_clusters)
+    if total == 0:
+        return 0.0
+    matched = sum(c for tag, c in user_fan_genre_clusters if tag.lower() in cand_set)
+    return min(1.0, matched / total)
