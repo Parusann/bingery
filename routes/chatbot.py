@@ -12,6 +12,7 @@ from utils.ai_provider import Message, ProviderUnavailableError, get_provider
 from utils.ai_tools import ALL_TOOLS
 from utils.nsfw import HARD_BLOCKED_GENRES, SOFT_BLOCKED_GENRES
 from routes.chatbot_tools import execute_tool, build_system_prompt
+from routes.chat_context import build_llm_context
 
 
 # Stripped from the response text — model often emits these but their IDs
@@ -222,6 +223,16 @@ def chat_message():
     if user_id:
         system += f"\n\n[authenticated user id: {user_id}]"
 
+    # Ground recommendations against the scored candidate set so the LLM
+    # can't surface anime the user has already engaged with or the rec
+    # engine has filtered out. Only attached for authenticated recommend
+    # mode — rate/onboard modes don't include candidates.
+    candidate_ids: set[int] | None = None
+    if user_id and mode == "recommend":
+        context = build_llm_context(user_id, user_msg, mode, include_nsfw=False)
+        candidate_ids = {c["id"] for c in context.get("candidates", [])}
+        system += "\n\n# CONTEXT JSON\n" + json.dumps(context, ensure_ascii=False)
+
     provider = get_provider()
 
     try:
@@ -248,6 +259,11 @@ def chat_message():
                 continue
 
             refs, cleaned = _extract_anime_refs(resp.text or "")
+            # Validation pass: in grounded recommend mode, drop any resolved
+            # anime that isn't in the scored candidate set (the LLM is told
+            # to only PICK from `candidates`, but smaller local models drift).
+            if candidate_ids is not None:
+                refs = [r for r in refs if r["id"] in candidate_ids]
             options, cleaned = _extract_options(cleaned)
             return jsonify({
                 "response": cleaned,
