@@ -10,6 +10,7 @@ entry points the chatbot and /recommend/for-me routes call:
 See docs/superpowers/specs/2026-05-21-chat-rec-engine-design.md.
 """
 
+import json
 import math
 from datetime import datetime, timezone
 from collections import Counter
@@ -401,6 +402,40 @@ def score_candidates(user_id, signal_profile, limit=40, include_nsfw=False):
 
     scored.sort(key=lambda c: c["signals"]["total_score"], reverse=True)
     return scored[:limit]
+
+
+def get_signal_profile(user_id):
+    """Lazy-cached signal profile fetcher.
+
+    Recomputes the profile if:
+      - no cache exists yet, OR
+      - the cached schema_version != current SIGNAL_PROFILE_SCHEMA_VERSION, OR
+      - the user's rating count has changed since the cache was written.
+    """
+    user = db.session.get(User, user_id)
+    if user is None:
+        raise ValueError(f"User {user_id} not found")
+
+    cached = None
+    if user.taste_profile_cache:
+        try:
+            cached = json.loads(user.taste_profile_cache)
+        except (ValueError, TypeError):
+            cached = None
+
+    current_count = db.session.query(func.count(Rating.id)).filter(Rating.user_id == user_id).scalar() or 0
+
+    stale = (
+        cached is None
+        or cached.get("schema_version") != SIGNAL_PROFILE_SCHEMA_VERSION
+        or cached.get("rating_count_at_compute") != current_count
+    )
+    if stale:
+        fresh = build_signal_profile(user_id)
+        user.taste_profile_cache = json.dumps(fresh)
+        db.session.commit()
+        return fresh
+    return cached
 
 
 def _empty_profile(rating_count):
