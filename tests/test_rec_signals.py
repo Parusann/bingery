@@ -161,3 +161,32 @@ class TestWatchlistCoherence:
         from routes.rec_signals import _watchlist_coherence
         assert _watchlist_coherence(42, [1, 100]) == 0
         assert _watchlist_coherence(42, []) == 0
+
+
+class TestDroppedTraitPenalty:
+    def test_zero_when_no_overlap(self):
+        from routes.rec_signals import _dropped_trait_penalty
+        dropped = {"studios": ["Bad Studio"], "genres": ["Ecchi"]}
+        assert _dropped_trait_penalty("Good Studio", ["Drama"], dropped) == 0.0
+
+    def test_half_for_studio_alone(self):
+        from routes.rec_signals import _dropped_trait_penalty
+        dropped = {"studios": ["Bad Studio"], "genres": ["Ecchi"]}
+        assert _dropped_trait_penalty("Bad Studio", ["Drama"], dropped) == 0.5
+
+    def test_genre_share_contribution(self):
+        from routes.rec_signals import _dropped_trait_penalty
+        dropped = {"studios": [], "genres": ["Ecchi", "Sports"]}
+        # Both candidate genres are in the dropped list => 1.0 share => 0.5 weight
+        assert _dropped_trait_penalty("Studio X", ["Ecchi", "Sports"], dropped) == 0.5
+
+    def test_combined_full_penalty(self):
+        from routes.rec_signals import _dropped_trait_penalty
+        dropped = {"studios": ["Bad Studio"], "genres": ["Ecchi"]}
+        # studio matches (+0.5) and 1/1 candidate genre matches (+0.5) => 1.0
+        assert _dropped_trait_penalty("Bad Studio", ["Ecchi"], dropped) == 1.0
+
+    def test_no_candidate_genres_uses_studio_only(self):
+        from routes.rec_signals import _dropped_trait_penalty
+        dropped = {"studios": ["Bad Studio"], "genres": ["Ecchi"]}
+        assert _dropped_trait_penalty("Bad Studio", [], dropped) == 0.5
