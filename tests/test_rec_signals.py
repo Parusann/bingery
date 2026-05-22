@@ -74,3 +74,26 @@ class TestFanGenreMatch:
         from routes.rec_signals import _fan_genre_match
         assert _fan_genre_match([], [["x", 1]]) == 0.0
         assert _fan_genre_match(["x"], []) == 0.0
+
+
+class TestEraFit:
+    def test_exact_year_match_returns_one(self):
+        from routes.rec_signals import _era_fit
+        assert _era_fit(2018, 2018) == 1.0
+
+    def test_decreases_with_distance(self):
+        from routes.rec_signals import _era_fit
+        near = _era_fit(2020, 2018)
+        far = _era_fit(2000, 2018)
+        assert 0 < far < near < 1
+
+    def test_none_inputs_return_zero(self):
+        from routes.rec_signals import _era_fit
+        assert _era_fit(None, 2018) == 0.0
+        assert _era_fit(2018, None) == 0.0
+
+    def test_six_year_gap_is_near_e_to_the_negative_half(self):
+        from routes.rec_signals import _era_fit
+        import math
+        # sigma=6, so |delta|=6 yields exp(-0.5) ~ 0.6065
+        assert abs(_era_fit(2018, 2024) - math.exp(-0.5)) < 1e-3

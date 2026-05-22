@@ -10,6 +10,8 @@ entry points the chatbot and /recommend/for-me routes call:
 See docs/superpowers/specs/2026-05-21-chat-rec-engine-design.md.
 """
 
+import math
+
 SIGNAL_PROFILE_SCHEMA_VERSION = 1
 
 
@@ -58,3 +60,15 @@ def _fan_genre_match(candidate_fan_genres, user_fan_genre_clusters):
         return 0.0
     matched = sum(c for tag, c in user_fan_genre_clusters if tag.lower() in cand_set)
     return min(1.0, matched / total)
+
+
+def _era_fit(candidate_year, user_era_lean_year):
+    """Gaussian centered on the user's era lean, sigma=6 years.
+
+    Returns 1.0 for exact match, ~0.6 at 6-year gap, ~0.14 at 12-year gap.
+    Returns 0.0 if either year is None (unknown era).
+    """
+    if candidate_year is None or user_era_lean_year is None:
+        return 0.0
+    delta = candidate_year - user_era_lean_year
+    return math.exp(-(delta * delta) / (2 * 6 * 6))
