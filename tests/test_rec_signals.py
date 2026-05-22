@@ -150,3 +150,14 @@ class TestSurpriseBonus:
         from routes.rec_signals import _surprise_bonus
         # api_score=None counts as low quality; obscurity alone gives 0.5
         assert _surprise_bonus(None, 999, {1}) == 0.5
+
+
+class TestWatchlistCoherence:
+    def test_one_when_in_planning(self):
+        from routes.rec_signals import _watchlist_coherence
+        assert _watchlist_coherence(42, [1, 42, 100]) == 1
+
+    def test_zero_when_not_in_planning(self):
+        from routes.rec_signals import _watchlist_coherence
+        assert _watchlist_coherence(42, [1, 100]) == 0
+        assert _watchlist_coherence(42, []) == 0
