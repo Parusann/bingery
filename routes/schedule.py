@@ -220,3 +220,55 @@ def anime_episodes(anime_id: int):
         ),
         200,
     )
+
+
+# ─── Endpoint 3: GET /api/schedule/week ────────────────────────────────────
+
+
+def _parse_week_anchor(raw: str | None) -> datetime | None:
+    """Parse a ?week=YYYY-MM-DD param into a UTC midnight datetime.
+
+    Returns None on missing/invalid input; caller is expected to 400.
+    """
+    if not raw:
+        return None
+    try:
+        dt = datetime.strptime(raw, "%Y-%m-%d")
+    except ValueError:
+        return None
+    return dt.replace(tzinfo=timezone.utc)
+
+
+def _iso_date(dt: datetime) -> str:
+    """YYYY-MM-DD from a UTC datetime."""
+    return dt.strftime("%Y-%m-%d")
+
+
+@schedule_bp.route("/schedule/week", methods=["GET"])
+@jwt_required()
+def schedule_week():
+    """Return a single week (Sunday-anchored, 7 days) of episodes.
+
+    Query params:
+        week  — ISO YYYY-MM-DD, required. Sunday of the visible week (UTC).
+        lang  — "sub" | "dub" | "both", default "both".
+        mine  — "0" | "1", default "0". When "1", only episodes from
+                anime the requesting user has a WatchlistEntry for.
+    """
+    week_start = _parse_week_anchor(request.args.get("week"))
+    if week_start is None:
+        return jsonify({"error": "week parameter required (YYYY-MM-DD)"}), 400
+
+    # Build 7 day-buckets (date keys) starting at week_start.
+    days_payload = []
+    for i in range(7):
+        bucket_date = week_start + timedelta(days=i)
+        days_payload.append({
+            "date": _iso_date(bucket_date),
+            "episodes": [],
+        })
+
+    return jsonify({
+        "week_start": _iso_date(week_start),
+        "days": days_payload,
+    }), 200
