@@ -259,14 +259,65 @@ def schedule_week():
     if week_start is None:
         return jsonify({"error": "week parameter required (YYYY-MM-DD)"}), 400
 
-    # Build 7 day-buckets (date keys) starting at week_start.
-    days_payload = []
+    lang = (request.args.get("lang") or "both").lower()
+    if lang not in ("sub", "dub", "both"):
+        return jsonify({"error": "lang must be one of sub/dub/both"}), 400
+
+    week_end = week_start + timedelta(days=7)
+    start_naive = week_start.replace(tzinfo=None)
+    end_naive = week_end.replace(tzinfo=None)
+
+    # Bucket builder seeded with empty days so the response is always 7 long.
+    buckets: dict[str, list[dict]] = {}
     for i in range(7):
         bucket_date = week_start + timedelta(days=i)
-        days_payload.append({
-            "date": _iso_date(bucket_date),
-            "episodes": [],
-        })
+        buckets[_iso_date(bucket_date)] = []
+
+    def _collect(field, kind: str) -> None:
+        rows = (
+            maybe_exclude_nsfw(
+                db.session.query(Episode, Anime)
+                .join(Anime, Anime.id == Episode.anime_id)
+                .filter(field >= start_naive)
+                .filter(field < end_naive)
+            )
+            .all()
+        )
+        for episode, anime in rows:
+            raw = getattr(episode, field.key)
+            air_at = _episode_air_date(raw)
+            if air_at is None:
+                continue
+            bucket_key = _iso_date(air_at)
+            if bucket_key not in buckets:
+                continue
+            buckets[bucket_key].append({
+                "id": episode.id,
+                "anime_id": anime.id,
+                "anime": anime.to_dict(),
+                "episode_number": episode.episode_number,
+                "air_time_utc": _as_iso_z(air_at),
+                "type": kind,
+                "estimated": False,           # filled in Task 4
+                "on_watchlist": False,        # filled in Task 3
+                "_sort_air": air_at,
+                "_sort_title": (anime.title or "").lower(),
+            })
+
+    if lang in ("sub", "both"):
+        _collect(Episode.air_date_sub, "sub")
+    if lang in ("dub", "both"):
+        _collect(Episode.air_date_dub, "dub")
+
+    days_payload = []
+    for i in range(7):
+        date_key = _iso_date(week_start + timedelta(days=i))
+        episodes = buckets[date_key]
+        episodes.sort(key=lambda e: (e["_sort_air"], e["_sort_title"]))
+        for e in episodes:
+            e.pop("_sort_air", None)
+            e.pop("_sort_title", None)
+        days_payload.append({"date": date_key, "episodes": episodes})
 
     return jsonify({
         "week_start": _iso_date(week_start),

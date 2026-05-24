@@ -21,19 +21,6 @@ def user(app):
         return {"id": u.id, "email": u.email}
 
 
-@pytest.fixture()
-def auth_headers_for(client, user):
-    res = client.post(
-        "/api/auth/login",
-        json={"email": user["email"], "password": "wrong"},
-    )
-    # We don't have a real password — login fails. Build a JWT manually instead.
-    from flask_jwt_extended import create_access_token
-    from app import create_app
-    # Use the same app's token
-    return None  # placeholder, see helper below
-
-
 def _auth(app, user_id):
     """Generate a header dict carrying a valid JWT for the given user_id."""
     with app.app_context():
@@ -72,3 +59,105 @@ def test_week_returns_seven_empty_days(client, app, user):
     assert [d["date"] for d in body["days"]] == expected_dates
     for d in body["days"]:
         assert d["episodes"] == []
+
+
+@pytest.fixture()
+def airing_data(app, user):
+    """Seed two anime, one sub episode on Sun, one dub on Wed, one sub on Wed."""
+    with app.app_context():
+        a1 = Anime(title="Alpha", image_url="a.jpg")
+        a2 = Anime(title="Beta", image_url="b.jpg")
+        db.session.add_all([a1, a2])
+        db.session.flush()
+
+        e1 = Episode(
+            anime_id=a1.id,
+            episode_number=1,
+            air_date_sub=datetime(2026, 5, 24, 22, 30),  # Sun naive-UTC
+            sub_source="anilist",
+        )
+        e2 = Episode(
+            anime_id=a2.id,
+            episode_number=4,
+            air_date_dub=datetime(2026, 5, 27, 17, 0),   # Wed
+            dub_source="crunchyroll_rss",
+        )
+        e3 = Episode(
+            anime_id=a1.id,
+            episode_number=2,
+            air_date_sub=datetime(2026, 5, 27, 9, 0),    # Wed
+            sub_source="anilist",
+        )
+        db.session.add_all([e1, e2, e3])
+        db.session.commit()
+        return {"a1_id": a1.id, "a2_id": a2.id}
+
+
+def test_lang_default_is_both(client, app, user, airing_data):
+    res = client.get(
+        "/api/schedule/week?week=2026-05-24",
+        headers=_auth(app, user["id"]),
+    )
+    body = res.get_json()
+    # Sun has 1 sub; Wed has 1 sub + 1 dub = 3 total
+    total = sum(len(d["episodes"]) for d in body["days"])
+    assert total == 3
+
+
+def test_lang_sub_only(client, app, user, airing_data):
+    res = client.get(
+        "/api/schedule/week?week=2026-05-24&lang=sub",
+        headers=_auth(app, user["id"]),
+    )
+    body = res.get_json()
+    types = {e["type"] for d in body["days"] for e in d["episodes"]}
+    assert types == {"sub"}
+    assert sum(len(d["episodes"]) for d in body["days"]) == 2
+
+
+def test_lang_dub_only(client, app, user, airing_data):
+    res = client.get(
+        "/api/schedule/week?week=2026-05-24&lang=dub",
+        headers=_auth(app, user["id"]),
+    )
+    body = res.get_json()
+    types = {e["type"] for d in body["days"] for e in d["episodes"]}
+    assert types == {"dub"}
+    assert sum(len(d["episodes"]) for d in body["days"]) == 1
+
+
+def test_lang_garbage_400s(client, app, user):
+    res = client.get(
+        "/api/schedule/week?week=2026-05-24&lang=spanish",
+        headers=_auth(app, user["id"]),
+    )
+    assert res.status_code == 400
+
+
+def test_episodes_sorted_by_air_time_then_title(client, app, user, airing_data):
+    res = client.get(
+        "/api/schedule/week?week=2026-05-24",
+        headers=_auth(app, user["id"]),
+    )
+    body = res.get_json()
+    wed = next(d for d in body["days"] if d["date"] == "2026-05-27")
+    # 09:00 sub Alpha first, then 17:00 dub Beta
+    assert [e["episode_number"] for e in wed["episodes"]] == [2, 4]
+
+
+def test_episode_shape_complete(client, app, user, airing_data):
+    res = client.get(
+        "/api/schedule/week?week=2026-05-24&lang=sub",
+        headers=_auth(app, user["id"]),
+    )
+    body = res.get_json()
+    sun_ep = next(d for d in body["days"] if d["date"] == "2026-05-24")["episodes"][0]
+    assert sun_ep["id"]
+    assert sun_ep["anime_id"]
+    assert sun_ep["anime"]["title"] == "Alpha"
+    assert sun_ep["anime"]["image_url"] == "a.jpg"
+    assert sun_ep["episode_number"] == 1
+    assert sun_ep["air_time_utc"] == "2026-05-24T22:30:00Z"
+    assert sun_ep["type"] == "sub"
+    assert sun_ep["estimated"] is False
+    assert sun_ep["on_watchlist"] is False
