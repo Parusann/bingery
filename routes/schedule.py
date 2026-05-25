@@ -278,8 +278,7 @@ def schedule_week():
     if lang not in ("sub", "dub", "both"):
         return jsonify({"error": "lang must be one of sub/dub/both"}), 400
 
-    mine_raw = (request.args.get("mine") or "0").strip()
-    mine = mine_raw == "1"
+    mine = (request.args.get("mine") or "0").strip().lower() in ("1", "true", "yes", "on")
 
     user_id = get_jwt_identity()
     watchlist_ids = _watchlisted_anime_ids(user_id)
