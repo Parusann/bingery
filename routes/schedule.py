@@ -13,9 +13,9 @@ from __future__ import annotations
 from datetime import datetime, timedelta, timezone
 
 from flask import Blueprint, jsonify, request
-from flask_jwt_extended import jwt_required
+from flask_jwt_extended import get_jwt_identity, jwt_required
 
-from models import db, Anime, Episode
+from models import db, Anime, Episode, WatchlistEntry
 from utils.nsfw import maybe_exclude_nsfw
 
 
@@ -75,6 +75,21 @@ def _episode_air_date(dt: datetime | None) -> datetime | None:
     if dt.tzinfo is None:
         return dt.replace(tzinfo=timezone.utc)
     return dt.astimezone(timezone.utc)
+
+
+def _watchlisted_anime_ids(user_id) -> set[int]:
+    """Return the set of anime IDs the user has any WatchlistEntry for.
+
+    `user_id` arrives as a string from `get_jwt_identity()` (we sign tokens
+    with `identity=str(user.id)`); WatchlistEntry.user_id is an Integer column,
+    so we cast before binding to avoid a silent empty result.
+    """
+    rows = (
+        db.session.query(WatchlistEntry.anime_id)
+        .filter_by(user_id=int(user_id))
+        .all()
+    )
+    return {r[0] for r in rows}
 
 
 # ─── Endpoint 1: GET /api/schedule/upcoming ────────────────────────────────
@@ -263,6 +278,12 @@ def schedule_week():
     if lang not in ("sub", "dub", "both"):
         return jsonify({"error": "lang must be one of sub/dub/both"}), 400
 
+    mine_raw = (request.args.get("mine") or "0").strip()
+    mine = mine_raw == "1"
+
+    user_id = get_jwt_identity()
+    watchlist_ids = _watchlisted_anime_ids(user_id)
+
     week_end = week_start + timedelta(days=7)
     start_naive = week_start.replace(tzinfo=None)
     end_naive = week_end.replace(tzinfo=None)
@@ -284,6 +305,8 @@ def schedule_week():
             .all()
         )
         for episode, anime in rows:
+            if mine and anime.id not in watchlist_ids:
+                continue
             raw = getattr(episode, field.key)
             air_at = _episode_air_date(raw)
             if air_at is None:
@@ -299,7 +322,7 @@ def schedule_week():
                 "air_time_utc": _as_iso_z(air_at),
                 "type": kind,
                 "estimated": False,           # filled in Task 4
-                "on_watchlist": False,        # filled in Task 3
+                "on_watchlist": anime.id in watchlist_ids,
                 "_sort_air": air_at,
                 "_sort_title": (anime.title or "").lower(),
             })

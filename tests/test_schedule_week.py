@@ -161,3 +161,51 @@ def test_episode_shape_complete(client, app, user, airing_data):
     assert sun_ep["type"] == "sub"
     assert sun_ep["estimated"] is False
     assert sun_ep["on_watchlist"] is False
+
+
+@pytest.fixture()
+def watchlisted(app, user, airing_data):
+    """Add a WatchlistEntry so the user follows Anime A."""
+    with app.app_context():
+        we = WatchlistEntry(
+            user_id=user["id"],
+            anime_id=airing_data["a1_id"],
+            status="watching",
+        )
+        db.session.add(we)
+        db.session.commit()
+    return airing_data
+
+
+def test_on_watchlist_flag_populated(client, app, user, watchlisted):
+    res = client.get(
+        "/api/schedule/week?week=2026-05-24",
+        headers=_auth(app, user["id"]),
+    )
+    body = res.get_json()
+    all_eps = [e for d in body["days"] for e in d["episodes"]]
+    by_anime = {e["anime_id"]: e["on_watchlist"] for e in all_eps}
+    assert by_anime[watchlisted["a1_id"]] is True
+    assert by_anime[watchlisted["a2_id"]] is False
+
+
+def test_mine_filter_only_returns_watchlisted(client, app, user, watchlisted):
+    res = client.get(
+        "/api/schedule/week?week=2026-05-24&mine=1",
+        headers=_auth(app, user["id"]),
+    )
+    body = res.get_json()
+    all_eps = [e for d in body["days"] for e in d["episodes"]]
+    assert all(e["on_watchlist"] for e in all_eps)
+    anime_ids = {e["anime_id"] for e in all_eps}
+    assert anime_ids == {watchlisted["a1_id"]}
+
+
+def test_mine_zero_returns_all(client, app, user, watchlisted):
+    res = client.get(
+        "/api/schedule/week?week=2026-05-24&mine=0",
+        headers=_auth(app, user["id"]),
+    )
+    body = res.get_json()
+    anime_ids = {e["anime_id"] for d in body["days"] for e in d["episodes"]}
+    assert anime_ids == {watchlisted["a1_id"], watchlisted["a2_id"]}
