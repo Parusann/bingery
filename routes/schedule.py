@@ -320,7 +320,7 @@ def schedule_week():
                 "episode_number": episode.episode_number,
                 "air_time_utc": _as_iso_z(air_at),
                 "type": kind,
-                "estimated": False,           # filled in Task 4
+                "estimated": (kind == "dub" and (episode.dub_source or "") == "synthetic_lag_8w"),
                 "on_watchlist": anime.id in watchlist_ids,
                 "_sort_air": air_at,
                 "_sort_title": (anime.title or "").lower(),

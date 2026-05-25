@@ -9,7 +9,7 @@ from datetime import datetime, timezone
 
 import pytest
 
-from models import db, User, Anime, Episode, WatchlistEntry
+from models import db, User, Anime, Episode, WatchlistEntry, Genre
 
 
 @pytest.fixture()
@@ -230,3 +230,65 @@ def test_on_watchlist_includes_dropped_status(client, app, user, airing_data):
     all_eps = [e for d in body["days"] for e in d["episodes"]]
     target = next(e for e in all_eps if e["anime_id"] == airing_data["a1_id"])
     assert target["on_watchlist"] is True
+
+
+def test_estimated_flag_true_for_synthetic_dub(client, app, user):
+    with app.app_context():
+        a = Anime(title="EstShow", image_url="e.jpg")
+        db.session.add(a)
+        db.session.flush()
+        e = Episode(
+            anime_id=a.id,
+            episode_number=1,
+            air_date_dub=datetime(2026, 5, 25, 12, 0),
+            dub_source="synthetic_lag_8w",
+        )
+        db.session.add(e)
+        db.session.commit()
+        anime_id = a.id
+
+    res = client.get(
+        "/api/schedule/week?week=2026-05-24&lang=dub",
+        headers=_auth(app, user["id"]),
+    )
+    body = res.get_json()
+    dub_eps = [e for d in body["days"] for e in d["episodes"]]
+    target = next(e for e in dub_eps if e["anime_id"] == anime_id)
+    assert target["estimated"] is True
+
+
+def test_estimated_flag_false_for_real_dub_and_subs(client, app, user, airing_data):
+    res = client.get(
+        "/api/schedule/week?week=2026-05-24",
+        headers=_auth(app, user["id"]),
+    )
+    body = res.get_json()
+    all_eps = [e for d in body["days"] for e in d["episodes"]]
+    assert all(e["estimated"] is False for e in all_eps)
+
+
+def test_nsfw_hentai_excluded(client, app, user):
+    with app.app_context():
+        # NsfwShow tagged with the official "Hentai" genre → excluded unconditionally.
+        hentai = Genre.query.filter_by(name="Hentai").first() or Genre(name="Hentai")
+        db.session.add(hentai)
+        a = Anime(title="NsfwShow", image_url="n.jpg")
+        a.official_genres.append(hentai)
+        db.session.add(a)
+        db.session.flush()
+        e = Episode(
+            anime_id=a.id,
+            episode_number=1,
+            air_date_sub=datetime(2026, 5, 25, 10, 0),
+            sub_source="anilist",
+        )
+        db.session.add(e)
+        db.session.commit()
+
+    res = client.get(
+        "/api/schedule/week?week=2026-05-24",
+        headers=_auth(app, user["id"]),
+    )
+    body = res.get_json()
+    titles = {e["anime"]["title"] for d in body["days"] for e in d["episodes"]}
+    assert "NsfwShow" not in titles
