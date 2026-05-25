@@ -294,7 +294,7 @@ def schedule_week():
             buckets[bucket_key].append({
                 "id": episode.id,
                 "anime_id": anime.id,
-                "anime": anime.to_dict(),
+                "anime": _anime_summary(anime),
                 "episode_number": episode.episode_number,
                 "air_time_utc": _as_iso_z(air_at),
                 "type": kind,
