@@ -10,6 +10,7 @@ from datetime import datetime, timezone
 import pytest
 
 from models import db, User, Anime, Episode, WatchlistEntry, Genre
+from seed_dub_schedule import SYNTHETIC_TAG
 
 
 @pytest.fixture()
@@ -241,7 +242,7 @@ def test_estimated_flag_true_for_synthetic_dub(client, app, user):
             anime_id=a.id,
             episode_number=1,
             air_date_dub=datetime(2026, 5, 25, 12, 0),
-            dub_source="synthetic_lag_8w",
+            dub_source=SYNTHETIC_TAG,
         )
         db.session.add(e)
         db.session.commit()

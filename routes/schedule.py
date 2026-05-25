@@ -17,6 +17,7 @@ from flask_jwt_extended import get_jwt_identity, jwt_required
 
 from models import db, Anime, Episode, WatchlistEntry
 from utils.nsfw import maybe_exclude_nsfw
+from seed_dub_schedule import SYNTHETIC_TAG
 
 
 schedule_bp = Blueprint("schedule", __name__)
@@ -320,7 +321,7 @@ def schedule_week():
                 "episode_number": episode.episode_number,
                 "air_time_utc": _as_iso_z(air_at),
                 "type": kind,
-                "estimated": (kind == "dub" and (episode.dub_source or "") == "synthetic_lag_8w"),
+                "estimated": (kind == "dub" and (episode.dub_source or "") == SYNTHETIC_TAG),
                 "on_watchlist": anime.id in watchlist_ids,
                 "_sort_air": air_at,
                 "_sort_title": (anime.title or "").lower(),
