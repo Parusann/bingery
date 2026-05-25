@@ -14,6 +14,25 @@ export const palette = {
   textDim: "rgba(255,255,255,0.42)",
   danger: "#e78a8a",
   success: "#8fc9a4",
+  // Schedule revamp tokens (2026-05-24)
+  peach: "#f4b690",
+  peachHi: "#ffd0ad",
+  peachDeep: "#d99368",
+  sage: "#9BB8A8",
+  sageBg: "rgba(155,184,168,0.10)",
+  sageBd: "rgba(155,184,168,0.38)",
+  gold: "#f4cf90",
+  goldBd: "rgba(244,207,144,0.42)",
+  goldGlow: "rgba(244,207,144,0.18)",
+  ink: "#f3ece4",
+  ink2: "#cbc1b6",
+  mute: "#8a8090",
+  mute2: "#5a5263",
+  line: "rgba(243,236,228,0.08)",
+  line2: "rgba(243,236,228,0.14)",
+  rowBg: "rgba(255,255,255,0.025)",
+  rowBgHover: "rgba(255,255,255,0.05)",
+  rowBd: "rgba(255,255,255,0.06)",
 } as const;
 
 export const radius = {
@@ -34,9 +53,9 @@ export const space = {
 } as const;
 
 export const font = {
-  display: "'Fraunces', ui-serif, Georgia, serif",
-  body: "'Inter', ui-sans-serif, system-ui, -apple-system, sans-serif",
-  mono: "'JetBrains Mono', ui-monospace, SFMono-Regular, monospace",
+  display: "Instrument Serif",
+  body: "Geist",
+  mono: "Geist Mono",
 } as const;
 
 export const motion = {
