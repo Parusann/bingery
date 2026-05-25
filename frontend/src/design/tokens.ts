@@ -53,9 +53,9 @@ export const space = {
 } as const;
 
 export const font = {
-  display: "Instrument Serif",
-  body: "Geist",
-  mono: "Geist Mono",
+  display: 'Instrument Serif, ui-serif, Georgia, serif',
+  body: 'Geist, ui-sans-serif, system-ui, -apple-system, sans-serif',
+  mono: 'Geist Mono, ui-monospace, SFMono-Regular, monospace',
 } as const;
 
 export const motion = {
