@@ -209,3 +209,24 @@ def test_mine_zero_returns_all(client, app, user, watchlisted):
     body = res.get_json()
     anime_ids = {e["anime_id"] for d in body["days"] for e in d["episodes"]}
     assert anime_ids == {watchlisted["a1_id"], watchlisted["a2_id"]}
+
+
+def test_on_watchlist_includes_dropped_status(client, app, user, airing_data):
+    """Any WatchlistEntry status should flag on_watchlist=True (not just 'watching')."""
+    with app.app_context():
+        we = WatchlistEntry(
+            user_id=user["id"],
+            anime_id=airing_data["a1_id"],
+            status="dropped",
+        )
+        db.session.add(we)
+        db.session.commit()
+
+    res = client.get(
+        "/api/schedule/week?week=2026-05-24",
+        headers=_auth(app, user["id"]),
+    )
+    body = res.get_json()
+    all_eps = [e for d in body["days"] for e in d["episodes"]]
+    target = next(e for e in all_eps if e["anime_id"] == airing_data["a1_id"])
+    assert target["on_watchlist"] is True
