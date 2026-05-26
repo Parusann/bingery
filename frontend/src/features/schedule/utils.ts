@@ -1,5 +1,5 @@
 export function todayIsoDate(): string {
-  return toIsoDate(new Date());
+  return toLocalIsoDate(new Date());
 }
 
 export function toIsoDate(d: Date): string {
@@ -9,11 +9,20 @@ export function toIsoDate(d: Date): string {
   return `${y}-${m}-${day}`;
 }
 
+export function toLocalIsoDate(d: Date): string {
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, "0");
+  const day = String(d.getDate()).padStart(2, "0");
+  return `${y}-${m}-${day}`;
+}
+
 export function getSundayOfWeek(d: Date): string {
-  const utc = new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate()));
-  const dow = utc.getUTCDay();
-  utc.setUTCDate(utc.getUTCDate() - dow);
-  return toIsoDate(utc);
+  // Compute Sunday in the user's local timezone so "this week" matches the
+  // calendar the user is looking at, not the UTC calendar.
+  const local = new Date(d.getFullYear(), d.getMonth(), d.getDate());
+  const dow = local.getDay();
+  local.setDate(local.getDate() - dow);
+  return toLocalIsoDate(local);
 }
 
 export function shiftWeek(weekStartIso: string, weeks: number): string {
