@@ -40,6 +40,14 @@ jobs:
           curl -L https://fly.io/install.sh | sh
           echo "$HOME/.fly/bin" >> "$GITHUB_PATH"
 
+      - name: Wake the Fly machine
+        # `fly ssh console` doesn't trigger auto_start; only HTTP traffic
+        # via the edge proxy does. Hit /api/health, wait a moment, then
+        # the SSH steps below have a running VM to land on.
+        run: |
+          curl -fsS --retry 5 --retry-delay 3 --max-time 60 https://bingery.fly.dev/api/health
+          sleep 8
+
       - name: Sync AniList catalog (sub air dates + status)
         env:
           FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
