@@ -79,8 +79,18 @@ jobs:
         continue-on-error: true
 
       - name: Reproject synthetic dub seed
+        # The seed walks every candidate episode in the (now ~378-anime)
+        # cohort and commits the writes in one transaction. With Fly's
+        # ssh idle timeout that one-shot ssh call gets killed before the
+        # commit lands. We launch the seed via setsid+nohup so it's
+        # detached from the ssh session, sleep long enough for the commit
+        # to finish, then a second ssh dumps the log.
         if: always()
         env:
           FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
         run: |
-          fly ssh console --app bingery -C "bash -c 'cd /app && python seed_dub_schedule.py --overwrite --top 1500'"
+          fly ssh console --app bingery -C "bash -c 'cd /app && rm -f /tmp/seed.log && setsid nohup python -u seed_dub_schedule.py --overwrite --top 1500 > /tmp/seed.log 2>&1 < /dev/null & disown; echo launched'"
+          echo "Sleeping 90s for the seed to commit..."
+          sleep 90
+          fly ssh console --app bingery -C "cat /tmp/seed.log"
+        continue-on-error: true
