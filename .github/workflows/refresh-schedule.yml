@@ -35,7 +35,10 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 60
     steps:
-      - uses: superfly/flyctl-actions/setup-flyctl@master
+      - name: Install flyctl
+        run: |
+          curl -L https://fly.io/install.sh | sh
+          echo "$HOME/.fly/bin" >> "$GITHUB_PATH"
 
       - name: Sync AniList catalog (sub air dates + status)
         env:
