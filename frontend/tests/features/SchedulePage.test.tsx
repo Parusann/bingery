@@ -1,13 +1,10 @@
-import { describe, expect, it, beforeEach, vi } from "vitest";
+import { describe, it, expect, beforeEach, vi } from "vitest";
 import { render, screen } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 
-const useScheduleMock = vi.hoisted(() => vi.fn());
-const useAnimeEpisodesMock = vi.hoisted(() => vi.fn());
-
-vi.mock("@/hooks/useSchedule", () => ({
-  useSchedule: useScheduleMock,
-  useAnimeEpisodes: useAnimeEpisodesMock,
+const useScheduleWeekMock = vi.hoisted(() => vi.fn());
+vi.mock("@/hooks/useScheduleWeek", () => ({
+  useScheduleWeek: useScheduleWeekMock,
 }));
 
 import { SchedulePage } from "@/features/schedule/SchedulePage";
@@ -23,58 +20,69 @@ const fakeUser = {
   created_at: "2026-01-01",
 };
 
+const sevenEmptyDays = (weekStart: string) => {
+  const out = [];
+  const [y, m, d] = weekStart.split("-").map(Number);
+  for (let i = 0; i < 7; i++) {
+    const dt = new Date(Date.UTC(y, m - 1, d + i));
+    out.push({ date: dt.toISOString().slice(0, 10), episodes: [] });
+  }
+  return out;
+};
+
 beforeEach(() => {
-  useScheduleMock.mockReset();
+  useScheduleWeekMock.mockReset();
   useAuth.setState({ user: fakeUser, status: "authenticated" });
 });
 
 describe("SchedulePage", () => {
-  it("shows sign-in prompt when user is not authenticated", () => {
+  it("renders the sign-in prompt when unauthenticated", () => {
     useAuth.setState({ user: null, status: "idle" });
-    useScheduleMock.mockReturnValue({ isLoading: false, data: undefined });
+    useScheduleWeekMock.mockReturnValue({ isLoading: false, data: undefined });
     render(
-      <MemoryRouter>
+      <MemoryRouter initialEntries={["/schedule"]}>
         <SchedulePage />
-      </MemoryRouter>
+      </MemoryRouter>,
     );
-    expect(
-      screen.getByText(/Sign in to see the schedule/i)
-    ).toBeInTheDocument();
+    expect(screen.getByText(/sign in to see the schedule/i)).toBeInTheDocument();
   });
 
-  it("renders skeleton blocks while loading", () => {
-    useScheduleMock.mockReturnValue({ isLoading: true, data: undefined });
-    const { container } = render(
-      <MemoryRouter>
-        <SchedulePage />
-      </MemoryRouter>
-    );
-    expect(container.querySelectorAll(".h-24")).toHaveLength(5);
-    expect(
-      screen.queryByText(/No releases scheduled/i)
-    ).not.toBeInTheDocument();
-  });
-
-  it("renders skeleton blocks when query has no data yet", () => {
-    useScheduleMock.mockReturnValue({ isLoading: false, data: undefined });
-    const { container } = render(
-      <MemoryRouter>
-        <SchedulePage />
-      </MemoryRouter>
-    );
-    expect(container.querySelectorAll(".h-24")).toHaveLength(5);
-  });
-
-  it("renders empty-state message when day has no episodes", () => {
-    useScheduleMock.mockReturnValue({
+  it("renders the header, day strip, and 7 sections when data loads", () => {
+    useScheduleWeekMock.mockReturnValue({
       isLoading: false,
-      data: { days: [{ date: "2026-05-14", episodes: [] }] },
+      data: { week_start: "2026-05-24", days: sevenEmptyDays("2026-05-24") },
+    });
+    const { container } = render(
+      <MemoryRouter initialEntries={["/schedule?week=2026-05-24"]}>
+        <SchedulePage />
+      </MemoryRouter>,
+    );
+    expect(screen.getByText(/what's/i)).toBeInTheDocument();
+    expect(screen.getByLabelText(/previous week/i)).toBeInTheDocument();
+    expect(screen.getByLabelText(/next week/i)).toBeInTheDocument();
+    expect(container.querySelectorAll('section[id^="day-"]').length).toBe(7);
+  });
+
+  it("renders skeletons while loading", () => {
+    useScheduleWeekMock.mockReturnValue({ isLoading: true, data: undefined });
+    const { container } = render(
+      <MemoryRouter initialEntries={["/schedule?week=2026-05-24"]}>
+        <SchedulePage />
+      </MemoryRouter>,
+    );
+    expect(container.querySelectorAll('[data-skeleton="true"]').length).toBeGreaterThan(0);
+  });
+
+  it("passes lang and mine from URL into useScheduleWeek", () => {
+    useScheduleWeekMock.mockReturnValue({
+      isLoading: false,
+      data: { week_start: "2026-05-24", days: sevenEmptyDays("2026-05-24") },
     });
     render(
-      <MemoryRouter>
+      <MemoryRouter initialEntries={["/schedule?week=2026-05-24&lang=dub&mine=1"]}>
         <SchedulePage />
-      </MemoryRouter>
+      </MemoryRouter>,
     );
-    expect(screen.getByText("No releases scheduled.")).toBeInTheDocument();
+    expect(useScheduleWeekMock).toHaveBeenCalledWith("2026-05-24", "dub", true);
   });
 });
