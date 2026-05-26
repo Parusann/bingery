@@ -20,10 +20,16 @@ from __future__ import annotations
 
 import argparse
 import sys
-from datetime import timedelta
+from datetime import datetime, timedelta, timezone
 
 SYNTHETIC_TAG = "synthetic_lag_8w"
 LAG_DAYS = 56
+DEFAULT_RECENT_WINDOW_DAYS = 90
+
+# Real dub sources we never overwrite from the synthetic projector, even
+# when --overwrite is passed. The synthetic seed exists to fill gaps, not
+# to clobber authoritative data from RSS, AnimeSchedule, or user reports.
+_REAL_DUB_SOURCES = {"crunchyroll_rss", "animeschedule"}
 
 
 def main(argv: list | None = None) -> int:
@@ -35,7 +41,14 @@ def main(argv: list | None = None) -> int:
     parser.add_argument("--overwrite", action="store_true",
                         help="Replace existing air_date_dub even from real sources. Off by default.")
     parser.add_argument("--top", type=int, default=400,
-                        help="How many top-rated currently-airing anime to include (by api_score). Default 400.")
+                        help="How many top-rated airing anime to include (by api_score). Default 400.")
+    parser.add_argument("--recent-window-days", type=int, default=DEFAULT_RECENT_WINDOW_DAYS,
+                        help=(
+                            "Also include anime that have at least one sub episode airing "
+                            "within +/- this many days of today, regardless of Anime.status. "
+                            "Catches shows the catalog has misclassified (default %(default)d). "
+                            "Pass 0 to require Anime.status='Currently Airing'."
+                        ))
     args = parser.parse_args(argv)
 
     from app import app
@@ -56,18 +69,38 @@ def main(argv: list | None = None) -> int:
             print(f"reset: cleared {wiped} synthetic dub rows")
             return 0
 
-        # ── Selection: top-N currently-airing by score ───────────────
+        # ── Selection: top-N airing-or-recently-airing by score ────
         # The DB uses the AniList/MAL phrasing "Currently Airing". We also
         # accept "Airing" as a courtesy in case the seed ever changes.
+        # In addition, when --recent-window-days > 0 we include any anime
+        # with a sub episode in a +/- window centered on today — this picks
+        # up shows whose Anime.status drifted (often "Finished Airing" or
+        # "Not Yet Aired") but which are still releasing in the real world.
+        from sqlalchemy import or_, exists
+        now = datetime.now(timezone.utc).replace(tzinfo=None)
+        clauses = [Anime.status.in_(("Currently Airing", "Airing"))]
+        if args.recent_window_days and args.recent_window_days > 0:
+            win_start = now - timedelta(days=args.recent_window_days)
+            win_end = now + timedelta(days=args.recent_window_days)
+            has_window_sub = exists().where(
+                (Episode.anime_id == Anime.id)
+                & (Episode.air_date_sub >= win_start)
+                & (Episode.air_date_sub < win_end)
+            )
+            clauses.append(has_window_sub)
+
         airing_q = (
             db.session.query(Anime.id)
-            .filter(Anime.status.in_(("Currently Airing", "Airing")))
+            .filter(or_(*clauses))
             .filter(Anime.api_score.isnot(None))
             .order_by(Anime.api_score.desc())
             .limit(args.top)
         )
         anime_ids = [row[0] for row in airing_q.all()]
-        print(f"selected {len(anime_ids)} currently-airing anime (top by score)")
+        print(
+            f"selected {len(anime_ids)} airing-or-recent anime "
+            f"(top by score, +/-{args.recent_window_days}d window)"
+        )
 
         if not anime_ids:
             print("no airing anime found — aborting")
@@ -86,18 +119,33 @@ def main(argv: list | None = None) -> int:
 
         lag = timedelta(days=LAG_DAYS)
         n_set = 0
+        n_skipped_real = 0
         for ep in eps:
+            # Never clobber real dub data from RSS / AnimeSchedule / user reports,
+            # even with --overwrite. The synthetic seed fills gaps; it doesn't
+            # outrank an authoritative source.
+            if ep.dub_source in _REAL_DUB_SOURCES or (
+                ep.dub_source and ep.dub_source.startswith("user:")
+            ):
+                n_skipped_real += 1
+                continue
             ep.air_date_dub = ep.air_date_sub + lag
             ep.dub_source = SYNTHETIC_TAG
             n_set += 1
 
         if args.dry_run:
             db.session.rollback()
-            print(f"dry-run: would set air_date_dub on {n_set} episodes")
+            print(
+                f"dry-run: would set air_date_dub on {n_set} episodes "
+                f"(skipped {n_skipped_real} with real dub sources)"
+            )
             return 0
 
         db.session.commit()
-        print(f"wrote air_date_dub on {n_set} episodes (lag={LAG_DAYS}d, tag={SYNTHETIC_TAG!r})")
+        print(
+            f"wrote air_date_dub on {n_set} episodes (lag={LAG_DAYS}d, tag={SYNTHETIC_TAG!r}); "
+            f"preserved {n_skipped_real} real dub-source rows"
+        )
 
         # ── Verification ────────────────────────────────────────────
         from sqlalchemy import func
