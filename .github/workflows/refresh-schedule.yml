@@ -1,0 +1,59 @@
+name: Daily schedule refresh
+
+# Refreshes the sub/dub data that powers /api/schedule:
+#   1. AniList catalog sync (resumable, incremental — keeps Anime.status
+#      and Episode.air_date_sub fresh, which is also what feeds the
+#      "currently airing" cohort the synthetic dub seed uses).
+#   2. Crunchyroll RSS dub ingest (real dub air dates for the shows CR
+#      covers — currently a thin slice, ~11 rows in prod).
+#   3. Synthetic dub seed reproject (--overwrite) — projects every sub
+#      date on every currently-airing anime forward by 56 days as a
+#      best-effort dub estimate, marked dub_source=synthetic_lag_8w so
+#      the UI can flag them as "estimated".
+#
+# All three runs share one Fly machine (volume constraint) — we just
+# `fly ssh console` into the long-running app machine. Fly auto-starts
+# it if idle.
+#
+# Required GitHub secret: FLY_API_TOKEN (create with `fly tokens create deploy`).
+# Each step uses continue-on-error so a transient AniList rate-limit or
+# Crunchyroll RSS outage won't stop the synthetic reprojection at the
+# end.
+
+on:
+  schedule:
+    # 06:00 UTC daily (~02:00 EDT / 23:00 PDT — off-peak everywhere).
+    - cron: "0 6 * * *"
+  workflow_dispatch:
+
+concurrency:
+  group: bingery-refresh
+  cancel-in-progress: false
+
+jobs:
+  refresh:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: superfly/flyctl-actions/setup-flyctl@master
+
+      - name: Sync AniList catalog (sub air dates + status)
+        env:
+          FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
+        run: |
+          fly ssh console --app bingery -C "bash -c 'cd /app && python sync_anilist.py --resume'"
+        continue-on-error: true
+
+      - name: Sync Crunchyroll RSS (real dub air dates)
+        env:
+          FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
+        run: |
+          fly ssh console --app bingery -C "bash -c 'cd /app && python sync_dub_crunchyroll.py'"
+        continue-on-error: true
+
+      - name: Reproject synthetic dub seed
+        if: always()
+        env:
+          FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
+        run: |
+          fly ssh console --app bingery -C "bash -c 'cd /app && python seed_dub_schedule.py --overwrite --top 1500'"
