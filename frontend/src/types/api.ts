@@ -11,6 +11,7 @@ import type {
   WatchEntry,
   WatchStats,
   WatchStatus,
+  ScheduleWeekResponse,
 } from "./models";
 
 export interface AuthResponse {
@@ -126,3 +127,5 @@ export interface CreateDubReportRequest {
 export interface UpdateDubReportRequest {
   status: "accepted" | "rejected";
 }
+
+export interface ScheduleWeekResp extends ScheduleWeekResponse {}

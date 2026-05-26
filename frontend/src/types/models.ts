@@ -284,3 +284,26 @@ export interface AnimeEpisodesResponse {
   next_sub: Episode | null;
   next_dub: Episode | null;
 }
+
+// /api/schedule/week response (revamp 2026-05-24)
+
+export interface ScheduleWeekEpisode {
+  id: number;
+  anime_id: number;
+  anime: AnimeSummary;
+  episode_number: number;
+  air_time_utc: string;
+  type: "sub" | "dub";
+  estimated: boolean;
+  on_watchlist: boolean;
+}
+
+export interface ScheduleWeekDay {
+  date: string;
+  episodes: ScheduleWeekEpisode[];
+}
+
+export interface ScheduleWeekResponse {
+  week_start: string;
+  days: ScheduleWeekDay[];
+}
