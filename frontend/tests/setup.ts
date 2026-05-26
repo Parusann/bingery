@@ -1,5 +1,9 @@
 import "@testing-library/jest-dom/vitest";
 
+if (typeof Element !== "undefined" && !Element.prototype.scrollIntoView) {
+  Element.prototype.scrollIntoView = function () {};
+}
+
 // Node 22+ ships an experimental built-in `localStorage` global that requires
 // `--localstorage-file=<path>` to function. Without it, calls like
 // `localStorage.clear()` throw "is not a function". We replace it with an
