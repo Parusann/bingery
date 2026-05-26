@@ -231,6 +231,22 @@ export const api = {
     request<import("@/types/api").ScheduleResp>(
       `/schedule/upcoming?days=${days}&kind=${kind}`
     ),
+
+  getScheduleWeek: (
+    week: string,
+    lang: "sub" | "dub" | "both" = "both",
+    mine = false,
+  ) => {
+    const params = new URLSearchParams({
+      week,
+      lang,
+      mine: mine ? "1" : "0",
+    });
+    return request<import("@/types/api").ScheduleWeekResp>(
+      `/schedule/week?${params}`
+    );
+  },
+
   getAnimeEpisodes: (animeId: number) =>
     request<import("@/types/api").AnimeEpisodesResp>(`/anime/${animeId}/episodes`),
 
