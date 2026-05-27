@@ -1,23 +1,18 @@
 name: Daily schedule refresh
 
-# Refreshes the sub/dub data that powers /api/schedule.
+# Refreshes the sub/dub data that powers /api/schedule by POSTing to the
+# in-process admin endpoint on the live Flask app:
+#   POST https://bingery.fly.dev/api/admin/sync-dub-sources
+#       Header: X-Admin-Secret: <ADMIN_SYNC_SECRET>
 #
-# The Fly machine has 256MB RAM. A running Flask + gunicorn worker uses
-# ~150MB; layering a sync subprocess on top OOM-kills the script. To stay
-# on the free tier without bumping memory, we:
-#   1. Stop the main app machine — releases the bingery_data volume.
-#   2. Run a one-off machine with the same image and volume, executing
-#      all four sync scripts back-to-back. With no Flask in the way, the
-#      full 256MB is available for the syncs themselves.
-#   3. Destroy the temp machine, restart the main app machine — auto-
-#      reattaches the volume.
+# This runs the syncs inside the already-loaded gunicorn worker, so we
+# avoid spawning a second Python process that would OOM on Fly's 256MB
+# free tier. Memory peak is ~25MB on top of the running worker — fits.
 #
-# Trade-off: the site is unreachable for ~5-10 min while the temp machine
-# runs (Fly's auto-start can't fire because the volume is in use).
-#
-# Required GitHub secret: FLY_API_TOKEN (created with `fly tokens create deploy`).
-# AnimeSchedule needs Fly secret ANIMESCHEDULE_API_KEY (inherited by the
-# temp machine since it's in the same app).
+# Required secrets:
+#   GitHub: ADMIN_SYNC_SECRET  (sent in the request header)
+#   Fly:    ADMIN_SYNC_SECRET  (matched server-side; same value)
+#   Fly:    ANIMESCHEDULE_API_KEY  (used by the AnimeSchedule sync)
 
 on:
   schedule:
@@ -32,69 +27,34 @@ concurrency:
 jobs:
   refresh:
     runs-on: ubuntu-latest
-    timeout-minutes: 60
+    timeout-minutes: 15
     env:
-      FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
-      FLY_APP: bingery
-      FLY_REGION: yyz
-      FLY_VOLUME: bingery_data
+      APP_URL: https://bingery.fly.dev
     steps:
-      - name: Install flyctl
+      - name: Wake the Fly machine
+        # Hit a public endpoint so Fly auto-starts the machine if it's
+        # been idle. Retries a few times — first request after sleep can
+        # be a few seconds slow.
         run: |
-          curl -L https://fly.io/install.sh | sh
-          echo "$HOME/.fly/bin" >> "$GITHUB_PATH"
-
-      - name: Discover main app machine + image
-        id: discover
-        run: |
-          MAIN_ID=$(fly machines list --app "$FLY_APP" --json | jq -r '.[0].id')
-          if [ -z "$MAIN_ID" ] || [ "$MAIN_ID" = "null" ]; then
-            echo "Could not find main app machine"; exit 1
-          fi
-          IMAGE_REF=$(fly machines list --app "$FLY_APP" --json \
-            | jq -r --arg id "$MAIN_ID" '.[] | select(.id==$id) | .config.image')
-          echo "main_id=$MAIN_ID" >> "$GITHUB_OUTPUT"
-          echo "image_ref=$IMAGE_REF" >> "$GITHUB_OUTPUT"
-          echo "Main machine: $MAIN_ID"
-          echo "Image:        $IMAGE_REF"
-
-      - name: Stop main app machine (releases the volume)
-        run: |
-          fly machine stop "${{ steps.discover.outputs.main_id }}" --app "$FLY_APP"
-          for i in $(seq 1 60); do
-            STATE=$(fly machines list --app "$FLY_APP" --json | jq -r --arg id "${{ steps.discover.outputs.main_id }}" '.[] | select(.id==$id) | .state')
-            echo "main machine state: $STATE"
-            if [ "$STATE" = "stopped" ]; then break; fi
-            sleep 2
+          for i in 1 2 3 4 5; do
+            if curl -fsS --max-time 30 "$APP_URL/api/health" > /dev/null; then
+              echo "machine is up"; exit 0
+            fi
+            echo "attempt $i: not up yet, sleeping"
+            sleep 5
           done
+          echo "machine never woke"; exit 1
 
-      - name: Run all sync scripts on a temp machine
-        id: sync
-        # `fly machine run IMAGE -- CMD...` overrides the image's CMD but
-        # keeps its ENTRYPOINT. We override the entrypoint to /bin/bash so
-        # the args after `--` are interpreted as a shell command. The
-        # script chains all four syncs with ; so a failure in one (e.g.
-        # AniList rate-limit) doesn't skip the others.
+      - name: Run syncs via admin endpoint
+        # max-time 600 = 10 min cap. Typical run is ~60-90s
+        # (CR ~10s, AS ~30-60s, seed ~5s).
         run: |
-          SINCE_DATE=$(date -u -d '90 days ago' +%Y-%m-%d)
-          SYNC_CMD="set +e; cd /app; echo '=== AniList ==='; python sync_anilist.py --since $SINCE_DATE; echo '=== Crunchyroll ==='; python sync_dub_crunchyroll.py; echo '=== AnimeSchedule ==='; python sync_dub_animeschedule.py; echo '=== Synthetic seed ==='; python seed_dub_schedule.py --overwrite --top 1500; echo '=== Done ==='"
-          fly machine run "${{ steps.discover.outputs.image_ref }}" \
-            --app "$FLY_APP" \
-            --region "$FLY_REGION" \
-            --volume "$FLY_VOLUME:/data" \
-            --vm-memory 256 \
-            --rm \
-            --entrypoint /bin/bash \
-            -- -c "$SYNC_CMD"
-        continue-on-error: true
-
-      - name: Restart main app machine
-        if: always()
-        run: |
-          fly machine start "${{ steps.discover.outputs.main_id }}" --app "$FLY_APP"
-          for i in $(seq 1 30); do
-            STATE=$(fly machines list --app "$FLY_APP" --json | jq -r --arg id "${{ steps.discover.outputs.main_id }}" '.[] | select(.id==$id) | .state')
-            echo "main machine state: $STATE"
-            if [ "$STATE" = "started" ]; then break; fi
-            sleep 3
-          done
+          curl --fail-with-body --max-time 600 \
+            -X POST \
+            -H "X-Admin-Secret: ${{ secrets.ADMIN_SYNC_SECRET }}" \
+            -H "Content-Type: application/json" \
+            "$APP_URL/api/admin/sync-dub-sources" \
+            | tee sync-result.json
+          echo
+          echo "=== Snapshot ==="
+          jq '.snapshot' sync-result.json
