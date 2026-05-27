@@ -1,24 +1,23 @@
 name: Daily schedule refresh
 
-# Refreshes the sub/dub data that powers /api/schedule:
-#   1. AniList catalog sync (resumable, incremental — keeps Anime.status
-#      and Episode.air_date_sub fresh, which is also what feeds the
-#      "currently airing" cohort the synthetic dub seed uses).
-#   2. Crunchyroll RSS dub ingest (real dub air dates for the shows CR
-#      covers — currently a thin slice, ~11 rows in prod).
-#   3. Synthetic dub seed reproject (--overwrite) — projects every sub
-#      date on every currently-airing anime forward by 56 days as a
-#      best-effort dub estimate, marked dub_source=synthetic_lag_8w so
-#      the UI can flag them as "estimated".
+# Refreshes the sub/dub data that powers /api/schedule.
 #
-# All three runs share one Fly machine (volume constraint) — we just
-# `fly ssh console` into the long-running app machine. Fly auto-starts
-# it if idle.
+# The Fly machine has 256MB RAM. A running Flask + gunicorn worker uses
+# ~150MB; layering a sync subprocess on top OOM-kills the script. To stay
+# on the free tier without bumping memory, we:
+#   1. Stop the main app machine — releases the bingery_data volume.
+#   2. Run a one-off machine with the same image and volume, executing
+#      all four sync scripts back-to-back. With no Flask in the way, the
+#      full 256MB is available for the syncs themselves.
+#   3. Destroy the temp machine, restart the main app machine — auto-
+#      reattaches the volume.
 #
-# Required GitHub secret: FLY_API_TOKEN (create with `fly tokens create deploy`).
-# Each step uses continue-on-error so a transient AniList rate-limit or
-# Crunchyroll RSS outage won't stop the synthetic reprojection at the
-# end.
+# Trade-off: the site is unreachable for ~5-10 min while the temp machine
+# runs (Fly's auto-start can't fire because the volume is in use).
+#
+# Required GitHub secret: FLY_API_TOKEN (created with `fly tokens create deploy`).
+# AnimeSchedule needs Fly secret ANIMESCHEDULE_API_KEY (inherited by the
+# temp machine since it's in the same app).
 
 on:
   schedule:
@@ -34,72 +33,68 @@ jobs:
   refresh:
     runs-on: ubuntu-latest
     timeout-minutes: 60
+    env:
+      FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
+      FLY_APP: bingery
+      FLY_REGION: yyz
+      FLY_VOLUME: bingery_data
     steps:
       - name: Install flyctl
         run: |
           curl -L https://fly.io/install.sh | sh
           echo "$HOME/.fly/bin" >> "$GITHUB_PATH"
 
-      - name: Wake the Fly machine
-        # `fly ssh console` doesn't trigger auto_start; only HTTP traffic
-        # via the edge proxy does. Hit /api/health, wait a moment, then
-        # the SSH steps below have a running VM to land on.
+      - name: Discover main app machine + image
+        id: discover
         run: |
-          curl -fsS --retry 5 --retry-delay 3 --max-time 60 https://bingery.fly.dev/api/health
-          sleep 8
+          MAIN_ID=$(fly machines list --app "$FLY_APP" --json | jq -r '.[0].id')
+          if [ -z "$MAIN_ID" ] || [ "$MAIN_ID" = "null" ]; then
+            echo "Could not find main app machine"; exit 1
+          fi
+          IMAGE_REF=$(fly machines list --app "$FLY_APP" --json \
+            | jq -r --arg id "$MAIN_ID" '.[] | select(.id==$id) | .config.image')
+          echo "main_id=$MAIN_ID" >> "$GITHUB_OUTPUT"
+          echo "image_ref=$IMAGE_REF" >> "$GITHUB_OUTPUT"
+          echo "Main machine: $MAIN_ID"
+          echo "Image:        $IMAGE_REF"
 
-      - name: Sync AniList catalog (sub air dates + status)
-        # --since refreshes anime that updated in the last 90 days, so
-        # status fields (Currently Airing -> Finished, etc) and episode
-        # times re-flow into the DB. --resume is a no-op once the catalog
-        # is fully synced, so daily runs would otherwise change nothing.
-        env:
-          FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
+      - name: Stop main app machine (releases the volume)
+        run: |
+          fly machine stop "${{ steps.discover.outputs.main_id }}" --app "$FLY_APP"
+          for i in $(seq 1 60); do
+            STATE=$(fly machine status "${{ steps.discover.outputs.main_id }}" --app "$FLY_APP" --json | jq -r .state)
+            echo "main machine state: $STATE"
+            if [ "$STATE" = "stopped" ]; then break; fi
+            sleep 2
+          done
+
+      - name: Run all sync scripts on a temp machine
+        id: sync
+        # `fly machine run IMAGE -- CMD...` overrides the image's CMD but
+        # keeps its ENTRYPOINT. We override the entrypoint to /bin/bash so
+        # the args after `--` are interpreted as a shell command. The
+        # script chains all four syncs with ; so a failure in one (e.g.
+        # AniList rate-limit) doesn't skip the others.
         run: |
           SINCE_DATE=$(date -u -d '90 days ago' +%Y-%m-%d)
-          fly ssh console --app bingery -C "bash -c 'cd /app && python sync_anilist.py --since ${SINCE_DATE}'"
+          SYNC_CMD="set +e; cd /app; echo '=== AniList ==='; python sync_anilist.py --since $SINCE_DATE; echo '=== Crunchyroll ==='; python sync_dub_crunchyroll.py; echo '=== AnimeSchedule ==='; python sync_dub_animeschedule.py; echo '=== Synthetic seed ==='; python seed_dub_schedule.py --overwrite --top 1500; echo '=== Done ==='"
+          fly machine run "${{ steps.discover.outputs.image_ref }}" \
+            --app "$FLY_APP" \
+            --region "$FLY_REGION" \
+            --volume "$FLY_VOLUME:/data" \
+            --vm-memory 256 \
+            --rm \
+            --entrypoint /bin/bash \
+            -- -c "$SYNC_CMD"
         continue-on-error: true
 
-      - name: Sync Crunchyroll RSS (real dub air dates)
-        # Detached the same way as AnimeSchedule — Crunchyroll's
-        # match loop runs ~30-60s on the 25k-anime catalog.
-        env:
-          FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
-        run: |
-          fly ssh console --app bingery -C "bash -c 'cd /app && rm -f /tmp/cr.log && setsid nohup python -u sync_dub_crunchyroll.py > /tmp/cr.log 2>&1 < /dev/null & disown; echo launched'"
-          echo "Sleeping 90s for Crunchyroll sync to commit..."
-          sleep 90
-          fly ssh console --app bingery -C "cat /tmp/cr.log"
-        continue-on-error: true
-
-      - name: Sync AnimeSchedule.net (real dub air dates)
-        # Detached via setsid+nohup so the script's ~30-60s commit can
-        # finish even when Fly's ssh idle timeout closes the session.
-        # Reads the log back in a second ssh round-trip.
-        # No-op until ANIMESCHEDULE_API_KEY is set as a Fly secret:
-        #   fly secrets set ANIMESCHEDULE_API_KEY=<key>
-        env:
-          FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
-        run: |
-          fly ssh console --app bingery -C "bash -c 'cd /app && rm -f /tmp/as.log && setsid nohup python -u sync_dub_animeschedule.py > /tmp/as.log 2>&1 < /dev/null & disown; echo launched'"
-          echo "Sleeping 90s for AnimeSchedule sync to commit..."
-          sleep 90
-          fly ssh console --app bingery -C "cat /tmp/as.log"
-        continue-on-error: true
-
-      - name: Reproject synthetic dub seed
-        # The seed walks every candidate episode in the (now ~378-anime)
-        # cohort and commits the writes in one transaction. With Fly's
-        # ssh idle timeout that one-shot ssh call gets killed before the
-        # commit lands. We launch the seed via setsid+nohup so it's
-        # detached from the ssh session, sleep long enough for the commit
-        # to finish, then a second ssh dumps the log.
+      - name: Restart main app machine
         if: always()
-        env:
-          FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
         run: |
-          fly ssh console --app bingery -C "bash -c 'cd /app && rm -f /tmp/seed.log && setsid nohup python -u seed_dub_schedule.py --overwrite --top 1500 > /tmp/seed.log 2>&1 < /dev/null & disown; echo launched'"
-          echo "Sleeping 90s for the seed to commit..."
-          sleep 90
-          fly ssh console --app bingery -C "cat /tmp/seed.log"
-        continue-on-error: true
+          fly machine start "${{ steps.discover.outputs.main_id }}" --app "$FLY_APP"
+          for i in $(seq 1 30); do
+            STATE=$(fly machine status "${{ steps.discover.outputs.main_id }}" --app "$FLY_APP" --json | jq -r .state)
+            echo "main machine state: $STATE"
+            if [ "$STATE" = "started" ]; then break; fi
+            sleep 3
+          done
