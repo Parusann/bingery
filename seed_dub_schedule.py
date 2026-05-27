@@ -107,44 +107,65 @@ def main(argv: list | None = None) -> int:
             return 1
 
         # ── Episode update plan ──────────────────────────────────────
-        eps_q = (
-            Episode.query
-            .filter(Episode.anime_id.in_(anime_ids))
-            .filter(Episode.air_date_sub.isnot(None))
-        )
-        if not args.overwrite:
-            eps_q = eps_q.filter(Episode.air_date_dub.is_(None))
-        eps = eps_q.all()
-        print(f"candidate episodes: {len(eps)}")
+        # Bulk SQL UPDATE so the seed never hydrates rows into Python
+        # memory. Fly's 256MB shared machine was OOM-killing the ORM
+        # version once the cohort grew past ~250 anime; this stays
+        # well under that budget regardless of cohort size.
+        from sqlalchemy import update, or_, func as sa_func
 
-        lag = timedelta(days=LAG_DAYS)
-        n_set = 0
-        n_skipped_real = 0
-        for ep in eps:
-            # Never clobber real dub data from RSS / AnimeSchedule / user reports,
-            # even with --overwrite. The synthetic seed fills gaps; it doesn't
-            # outrank an authoritative source.
-            if ep.dub_source in _REAL_DUB_SOURCES or (
-                ep.dub_source and ep.dub_source.startswith("user:")
-            ):
-                n_skipped_real += 1
-                continue
-            ep.air_date_dub = ep.air_date_sub + lag
-            ep.dub_source = SYNTHETIC_TAG
-            n_set += 1
+        preserve_clause = or_(
+            Episode.dub_source.in_(tuple(_REAL_DUB_SOURCES)),
+            Episode.dub_source.like("user:%"),
+        )
+        eligible_clauses = [
+            Episode.anime_id.in_(anime_ids),
+            Episode.air_date_sub.isnot(None),
+            ~preserve_clause,
+        ]
+        if not args.overwrite:
+            eligible_clauses.append(Episode.air_date_dub.is_(None))
+
+        candidate_count = (
+            db.session.query(sa_func.count(Episode.id))
+            .filter(*eligible_clauses)
+            .scalar()
+        )
+        preserved_count = (
+            db.session.query(sa_func.count(Episode.id))
+            .filter(
+                Episode.anime_id.in_(anime_ids),
+                Episode.air_date_sub.isnot(None),
+                preserve_clause,
+            )
+            .scalar()
+        )
+        print(
+            f"candidate episodes: {candidate_count} "
+            f"(real-source rows preserved: {preserved_count})"
+        )
 
         if args.dry_run:
-            db.session.rollback()
             print(
-                f"dry-run: would set air_date_dub on {n_set} episodes "
-                f"(skipped {n_skipped_real} with real dub sources)"
+                f"dry-run: would set air_date_dub on {candidate_count} episodes "
+                f"(preserved {preserved_count} real-source rows)"
             )
             return 0
 
+        stmt = (
+            update(Episode)
+            .where(*eligible_clauses)
+            .values(
+                air_date_dub=sa_func.datetime(Episode.air_date_sub, f"+{LAG_DAYS} days"),
+                dub_source=SYNTHETIC_TAG,
+            )
+            .execution_options(synchronize_session=False)
+        )
+        result = db.session.execute(stmt)
         db.session.commit()
+        n_set = result.rowcount if result.rowcount is not None else 0
         print(
             f"wrote air_date_dub on {n_set} episodes (lag={LAG_DAYS}d, tag={SYNTHETIC_TAG!r}); "
-            f"preserved {n_skipped_real} real dub-source rows"
+            f"preserved {preserved_count} real dub-source rows"
         )
 
         # ── Verification ────────────────────────────────────────────
