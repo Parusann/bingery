@@ -191,6 +191,8 @@ def ingest_payload(
     Tier 2 semantics: never overwrite an existing air_date_dub. The summary
     reports how many gaps were filled vs already-populated.
     """
+    from collections import namedtuple
+
     from models import db, Anime, Episode
 
     summary = IngestSummary(dry_run=dry_run)
@@ -199,7 +201,17 @@ def ingest_payload(
     if not entries:
         return summary.to_dict()
 
-    candidates = Anime.query.all()
+    # Load only the columns best_match needs as a lightweight namedtuple
+    # instead of full Anime ORM instances. Drops candidate-list memory
+    # ~30x on a 25k-anime catalog, which is what was OOMing the script
+    # on Fly's 256MB shared machine once the API key worked.
+    _AnimeCand = namedtuple("_AnimeCand", ["id", "title", "title_english"])
+    candidates = [
+        _AnimeCand(row.id, row.title, row.title_english)
+        for row in db.session.query(
+            Anime.id, Anime.title, Anime.title_english
+        ).all()
+    ]
     for entry in entries:
         if entry.episode_number is None:
             summary.skipped_no_episode_number += 1

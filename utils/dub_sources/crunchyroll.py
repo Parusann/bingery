@@ -217,7 +217,17 @@ def ingest_feed(
     if not entries:
         return summary.to_dict()
 
-    candidates = Anime.query.all()
+    # Load only the columns best_match needs as a lightweight namedtuple
+    # instead of full Anime ORM instances. Drops candidate-list memory
+    # ~30x on a 25k-anime catalog (mirrors the AnimeSchedule fix).
+    from collections import namedtuple as _nt
+    _AnimeCand = _nt("_AnimeCand", ["id", "title", "title_english"])
+    candidates = [
+        _AnimeCand(row.id, row.title, row.title_english)
+        for row in db.session.query(
+            Anime.id, Anime.title, Anime.title_english
+        ).all()
+    ]
     for entry in entries:
         if entry.episode_number is None:
             summary.skipped_no_episode_number += 1
