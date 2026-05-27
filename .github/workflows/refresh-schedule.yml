@@ -62,7 +62,7 @@ jobs:
         run: |
           fly machine stop "${{ steps.discover.outputs.main_id }}" --app "$FLY_APP"
           for i in $(seq 1 60); do
-            STATE=$(fly machine status "${{ steps.discover.outputs.main_id }}" --app "$FLY_APP" --json | jq -r .state)
+            STATE=$(fly machines list --app "$FLY_APP" --json | jq -r --arg id "${{ steps.discover.outputs.main_id }}" '.[] | select(.id==$id) | .state')
             echo "main machine state: $STATE"
             if [ "$STATE" = "stopped" ]; then break; fi
             sleep 2
@@ -93,7 +93,7 @@ jobs:
         run: |
           fly machine start "${{ steps.discover.outputs.main_id }}" --app "$FLY_APP"
           for i in $(seq 1 30); do
-            STATE=$(fly machine status "${{ steps.discover.outputs.main_id }}" --app "$FLY_APP" --json | jq -r .state)
+            STATE=$(fly machines list --app "$FLY_APP" --json | jq -r --arg id "${{ steps.discover.outputs.main_id }}" '.[] | select(.id==$id) | .state')
             echo "main machine state: $STATE"
             if [ "$STATE" = "started" ]; then break; fi
             sleep 3
