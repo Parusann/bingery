@@ -61,21 +61,30 @@ jobs:
         continue-on-error: true
 
       - name: Sync Crunchyroll RSS (real dub air dates)
+        # Detached the same way as AnimeSchedule — Crunchyroll's
+        # match loop runs ~30-60s on the 25k-anime catalog.
         env:
           FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
         run: |
-          fly ssh console --app bingery -C "bash -c 'cd /app && python sync_dub_crunchyroll.py'"
+          fly ssh console --app bingery -C "bash -c 'cd /app && rm -f /tmp/cr.log && setsid nohup python -u sync_dub_crunchyroll.py > /tmp/cr.log 2>&1 < /dev/null & disown; echo launched'"
+          echo "Sleeping 90s for Crunchyroll sync to commit..."
+          sleep 90
+          fly ssh console --app bingery -C "cat /tmp/cr.log"
         continue-on-error: true
 
       - name: Sync AnimeSchedule.net (real dub air dates)
+        # Detached via setsid+nohup so the script's ~30-60s commit can
+        # finish even when Fly's ssh idle timeout closes the session.
+        # Reads the log back in a second ssh round-trip.
         # No-op until ANIMESCHEDULE_API_KEY is set as a Fly secret:
         #   fly secrets set ANIMESCHEDULE_API_KEY=<key>
-        # Without a key the upstream returns 401 and the script exits non-zero;
-        # continue-on-error swallows that so the seed reproject still runs.
         env:
           FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
         run: |
-          fly ssh console --app bingery -C "bash -c 'cd /app && python sync_dub_animeschedule.py'"
+          fly ssh console --app bingery -C "bash -c 'cd /app && rm -f /tmp/as.log && setsid nohup python -u sync_dub_animeschedule.py > /tmp/as.log 2>&1 < /dev/null & disown; echo launched'"
+          echo "Sleeping 90s for AnimeSchedule sync to commit..."
+          sleep 90
+          fly ssh console --app bingery -C "cat /tmp/as.log"
         continue-on-error: true
 
       - name: Reproject synthetic dub seed
