@@ -55,11 +55,12 @@ EXPOSE 5000
 HEALTHCHECK --interval=30s --timeout=5s --start-period=20s --retries=3 \
     CMD curl -fsS http://localhost:5000/api/health || exit 1
 
-# Gunicorn with 2 workers (256 MB Fly VMs handle this comfortably) and a
-# generous timeout because chat requests can wait ~60 s on Ollama.
+# Single worker so the whole Fly VM RAM allocation is available per request.
+# Threads still give concurrency for I/O-bound work (Ollama, DB).
+# Timeout is generous because chat requests can wait ~60 s on Ollama.
 CMD ["gunicorn", "app:app", \
      "--bind", "0.0.0.0:5000", \
-     "--workers", "2", \
+     "--workers", "1", \
      "--threads", "4", \
      "--timeout", "180", \
      "--access-logfile", "-", \
