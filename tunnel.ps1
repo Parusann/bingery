@@ -63,7 +63,14 @@ if ($Status) {
   else                { Write-Host "ollama:      NOT RESPONDING on 11434" }
   Write-Host ""
   Write-Host "--- Fly secret ---"
-  $list = & $FlyctlExe secrets list -a $App 2>$null
+  # flyctl writes a benign "Metrics token unavailable" warning to stderr on
+  # every call; under this script's EAP=Stop that surfaces as a terminating
+  # NativeCommandError and aborts -Status before the secret prints. Relax EAP
+  # locally and fold stderr into the captured text so the warning is inert.
+  $prevEAP = $ErrorActionPreference
+  $ErrorActionPreference = 'SilentlyContinue'
+  $list = (& $FlyctlExe secrets list -a $App 2>&1 | Out-String) -split '\r?\n'
+  $ErrorActionPreference = $prevEAP
   $line = $list | Select-String 'OLLAMA_BASE_URL'
   if ($line) { Write-Host $line.ToString().Trim() }
   else        { Write-Host "OLLAMA_BASE_URL: unset on Fly app '$App'" }
