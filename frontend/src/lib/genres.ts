@@ -1,3 +1,35 @@
+// Fan-genre tags shown in the rating panel.
+//
+// IMPORTANT: this list MUST stay in sync with ALLOWED_FAN_GENRES in
+// routes/ratings.py — the backend rejects any vote whose tag isn't in its
+// allowlist, so every option offered here has to exist there too.
+export const FAN_GENRES = [
+  // Standard
+  "Action", "Adventure", "Comedy", "Drama", "Fantasy", "Horror",
+  "Mystery", "Romance", "Sci-Fi", "Slice of Life", "Supernatural",
+  "Thriller", "Sports", "Music",
+  // Demographic
+  "Shounen", "Shoujo", "Seinen", "Josei", "Kodomomuke",
+  // Thematic / sub-genre
+  "Isekai", "Mecha", "Magical Girl", "Harem", "Reverse Harem",
+  "Martial Arts", "Military", "Psychological", "Ecchi",
+  "Gore", "Survival", "Post-Apocalyptic", "Cyberpunk",
+  "Steampunk", "Historical", "Samurai", "Vampire",
+  "Zombie", "Demons", "Dark Fantasy", "Mythology",
+  "Reincarnation", "Time Travel", "Virtual Reality",
+  "Game", "Cooking", "Medical", "Detective",
+  // Tone / style
+  "Wholesome", "Feel-Good", "Tearjerker", "Mind-Bending",
+  "Slow Burn", "Fast-Paced", "Episodic", "Satirical",
+  "Coming of Age", "Tragic",
+  // Setting
+  "School", "Workplace", "Space", "Underworld", "Urban",
+  "Rural", "Kingdom", "Tournament", "Dungeon",
+];
+
+// Hand-picked colors for the most common genres. Anything not listed falls
+// back to a stable, deterministic color derived from its name (below) so the
+// full tag set stays visually varied instead of one flat default.
 export const GENRE_COLORS: Record<string, string> = {
   Action: "#ef4444",
   Adventure: "#f59e0b",
@@ -18,24 +50,16 @@ export const GENRE_COLORS: Record<string, string> = {
   "Dark Fantasy": "#881337",
 };
 
-export const FAN_GENRES = [
-  "Action",
-  "Adventure",
-  "Comedy",
-  "Drama",
-  "Fantasy",
-  "Horror",
-  "Mystery",
-  "Romance",
-  "Sci-Fi",
-  "Slice of Life",
-  "Supernatural",
-  "Thriller",
-  "Shounen",
-  "Seinen",
-  "Isekai",
-];
+// Same name -> same hue, every time. Keeps the ~80 tags distinguishable
+// without hand-defining a color for each one.
+function hashHue(name: string): number {
+  let h = 0;
+  for (let i = 0; i < name.length; i++) h = (h * 31 + name.charCodeAt(i)) % 360;
+  return h;
+}
 
 export function genreColor(name: string): string {
-  return GENRE_COLORS[name] ?? "#6366f1";
+  const fixed = GENRE_COLORS[name];
+  if (fixed) return fixed;
+  return `hsl(${hashHue(name)} 62% 55%)`;
 }
