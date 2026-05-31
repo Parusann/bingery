@@ -38,12 +38,10 @@ export function SchedulePage() {
     return out;
   }, [q.data]);
 
-  useEffect(() => {
-    if (!q.data) return;
-    const target = document.getElementById(`day-${today}`);
-    if (target) target.scrollIntoView({ behavior: "auto", block: "start" });
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [Boolean(q.data), q.data?.week_start]);
+  // The schedule intentionally loads at the very top rather than auto-scrolling
+  // to the current day — being jumped mid-page and then having to scroll all the
+  // way back up was tedious. Jump to a specific day via the DayStrip chips; each
+  // day also has a "back to top" control to return here.
 
   function setLang(next: Lang) {
     const p = new URLSearchParams(params);
