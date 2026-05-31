@@ -64,6 +64,10 @@ export interface WatchEntry {
   episodes_watched: number;
   is_favorite: boolean;
   updated_at: string;
+  /** The score (1-10) this user gave the anime, or null if unrated. */
+  score?: number | null;
+  /** Fan-genre tags this user assigned to the anime. */
+  genres?: string[];
 }
 
 export interface WatchStats {
