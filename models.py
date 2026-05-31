@@ -299,6 +299,12 @@ class WatchlistEntry(db.Model):
                 user_id=self.user_id, anime_id=self.anime_id
             ).first()
             data["score"] = rating.score if rating else None
+            # Include the fan-genres this user assigned to the anime so the
+            # watchlist can show "the genres you assigned" without an extra call.
+            votes = db.session.query(FanGenreVote.genre_tag).filter_by(
+                user_id=self.user_id, anime_id=self.anime_id
+            ).all()
+            data["genres"] = [v[0] for v in votes]
         return data
 
 
