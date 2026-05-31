@@ -25,6 +25,12 @@ export const FAN_GENRES = [
   // Setting
   "School", "Workplace", "Space", "Underworld", "Urban",
   "Rural", "Kingdom", "Tournament", "Dungeon",
+  // More broad tags (kept in sync with ALLOWED_FAN_GENRES in routes/ratings.py)
+  "Iyashikei", "Idol", "Spy", "Crime", "Superpower", "Parody",
+  "Dark Comedy", "Romantic Comedy", "Yuri", "Boys' Love",
+  "Gender Bender", "Heist", "Battle Royale", "War", "Surreal",
+  "Bittersweet", "Found Family", "Revenge", "Anti-Hero",
+  "Ensemble Cast", "Nonlinear", "Noir", "Western", "Body Horror",
 ];
 
 // Hand-picked colors for the most common genres. Anything not listed falls
