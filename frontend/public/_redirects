@@ -1,0 +1,8 @@
+# Cloudflare Pages SPA fallback.
+# The app is a client-side-routed SPA (React Router). Without this, a hard
+# navigation or refresh on a client route (e.g. /discover, reached via the
+# landing page's "Start browsing" button which does window.top.location.href
+# = '/discover') makes Pages look for a file at that path, 404, and serve a
+# broken shell. Rewrite every non-asset path to index.html so the router can
+# take over. Real files (/assets/*, /landing.html, etc.) still win over this.
+/*    /index.html   200
