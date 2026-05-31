@@ -48,7 +48,7 @@ export function DayBanner({
         className="absolute inset-0"
         style={{
           background:
-            "linear-gradient(180deg, rgba(10,7,16,0.20) 0%, rgba(10,7,16,0.65) 60%, rgba(10,7,16,0.92) 100%), linear-gradient(90deg, rgba(10,7,16,0.85) 0%, rgba(10,7,16,0.30) 45%, rgba(10,7,16,0.55) 100%)",
+            "linear-gradient(180deg, rgba(10,7,16,0.35) 0%, rgba(10,7,16,0.78) 58%, rgba(10,7,16,0.97) 100%), linear-gradient(90deg, rgba(10,7,16,0.92) 0%, rgba(10,7,16,0.45) 50%, rgba(10,7,16,0.70) 100%)",
         }}
       />
 
@@ -60,7 +60,10 @@ export function DayBanner({
               TODAY
             </span>
           )}
-          <h2 className="font-display italic text-[52px] leading-none tracking-tight bg-gradient-to-b from-ink to-mute bg-clip-text text-transparent">
+          <h2
+            className="font-display italic text-[52px] leading-none tracking-tight text-ink"
+            style={{ textShadow: "0 2px 18px rgba(10,7,16,0.75)" }}
+          >
             {fullLabel}
           </h2>
         </div>
