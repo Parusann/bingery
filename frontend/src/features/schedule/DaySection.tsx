@@ -36,15 +36,15 @@ export function DaySection({
           ))}
         </div>
       )}
-      <div className="flex justify-end">
+      <div className="flex justify-center pt-2">
         <button
           type="button"
           onClick={() => window.scrollTo({ top: 0, behavior: "smooth" })}
-          className="inline-flex items-center gap-1.5 rounded-full border border-line-2 px-3 py-1.5 text-[10px] font-mono uppercase tracking-[0.18em] text-mute transition-colors hover:border-peach/40 hover:text-peach"
+          className="inline-flex items-center gap-2 rounded-full border border-peach/45 bg-peach/15 px-5 py-2 text-xs font-mono uppercase tracking-[0.2em] text-peach shadow-[0_8px_24px_-12px_rgba(244,182,144,0.5)] transition-all hover:gap-3 hover:border-peach/70 hover:bg-peach/25"
           aria-label="Back to top of schedule"
           title="Back to top"
         >
-          ↑ Back to top
+          <span aria-hidden="true">↑</span> Back to top
         </button>
       </div>
     </section>
