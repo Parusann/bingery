@@ -104,6 +104,12 @@ ALLOWED_FAN_GENRES = [
     # ── Setting ───────────────────────────────────────────────────────────
     "School", "Workplace", "Space", "Underworld", "Urban",
     "Rural", "Kingdom", "Tournament", "Dungeon",
+    # ── Additional broad tags ─────────────────────────────────────────────
+    "Iyashikei", "Idol", "Spy", "Crime", "Superpower", "Parody",
+    "Dark Comedy", "Romantic Comedy", "Yuri", "Boys' Love",
+    "Gender Bender", "Heist", "Battle Royale", "War", "Surreal",
+    "Bittersweet", "Found Family", "Revenge", "Anti-Hero",
+    "Ensemble Cast", "Nonlinear", "Noir", "Western", "Body Horror",
 ]
 
 
