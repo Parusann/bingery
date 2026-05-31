@@ -100,16 +100,14 @@ ALLOWED_FAN_GENRES = [
     # ── Tone / style ──────────────────────────────────────────────────────
     "Wholesome", "Feel-Good", "Tearjerker", "Mind-Bending",
     "Slow Burn", "Fast-Paced", "Episodic", "Satirical",
-    "Coming of Age", "Tragic",
+    "Tragic",
     # ── Setting ───────────────────────────────────────────────────────────
-    "School", "Workplace", "Space", "Underworld", "Urban",
-    "Rural", "Kingdom", "Tournament", "Dungeon",
+    "School", "Space",
     # ── Additional broad tags ─────────────────────────────────────────────
     "Iyashikei", "Idol", "Spy", "Crime", "Superpower", "Parody",
     "Dark Comedy", "Romantic Comedy", "Yuri", "Boys' Love",
     "Gender Bender", "Heist", "Battle Royale", "War", "Surreal",
-    "Bittersweet", "Found Family", "Revenge", "Anti-Hero",
-    "Ensemble Cast", "Nonlinear", "Noir", "Western", "Body Horror",
+    "Bittersweet", "Noir", "Western", "Body Horror",
 ]
 
 

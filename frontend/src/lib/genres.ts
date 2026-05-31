@@ -20,17 +20,14 @@ export const FAN_GENRES = [
   "Game", "Cooking", "Medical", "Detective",
   // Tone / style
   "Wholesome", "Feel-Good", "Tearjerker", "Mind-Bending",
-  "Slow Burn", "Fast-Paced", "Episodic", "Satirical",
-  "Coming of Age", "Tragic",
-  // Setting
-  "School", "Workplace", "Space", "Underworld", "Urban",
-  "Rural", "Kingdom", "Tournament", "Dungeon",
+  "Slow Burn", "Fast-Paced", "Episodic", "Satirical", "Tragic",
+  // Setting (common)
+  "School", "Space",
   // More broad tags (kept in sync with ALLOWED_FAN_GENRES in routes/ratings.py)
   "Iyashikei", "Idol", "Spy", "Crime", "Superpower", "Parody",
   "Dark Comedy", "Romantic Comedy", "Yuri", "Boys' Love",
   "Gender Bender", "Heist", "Battle Royale", "War", "Surreal",
-  "Bittersweet", "Found Family", "Revenge", "Anti-Hero",
-  "Ensemble Cast", "Nonlinear", "Noir", "Western", "Body Horror",
+  "Bittersweet", "Noir", "Western", "Body Horror",
 ];
 
 // Hand-picked colors for the most common genres. Anything not listed falls
@@ -56,7 +53,7 @@ export const GENRE_COLORS: Record<string, string> = {
   "Dark Fantasy": "#881337",
 };
 
-// Same name -> same hue, every time. Keeps the ~80 tags distinguishable
+// Same name -> same hue, every time. Keeps the tags distinguishable
 // without hand-defining a color for each one.
 function hashHue(name: string): number {
   let h = 0;
