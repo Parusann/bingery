@@ -1,7 +1,6 @@
-import { useState } from "react";
 import type { WatchStatus } from "@/types/models";
-import { Button } from "@/design/Button";
 import { STATUSES } from "./StatusTabs";
+import { cn } from "@/lib/cn";
 import {
   useRemoveFromWatchlist,
   useSetWatchStatus,
@@ -14,59 +13,70 @@ interface Props {
   isFavorite: boolean;
 }
 
+/**
+ * Watchlist status shown as inline pills: one click sets the status, clicking
+ * the already-active pill removes the anime from the list. Rating an anime
+ * elsewhere still auto-sets "Completed" — these pills are for setting status
+ * directly (e.g. Plan to Watch / Watching) without rating. The Favorite toggle
+ * sits beside them with a visible label so its purpose is obvious.
+ */
 export function WatchStatusSelector({ animeId, current, isFavorite }: Props) {
-  const [open, setOpen] = useState(false);
   const setStatus = useSetWatchStatus();
   const toggleFav = useToggleFavorite();
   const remove = useRemoveFromWatchlist();
 
-  const curMeta = STATUSES.find((s) => s.key === current);
+  const pick = (key: WatchStatus) => {
+    if (key === current) remove.mutate(animeId);
+    else setStatus.mutate({ animeId, status: key });
+  };
 
   return (
-    <div className="relative inline-flex items-center gap-2">
-      <Button
-        size="sm"
-        variant={current ? "glass" : "primary"}
-        onClick={() => setOpen((o) => !o)}
-      >
-        {curMeta?.label ?? "Add to watchlist"}
-      </Button>
-      <Button
-        size="sm"
-        variant={isFavorite ? "primary" : "ghost"}
+    <div className="flex flex-wrap items-center gap-1.5">
+      {STATUSES.map((s) => {
+        const active = current === s.key;
+        return (
+          <button
+            key={s.key}
+            type="button"
+            onClick={() => pick(s.key)}
+            aria-pressed={active}
+            title={
+              active
+                ? `${s.label} — click to remove from watchlist`
+                : `Mark as ${s.label}`
+            }
+            className={cn(
+              "px-3 py-1 rounded-full text-xs border transition-colors",
+              active
+                ? "border-transparent text-bg font-medium"
+                : "border-border text-text-muted hover:text-text hover:border-border-strong"
+            )}
+            style={active ? { background: s.color } : undefined}
+          >
+            {s.label}
+          </button>
+        );
+      })}
+
+      <span className="mx-0.5 h-4 w-px bg-border" aria-hidden="true" />
+
+      <button
+        type="button"
         onClick={() => toggleFav.mutate(animeId)}
-        aria-label="Favorite"
+        aria-pressed={isFavorite}
+        aria-label={isFavorite ? "Remove from favorites" : "Add to favorites"}
+        title={isFavorite ? "Favorited — click to unfavorite" : "Add to favorites"}
+        className={cn(
+          "inline-flex items-center gap-1 px-3 py-1 rounded-full text-xs border transition-colors",
+          isFavorite
+            ? "border-amber text-amber"
+            : "border-border text-text-muted hover:text-text hover:border-border-strong"
+        )}
+        style={isFavorite ? { background: "rgba(230,166,128,0.12)" } : undefined}
       >
-        {isFavorite ? "★" : "☆"}
-      </Button>
-      {open ? (
-        <div className="absolute top-full mt-2 left-0 z-10 flex flex-col gap-1 p-2 rounded-lg bg-bg-elevated border border-border glass-edge min-w-[180px]">
-          {STATUSES.map((s) => (
-            <button
-              key={s.key}
-              onClick={() => {
-                setStatus.mutate({ animeId, status: s.key });
-                setOpen(false);
-              }}
-              className="text-left text-sm px-3 py-2 rounded-md hover:bg-white/[0.05]"
-              style={{ color: s.color }}
-            >
-              {s.label}
-            </button>
-          ))}
-          {current ? (
-            <button
-              onClick={() => {
-                remove.mutate(animeId);
-                setOpen(false);
-              }}
-              className="text-left text-sm px-3 py-2 rounded-md hover:bg-white/[0.05] text-danger"
-            >
-              Remove from list
-            </button>
-          ) : null}
-        </div>
-      ) : null}
+        <span aria-hidden="true">{isFavorite ? "★" : "☆"}</span>
+        {isFavorite ? "Favorited" : "Favorite"}
+      </button>
     </div>
   );
 }
