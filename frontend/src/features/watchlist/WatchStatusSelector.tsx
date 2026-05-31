@@ -1,3 +1,4 @@
+import { useEffect, useState } from "react";
 import type { WatchStatus } from "@/types/models";
 import { STATUSES } from "./StatusTabs";
 import { cn } from "@/lib/cn";
@@ -14,26 +15,46 @@ interface Props {
 }
 
 /**
- * Watchlist status shown as inline pills: one click sets the status, clicking
- * the already-active pill removes the anime from the list. Rating an anime
- * elsewhere still auto-sets "Completed" — these pills are for setting status
- * directly (e.g. Plan to Watch / Watching) without rating. The Favorite toggle
- * sits beside them with a visible label so its purpose is obvious.
+ * Watchlist status as inline pills + a labelled Favorite toggle.
+ *
+ * Selection is optimistic: clicking a pill highlights it immediately (instead
+ * of waiting on the server round-trip, which previously gave no visible
+ * response), then fires the mutation. If the save fails we revert to the
+ * server value; `current`/`isFavorite` re-sync the local state once the
+ * detail query refetches.
  */
 export function WatchStatusSelector({ animeId, current, isFavorite }: Props) {
   const setStatus = useSetWatchStatus();
   const toggleFav = useToggleFavorite();
   const remove = useRemoveFromWatchlist();
 
+  const [selected, setSelected] = useState<WatchStatus | null>(current);
+  const [fav, setFav] = useState(isFavorite);
+  useEffect(() => setSelected(current), [current]);
+  useEffect(() => setFav(isFavorite), [isFavorite]);
+
   const pick = (key: WatchStatus) => {
-    if (key === current) remove.mutate(animeId);
-    else setStatus.mutate({ animeId, status: key });
+    if (key === selected) {
+      setSelected(null);
+      remove.mutate(animeId, { onError: () => setSelected(current) });
+    } else {
+      setSelected(key);
+      setStatus.mutate(
+        { animeId, status: key },
+        { onError: () => setSelected(current) }
+      );
+    }
+  };
+
+  const onFav = () => {
+    setFav((f) => !f);
+    toggleFav.mutate(animeId, { onError: () => setFav(isFavorite) });
   };
 
   return (
     <div className="flex flex-wrap items-center gap-1.5">
       {STATUSES.map((s) => {
-        const active = current === s.key;
+        const active = selected === s.key;
         return (
           <button
             key={s.key}
@@ -48,7 +69,7 @@ export function WatchStatusSelector({ animeId, current, isFavorite }: Props) {
             className={cn(
               "px-3 py-1 rounded-full text-xs border transition-colors",
               active
-                ? "border-transparent text-bg font-medium"
+                ? "border-transparent text-bg font-medium shadow-sm"
                 : "border-border text-text-muted hover:text-text hover:border-border-strong"
             )}
             style={active ? { background: s.color } : undefined}
@@ -62,20 +83,20 @@ export function WatchStatusSelector({ animeId, current, isFavorite }: Props) {
 
       <button
         type="button"
-        onClick={() => toggleFav.mutate(animeId)}
-        aria-pressed={isFavorite}
-        aria-label={isFavorite ? "Remove from favorites" : "Add to favorites"}
-        title={isFavorite ? "Favorited — click to unfavorite" : "Add to favorites"}
+        onClick={onFav}
+        aria-pressed={fav}
+        aria-label={fav ? "Remove from favorites" : "Add to favorites"}
+        title={fav ? "Favorited — click to unfavorite" : "Add to favorites"}
         className={cn(
           "inline-flex items-center gap-1 px-3 py-1 rounded-full text-xs border transition-colors",
-          isFavorite
+          fav
             ? "border-amber text-amber"
             : "border-border text-text-muted hover:text-text hover:border-border-strong"
         )}
-        style={isFavorite ? { background: "rgba(230,166,128,0.12)" } : undefined}
+        style={fav ? { background: "rgba(230,166,128,0.12)" } : undefined}
       >
-        <span aria-hidden="true">{isFavorite ? "★" : "☆"}</span>
-        {isFavorite ? "Favorited" : "Favorite"}
+        <span aria-hidden="true">{fav ? "★" : "☆"}</span>
+        {fav ? "Favorited" : "Favorite"}
       </button>
     </div>
   );
