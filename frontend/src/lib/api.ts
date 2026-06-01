@@ -145,7 +145,7 @@ export const api = {
     body: { status: string; episodes_watched?: number }
   ) =>
     request<WatchStatusResponse>(`/watchlist/anime/${animeId}`, {
-      method: "PUT",
+      method: "POST",
       body: JSON.stringify(body),
     }),
   toggleFavorite: (animeId: number) =>
