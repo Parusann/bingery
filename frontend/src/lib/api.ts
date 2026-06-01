@@ -9,6 +9,7 @@ import type {
   RecommendationsResponse,
   ReviewResponse,
   SimilarResponse,
+  RelatedResponse,
   WatchStatsResponse,
   WatchStatusResponse,
   WatchlistResponse,
@@ -126,6 +127,7 @@ export const api = {
   getAnime: (q = "") => request<AnimeListResponse>("/anime" + q),
   getAnimeDetail: (id: number) => request<AnimeDetailResponse>(`/anime/${id}`),
   getSimilar: (id: number) => request<SimilarResponse>(`/anime/${id}/similar`),
+  getRelated: (id: number) => request<RelatedResponse>(`/anime/${id}/related`),
   submitReview: (
     id: number,
     body: { score: number; review?: string; genres?: string[] }
