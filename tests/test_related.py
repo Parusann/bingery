@@ -193,3 +193,77 @@ def test_skips_fetch_errors():
         }[aid]
     out = assemble_franchise(1, fetch)
     assert 1 in out and 3 in out      # error on node 2 doesn't abort traversal
+
+
+def _seed_anime(app, anilist_id, title, year=2000, image="local.jpg"):
+    from models import db, Anime
+    with app.app_context():
+        a = Anime(anilist_id=anilist_id, title=title, year=year, image_url=image)
+        db.session.add(a)
+        db.session.commit()
+        return a.id
+
+
+# Synthetic franchise: 100 (S1) <-> 200 (S2, current) <-> 300 (S3, NOT in catalog)
+_ROUTE_GRAPH = {
+    100: {"self": _node(100), "edges": [_node(200, "SEQUEL")]},
+    200: {"self": _node(200), "edges": [_node(100, "PREQUEL"), _node(300, "SEQUEL")]},
+    300: {"self": _node(300), "edges": [_node(200, "PREQUEL")]},
+}
+
+
+def _patch_relations(monkeypatch):
+    monkeypatch.setattr(
+        "utils.anilist.AniListClient.get_anime_relations",
+        lambda self, aid: _ROUTE_GRAPH[aid],
+    )
+
+
+def test_related_endpoint_sorted_with_current_and_catalog_mapping(client, app, monkeypatch):
+    _patch_relations(monkeypatch)
+    _seed_anime(app, anilist_id=100, title="Season 1", year=2100)
+    current_id = _seed_anime(app, anilist_id=200, title="Season 2", year=2101)
+    # anilist_id 300 deliberately NOT seeded -> should appear with id=None
+
+    r = client.get(f"/api/anime/{current_id}/related")
+    assert r.status_code == 200
+    related = r.get_json()["related"]
+
+    ids = [e["anilist_id"] for e in related]
+    assert ids == [100, 200, 300]                       # ascending release date
+
+    by_aid = {e["anilist_id"]: e for e in related}
+    assert by_aid[200]["is_current"] is True
+    assert by_aid[100]["is_current"] is False
+    assert by_aid[100]["id"] is not None                # in catalog -> linkable
+    assert by_aid[300]["id"] is None                    # not in catalog
+    assert by_aid[200]["title"] == "Season 2"           # local title used
+    assert by_aid[100]["format"] == "TV"                # label present
+
+
+def test_related_returns_empty_without_anilist_id(client, app, monkeypatch):
+    _patch_relations(monkeypatch)
+    from models import db, Anime
+    with app.app_context():
+        a = Anime(anilist_id=None, title="Standalone", year=2000)
+        db.session.add(a)
+        db.session.commit()
+        aid = a.id
+    r = client.get(f"/api/anime/{aid}/related")
+    assert r.status_code == 200
+    assert r.get_json()["related"] == []
+
+
+def test_related_returns_empty_on_anilist_error(client, app, monkeypatch):
+    def boom(self, aid):
+        raise RuntimeError("AniList down")
+    monkeypatch.setattr("utils.anilist.AniListClient.get_anime_relations", boom)
+    cur = _seed_anime(app, anilist_id=200, title="Season 2")
+    r = client.get(f"/api/anime/{cur}/related")
+    assert r.status_code == 200
+    assert r.get_json()["related"] == []
+
+
+def test_related_404_for_missing_anime(client):
+    r = client.get("/api/anime/999999/related")
+    assert r.status_code == 404
