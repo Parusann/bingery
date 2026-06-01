@@ -63,6 +63,49 @@ query ($id: Int) {
 }
 """
 
+# Self-contained relations query — deliberately does NOT use ...AnimeFields,
+# so it is sent via _execute() (no fragment append) and keeps the shared
+# catalog-sync payload unchanged. Relation nodes carry the fields the
+# franchise strip needs: format, dates, cover art, and media type.
+RELATIONS_QUERY = """
+query ($id: Int) {
+  Media(id: $id, type: ANIME) {
+    id
+    type
+    title { romaji english }
+    format
+    seasonYear
+    startDate { year month day }
+    coverImage { large medium }
+    relations {
+      edges {
+        relationType
+        node {
+          id
+          type
+          title { romaji english }
+          format
+          seasonYear
+          startDate { year month day }
+          coverImage { large medium }
+        }
+      }
+    }
+  }
+}
+"""
+
+# AniList MediaFormat -> display label for the franchise strip.
+FORMAT_LABELS = {
+    "TV": "TV",
+    "TV_SHORT": "TV Short",
+    "MOVIE": "Movie",
+    "SPECIAL": "Special",
+    "OVA": "OVA",
+    "ONA": "ONA",
+    "MUSIC": "Music",
+}
+
 ANIME_FRAGMENT = """
 fragment AnimeFields on Media {
   id
@@ -193,8 +236,12 @@ class AniListClient:
         self._last_request_time = time.time()
 
     def _request(self, query: str, variables: Optional[dict] = None) -> dict:
+        # Existing callers rely on the shared AnimeFields fragment being appended.
+        return self._execute(query + ANIME_FRAGMENT, variables)
+
+    def _execute(self, full_query: str, variables: Optional[dict] = None) -> dict:
+        """Send an already-complete GraphQL document (no fragment appended)."""
         self._rate_limit()
-        full_query = query + ANIME_FRAGMENT
         payload = {"query": full_query}
         if variables:
             payload["variables"] = variables
@@ -205,7 +252,7 @@ class AniListClient:
             retry_after = int(response.headers.get("Retry-After", 60))
             print(f"  Rate limited. Waiting {retry_after}s...")
             time.sleep(retry_after)
-            return self._request(query, variables)
+            return self._execute(full_query, variables)
 
         response.raise_for_status()
         data = response.json()
@@ -214,6 +261,37 @@ class AniListClient:
             raise Exception(f"AniList API error: {data['errors']}")
 
         return data["data"]
+
+    @staticmethod
+    def _normalize_relation_node(node: dict) -> dict:
+        start = node.get("startDate") or {}
+        year, month, day = start.get("year"), start.get("month"), start.get("day")
+        release_date = None
+        if year and month and day:
+            release_date = f"{year:04d}-{month:02d}-{day:02d}"
+        title = node.get("title") or {}
+        cover = node.get("coverImage") or {}
+        return {
+            "anilist_id": node.get("id"),
+            "title": title.get("english") or title.get("romaji") or "Unknown",
+            "format": FORMAT_LABELS.get(node.get("format")),
+            "year": year or node.get("seasonYear"),
+            "month": month,
+            "day": day,
+            "release_date": release_date,
+            "image_url": cover.get("large") or cover.get("medium"),
+            "type": node.get("type"),
+        }
+
+    def _normalize_relations(self, media: dict) -> dict:
+        """Shape a RELATIONS_QUERY Media object into {self, edges}."""
+        edges = []
+        for edge in (media.get("relations") or {}).get("edges", []):
+            edges.append({
+                "relation_type": edge.get("relationType"),
+                "node": self._normalize_relation_node(edge.get("node") or {}),
+            })
+        return {"self": self._normalize_relation_node(media), "edges": edges}
 
     def _normalize_anime(self, media: dict) -> dict:
         """Convert AniList media object to Bingery's internal format."""
