@@ -28,6 +28,12 @@ ANILIST_API = "https://graphql.anilist.co"
 # Rate limit: 90 requests per minute. We add small delays to stay safe.
 RATE_LIMIT_DELAY = 0.7  # seconds between requests
 
+# Per-title relations cache (anilist_id -> (fetched_at, normalized_dict)).
+# AniList relations change rarely; the app runs a single gunicorn worker so
+# this in-process cache is effectively global.
+_RELATIONS_CACHE: dict = {}
+RELATIONS_CACHE_TTL = 60 * 60 * 24  # 24 hours
+
 
 # ═══════════════════════════════════════════════════════════════════════════════
 # GraphQL Queries
@@ -292,6 +298,17 @@ class AniListClient:
                 "node": self._normalize_relation_node(edge.get("node") or {}),
             })
         return {"self": self._normalize_relation_node(media), "edges": edges}
+
+    def get_anime_relations(self, anilist_id: int) -> dict:
+        """Fetch + normalize one title's relations, cached for RELATIONS_CACHE_TTL."""
+        now = time.time()
+        cached = _RELATIONS_CACHE.get(anilist_id)
+        if cached and now - cached[0] < RELATIONS_CACHE_TTL:
+            return cached[1]
+        data = self._execute(RELATIONS_QUERY, {"id": anilist_id})
+        result = self._normalize_relations(data["Media"])
+        _RELATIONS_CACHE[anilist_id] = (now, result)
+        return result
 
     def _normalize_anime(self, media: dict) -> dict:
         """Convert AniList media object to Bingery's internal format."""
