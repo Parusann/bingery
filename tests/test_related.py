@@ -95,3 +95,30 @@ def test_normalize_relations_handles_missing_dates_and_format():
     assert out["self"]["year"] is None
     assert out["self"]["image_url"] is None
     assert out["edges"] == []
+
+
+def test_get_anime_relations_caches_by_id(monkeypatch):
+    import utils.anilist as anilist_mod
+
+    anilist_mod._RELATIONS_CACHE.clear()
+    calls = {"n": 0}
+    client = AniListClient()
+
+    def fake_execute(query, variables=None):
+        calls["n"] += 1
+        return {"Media": {
+            "id": variables["id"], "type": "ANIME",
+            "title": {"romaji": "X", "english": None},
+            "format": "TV", "seasonYear": 2020,
+            "startDate": {"year": 2020, "month": 1, "day": 1},
+            "coverImage": {"large": "x.jpg", "medium": None},
+            "relations": {"edges": []},
+        }}
+
+    monkeypatch.setattr(client, "_execute", fake_execute)
+
+    first = client.get_anime_relations(42)
+    second = client.get_anime_relations(42)
+    assert first["self"]["anilist_id"] == 42
+    assert calls["n"] == 1          # second call served from cache
+    assert second == first
