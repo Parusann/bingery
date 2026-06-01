@@ -13,7 +13,7 @@ This is a design spec for making the Bingery frontend a **full, native-feeling m
 It has two audiences:
 
 1. **The implementation plan** (`docs/superpowers/plans/…`) and whoever executes it in this repo.
-2. **Claude design** (claude.ai) — used to mock up and generate the new mobile components. It cannot see this repo, so Sections 4–9 embed everything it needs: the exact design tokens, conventions, primitives, and per-component specs. **Section 4 is the output-format contract** — read it first if you are generating code.
+2. **Claude design** (claude.ai) — used to mock up and generate the new mobile components. It can read this repo, but Sections 4–9 still spell out the design tokens, conventions, primitives, and per-component specs so code generation is explicit rather than inferred. **Section 4 is the output-format contract** — read it first if you are generating code.
 
 ---
 
