@@ -28,6 +28,12 @@ ANILIST_API = "https://graphql.anilist.co"
 # Rate limit: 90 requests per minute. We add small delays to stay safe.
 RATE_LIMIT_DELAY = 0.7  # seconds between requests
 
+# Per-title relations cache (anilist_id -> (fetched_at, normalized_dict)).
+# AniList relations change rarely; the app runs a single gunicorn worker so
+# this in-process cache is effectively global.
+_RELATIONS_CACHE: dict = {}
+RELATIONS_CACHE_TTL = 60 * 60 * 24  # 24 hours
+
 
 # ═══════════════════════════════════════════════════════════════════════════════
 # GraphQL Queries
@@ -62,6 +68,49 @@ query ($id: Int) {
   }
 }
 """
+
+# Self-contained relations query — deliberately does NOT use ...AnimeFields,
+# so it is sent via _execute() (no fragment append) and keeps the shared
+# catalog-sync payload unchanged. Relation nodes carry the fields the
+# franchise strip needs: format, dates, cover art, and media type.
+RELATIONS_QUERY = """
+query ($id: Int) {
+  Media(id: $id, type: ANIME) {
+    id
+    type
+    title { romaji english }
+    format
+    seasonYear
+    startDate { year month day }
+    coverImage { large medium }
+    relations {
+      edges {
+        relationType
+        node {
+          id
+          type
+          title { romaji english }
+          format
+          seasonYear
+          startDate { year month day }
+          coverImage { large medium }
+        }
+      }
+    }
+  }
+}
+"""
+
+# AniList MediaFormat -> display label for the franchise strip.
+FORMAT_LABELS = {
+    "TV": "TV",
+    "TV_SHORT": "TV Short",
+    "MOVIE": "Movie",
+    "SPECIAL": "Special",
+    "OVA": "OVA",
+    "ONA": "ONA",
+    "MUSIC": "Music",
+}
 
 ANIME_FRAGMENT = """
 fragment AnimeFields on Media {
@@ -193,8 +242,12 @@ class AniListClient:
         self._last_request_time = time.time()
 
     def _request(self, query: str, variables: Optional[dict] = None) -> dict:
+        # Existing callers rely on the shared AnimeFields fragment being appended.
+        return self._execute(query + ANIME_FRAGMENT, variables)
+
+    def _execute(self, full_query: str, variables: Optional[dict] = None) -> dict:
+        """Send an already-complete GraphQL document (no fragment appended)."""
         self._rate_limit()
-        full_query = query + ANIME_FRAGMENT
         payload = {"query": full_query}
         if variables:
             payload["variables"] = variables
@@ -205,7 +258,7 @@ class AniListClient:
             retry_after = int(response.headers.get("Retry-After", 60))
             print(f"  Rate limited. Waiting {retry_after}s...")
             time.sleep(retry_after)
-            return self._request(query, variables)
+            return self._execute(full_query, variables)
 
         response.raise_for_status()
         data = response.json()
@@ -214,6 +267,48 @@ class AniListClient:
             raise Exception(f"AniList API error: {data['errors']}")
 
         return data["data"]
+
+    @staticmethod
+    def _normalize_relation_node(node: dict) -> dict:
+        start = node.get("startDate") or {}
+        year, month, day = start.get("year"), start.get("month"), start.get("day")
+        release_date = None
+        if year and month and day:
+            release_date = f"{year:04d}-{month:02d}-{day:02d}"
+        title = node.get("title") or {}
+        cover = node.get("coverImage") or {}
+        return {
+            "anilist_id": node.get("id"),
+            "title": title.get("english") or title.get("romaji") or "Unknown",
+            "format": FORMAT_LABELS.get(node.get("format")),
+            "year": year or node.get("seasonYear"),
+            "month": month,
+            "day": day,
+            "release_date": release_date,
+            "image_url": cover.get("large") or cover.get("medium"),
+            "type": node.get("type"),
+        }
+
+    def _normalize_relations(self, media: dict) -> dict:
+        """Shape a RELATIONS_QUERY Media object into {self, edges}."""
+        edges = []
+        for edge in (media.get("relations") or {}).get("edges", []):
+            edges.append({
+                "relation_type": edge.get("relationType"),
+                "node": self._normalize_relation_node(edge.get("node") or {}),
+            })
+        return {"self": self._normalize_relation_node(media), "edges": edges}
+
+    def get_anime_relations(self, anilist_id: int) -> dict:
+        """Fetch + normalize one title's relations, cached for RELATIONS_CACHE_TTL."""
+        now = time.time()
+        cached = _RELATIONS_CACHE.get(anilist_id)
+        if cached and now - cached[0] < RELATIONS_CACHE_TTL:
+            return cached[1]
+        data = self._execute(RELATIONS_QUERY, {"id": anilist_id})
+        result = self._normalize_relations(data["Media"])
+        _RELATIONS_CACHE[anilist_id] = (now, result)
+        return result
 
     def _normalize_anime(self, media: dict) -> dict:
         """Convert AniList media object to Bingery's internal format."""
@@ -429,6 +524,56 @@ class AniListClient:
             "media": media_list,
             "page_info": page_data["pageInfo"],
         }
+
+
+# Relation types that belong to the same franchise "chain". Excludes
+# ADAPTATION (source manga/novel), SPIN_OFF, SUMMARY (recaps), CHARACTER,
+# COMPILATION, CONTAINS, OTHER, SOURCE. Single source of truth — easy to tune.
+FRANCHISE_RELATION_TYPES = {"PREQUEL", "SEQUEL", "PARENT", "SIDE_STORY", "ALTERNATIVE"}
+FRANCHISE_MAX_NODES = 25
+FRANCHISE_MAX_DEPTH = 5
+
+
+def assemble_franchise(start_id, fetch_relations,
+                       max_nodes=FRANCHISE_MAX_NODES, max_depth=FRANCHISE_MAX_DEPTH):
+    """Breadth-first traversal across franchise relations.
+
+    AniList only returns direct (one-hop) relations, so we walk the graph to
+    gather the whole connected franchise. `fetch_relations(anilist_id)` must
+    return {"self": node, "edges": [{"relation_type", "node"}, ...]} (see
+    AniListClient.get_anime_relations). Returns {anilist_id: node_dict}.
+    Bounded by max_nodes (AniList calls) and max_depth (chain length).
+    """
+    from collections import deque
+
+    nodes = {}
+    queue = deque([(start_id, 0)])
+    enqueued = {start_id}
+    queries = 0
+
+    while queue and queries < max_nodes:
+        current_id, depth = queue.popleft()
+        try:
+            data = fetch_relations(current_id)
+        except Exception:
+            continue
+        queries += 1
+        nodes[current_id] = data["self"]          # authoritative self data
+        if depth >= max_depth:
+            continue
+        for edge in data["edges"]:
+            node = edge["node"]
+            if node.get("type") != "ANIME":
+                continue
+            if edge["relation_type"] not in FRANCHISE_RELATION_TYPES:
+                continue
+            nid = node["anilist_id"]
+            nodes.setdefault(nid, node)           # stub display data if unseen
+            if nid not in enqueued:
+                enqueued.add(nid)
+                queue.append((nid, depth + 1))
+
+    return nodes
 
 
 # ═══════════════════════════════════════════════════════════════════════════════

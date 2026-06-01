@@ -93,6 +93,59 @@ def get_anime(anime_id):
     return jsonify({"anime": data}), 200
 
 
+@anime_bp.route("/<int:anime_id>/related", methods=["GET"])
+def get_related(anime_id):
+    """Same-franchise entries (seasons/movies/specials) in release order.
+
+    Relations aren't stored locally, so they're fetched live from AniList and
+    mapped back to our catalog by anilist_id. On any AniList failure we return
+    an empty list (200) so the detail page is never broken by an upstream error.
+    """
+    anime = db.session.get(Anime, anime_id)
+    if not anime:
+        return jsonify({"error": "Anime not found."}), 404
+    if not anime.anilist_id:
+        return jsonify({"related": []}), 200
+
+    from utils.anilist import AniListClient, assemble_franchise
+
+    try:
+        client = AniListClient()
+        nodes = assemble_franchise(anime.anilist_id, client.get_anime_relations)
+    except Exception:
+        return jsonify({"related": []}), 200
+
+    # Map AniList ids -> local catalog rows in one query.
+    local = {
+        a.anilist_id: a
+        for a in Anime.query.filter(Anime.anilist_id.in_(list(nodes.keys()))).all()
+    }
+
+    items = []
+    for aid, node in nodes.items():
+        a = local.get(aid)
+        year, month, day = node.get("year"), node.get("month"), node.get("day")
+        sort_key = (
+            year if year is not None else 9999,
+            month if month is not None else 99,
+            day if day is not None else 99,
+            (node.get("title") or "").lower(),
+        )
+        items.append((sort_key, {
+            "anilist_id": aid,
+            "id": a.id if a else None,
+            "title": (a.title_english or a.title) if a else node.get("title"),
+            "format": node.get("format"),
+            "release_date": node.get("release_date"),
+            "year": year,
+            "image_url": (a.image_url if (a and a.image_url) else node.get("image_url")),
+            "is_current": aid == anime.anilist_id,
+        }))
+
+    items.sort(key=lambda x: x[0])
+    return jsonify({"related": [payload for _, payload in items]}), 200
+
+
 @anime_bp.route("/<int:anime_id>/ratings", methods=["GET"])
 def get_anime_ratings(anime_id):
     """All ratings for an anime, with pagination."""

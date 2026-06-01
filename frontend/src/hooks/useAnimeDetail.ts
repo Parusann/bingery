@@ -16,3 +16,11 @@ export function useSimilar(id: number | undefined) {
     enabled: !!id,
   });
 }
+
+export function useRelated(id: number | undefined) {
+  return useQuery({
+    queryKey: ["anime-related", id],
+    queryFn: () => api.getRelated(id!),
+    enabled: !!id,
+  });
+}
