@@ -62,6 +62,7 @@ export function AnimeDetailPage() {
               </p>
             )}
           </GlassCard>
+          <RelatedStrip related={related.data?.related ?? []} />
         </section>
         <aside>
           <h2 className="font-display text-2xl mb-4">Your rating</h2>
@@ -70,7 +71,6 @@ export function AnimeDetailPage() {
           </GlassCard>
         </aside>
       </div>
-      <RelatedStrip related={related.data?.related ?? []} />
       <SimilarStrip similar={similar.data?.similar ?? []} />
     </article>
   );
