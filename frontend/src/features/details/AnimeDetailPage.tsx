@@ -1,7 +1,7 @@
 import { useParams } from "react-router-dom";
 import { GlassCard } from "@/design/GlassCard";
 import { Skeleton } from "@/design/Skeleton";
-import { useAnimeDetail, useSimilar } from "@/hooks/useAnimeDetail";
+import { useAnimeDetail, useSimilar, useRelated } from "@/hooks/useAnimeDetail";
 import { WatchStatusSelector } from "@/features/watchlist/WatchStatusSelector";
 import { AddToCollection } from "@/features/collections/AddToCollection";
 import { useAuth } from "@/stores/auth";
@@ -11,6 +11,7 @@ import { FanGenreBars } from "./FanGenreBars";
 import { NextEpisodeWidget } from "./NextEpisodeWidget";
 import { RatingPanel } from "./RatingPanel";
 import { SimilarStrip } from "./SimilarStrip";
+import { RelatedStrip } from "./RelatedStrip";
 
 export function AnimeDetailPage() {
   const { id } = useParams();
@@ -18,6 +19,7 @@ export function AnimeDetailPage() {
   const user = useAuth((s) => s.user);
   const detail = useAnimeDetail(numericId);
   const similar = useSimilar(numericId);
+  const related = useRelated(numericId);
 
   if (detail.isLoading || !detail.data) {
     return (
@@ -68,6 +70,7 @@ export function AnimeDetailPage() {
           </GlassCard>
         </aside>
       </div>
+      <RelatedStrip related={related.data?.related ?? []} />
       <SimilarStrip similar={similar.data?.similar ?? []} />
     </article>
   );

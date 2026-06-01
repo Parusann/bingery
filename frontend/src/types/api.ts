@@ -34,6 +34,21 @@ export interface SimilarResponse {
   similar: AnimeSummary[];
 }
 
+export interface RelatedEntry {
+  anilist_id: number;
+  id: number | null;          // local Bingery id, or null if not in catalog
+  title: string;
+  format: string | null;      // "TV" | "Movie" | "OVA" | "Special" | ...
+  release_date: string | null; // ISO date if fully known, else null
+  year: number | null;
+  image_url: string | null;
+  is_current: boolean;
+}
+
+export interface RelatedResponse {
+  related: RelatedEntry[];
+}
+
 export interface AutocompleteResponse {
   results: AnimeSummary[];
 }
