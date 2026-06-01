@@ -122,3 +122,74 @@ def test_get_anime_relations_caches_by_id(monkeypatch):
     assert first["self"]["anilist_id"] == 42
     assert calls["n"] == 1          # second call served from cache
     assert second == first
+
+
+from utils.anilist import assemble_franchise
+
+
+def _node(aid, rel_type=None, type_="ANIME"):
+    n = {"anilist_id": aid, "title": f"T{aid}", "format": "TV",
+         "year": 2000 + aid, "month": 1, "day": 1,
+         "release_date": f"{2000 + aid:04d}-01-01", "image_url": None, "type": type_}
+    return ({"relation_type": rel_type, "node": n} if rel_type else n)
+
+
+def _graph_fetch(graph):
+    """graph: {id: {"self": node, "edges": [edge,...]}} -> fetch callable."""
+    def fetch(aid):
+        return graph[aid]
+    return fetch
+
+
+def test_assembles_full_chain_across_multiple_hops():
+    # 100 <-prequel- 200 -sequel-> 300 -sequel-> 400  ; start mid-chain at 200
+    graph = {
+        100: {"self": _node(100), "edges": [_node(200, "SEQUEL")]},
+        200: {"self": _node(200), "edges": [_node(100, "PREQUEL"), _node(300, "SEQUEL")]},
+        300: {"self": _node(300), "edges": [_node(200, "PREQUEL"), _node(400, "SEQUEL")]},
+        400: {"self": _node(400), "edges": [_node(300, "PREQUEL")]},
+    }
+    out = assemble_franchise(200, _graph_fetch(graph))
+    assert set(out.keys()) == {100, 200, 300, 400}   # not just one hop
+
+
+def test_filters_non_franchise_relation_types_and_non_anime():
+    graph = {
+        1: {"self": _node(1), "edges": [
+            _node(2, "SEQUEL"),
+            _node(3, "ADAPTATION"),          # excluded relation type
+            _node(4, "CHARACTER"),           # excluded relation type
+            _node(5, "SEQUEL", type_="MANGA"),  # excluded media type
+        ]},
+        2: {"self": _node(2), "edges": [_node(1, "PREQUEL")]},
+    }
+    out = assemble_franchise(1, _graph_fetch(graph))
+    assert set(out.keys()) == {1, 2}
+
+
+def test_respects_max_nodes_cap():
+    graph = {i: {"self": _node(i), "edges": [_node(i + 1, "SEQUEL")]} for i in range(1, 50)}
+    graph[49] = {"self": _node(49), "edges": []}
+    out = assemble_franchise(1, _graph_fetch(graph), max_nodes=3)
+    assert len(out) <= 4   # 3 fetched selves + at most one un-fetched stub
+
+
+def test_handles_cycles_without_infinite_loop():
+    graph = {
+        1: {"self": _node(1), "edges": [_node(2, "SEQUEL")]},
+        2: {"self": _node(2), "edges": [_node(1, "PREQUEL")]},
+    }
+    out = assemble_franchise(1, _graph_fetch(graph))
+    assert set(out.keys()) == {1, 2}
+
+
+def test_skips_fetch_errors():
+    def fetch(aid):
+        if aid == 2:
+            raise RuntimeError("AniList down")
+        return {
+            1: {"self": _node(1), "edges": [_node(2, "SEQUEL"), _node(3, "SEQUEL")]},
+            3: {"self": _node(3), "edges": [_node(1, "PREQUEL")]},
+        }[aid]
+    out = assemble_franchise(1, fetch)
+    assert 1 in out and 3 in out      # error on node 2 doesn't abort traversal

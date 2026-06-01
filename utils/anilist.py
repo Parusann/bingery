@@ -526,6 +526,56 @@ class AniListClient:
         }
 
 
+# Relation types that belong to the same franchise "chain". Excludes
+# ADAPTATION (source manga/novel), SPIN_OFF, SUMMARY (recaps), CHARACTER,
+# COMPILATION, CONTAINS, OTHER, SOURCE. Single source of truth — easy to tune.
+FRANCHISE_RELATION_TYPES = {"PREQUEL", "SEQUEL", "PARENT", "SIDE_STORY", "ALTERNATIVE"}
+FRANCHISE_MAX_NODES = 25
+FRANCHISE_MAX_DEPTH = 5
+
+
+def assemble_franchise(start_id, fetch_relations,
+                       max_nodes=FRANCHISE_MAX_NODES, max_depth=FRANCHISE_MAX_DEPTH):
+    """Breadth-first traversal across franchise relations.
+
+    AniList only returns direct (one-hop) relations, so we walk the graph to
+    gather the whole connected franchise. `fetch_relations(anilist_id)` must
+    return {"self": node, "edges": [{"relation_type", "node"}, ...]} (see
+    AniListClient.get_anime_relations). Returns {anilist_id: node_dict}.
+    Bounded by max_nodes (AniList calls) and max_depth (chain length).
+    """
+    from collections import deque
+
+    nodes = {}
+    queue = deque([(start_id, 0)])
+    enqueued = {start_id}
+    queries = 0
+
+    while queue and queries < max_nodes:
+        current_id, depth = queue.popleft()
+        try:
+            data = fetch_relations(current_id)
+        except Exception:
+            continue
+        queries += 1
+        nodes[current_id] = data["self"]          # authoritative self data
+        if depth >= max_depth:
+            continue
+        for edge in data["edges"]:
+            node = edge["node"]
+            if node.get("type") != "ANIME":
+                continue
+            if edge["relation_type"] not in FRANCHISE_RELATION_TYPES:
+                continue
+            nid = node["anilist_id"]
+            nodes.setdefault(nid, node)           # stub display data if unseen
+            if nid not in enqueued:
+                enqueued.add(nid)
+                queue.append((nid, depth + 1))
+
+    return nodes
+
+
 # ═══════════════════════════════════════════════════════════════════════════════
 # Database Sync
 # ═══════════════════════════════════════════════════════════════════════════════
