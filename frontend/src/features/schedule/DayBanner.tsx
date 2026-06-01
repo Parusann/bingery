@@ -34,7 +34,7 @@ export function DayBanner({
               className="bg-cover bg-center"
               style={{
                 backgroundImage: e.anime.image_url ? `url(${e.anime.image_url})` : undefined,
-                filter: "saturate(1.05) brightness(0.85)",
+                filter: "saturate(1.12) contrast(1.04)",
                 maskImage: maskFor(i, collage.length),
                 WebkitMaskImage: maskFor(i, collage.length),
               }}
@@ -48,7 +48,7 @@ export function DayBanner({
         className="absolute inset-0"
         style={{
           background:
-            "linear-gradient(180deg, rgba(10,7,16,0.35) 0%, rgba(10,7,16,0.78) 58%, rgba(10,7,16,0.97) 100%), linear-gradient(90deg, rgba(10,7,16,0.92) 0%, rgba(10,7,16,0.45) 50%, rgba(10,7,16,0.70) 100%)",
+            "linear-gradient(180deg, rgba(10,7,16,0.55) 0%, rgba(10,7,16,0.06) 30%, rgba(10,7,16,0.04) 52%, rgba(10,7,16,0.88) 100%), linear-gradient(90deg, rgba(10,7,16,0.5) 0%, rgba(10,7,16,0.05) 46%, rgba(10,7,16,0) 72%)",
         }}
       />
 
@@ -62,7 +62,7 @@ export function DayBanner({
           )}
           <h2
             className="font-display italic text-[52px] leading-none tracking-tight text-ink"
-            style={{ textShadow: "0 2px 18px rgba(10,7,16,0.75)" }}
+            style={{ textShadow: "0 2px 4px rgba(10,7,16,0.92), 0 2px 22px rgba(10,7,16,0.7)" }}
           >
             {fullLabel}
           </h2>
