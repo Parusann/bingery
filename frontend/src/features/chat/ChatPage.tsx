@@ -76,7 +76,7 @@ export function ChatPage() {
           <span className="text-sm text-text-muted mb-1">
             {MODE_META[mode].eyebrow}
           </span>
-          <div className="ml-auto flex gap-1.5">
+          <div className="ml-auto flex flex-wrap gap-1.5 md:flex-nowrap">
             {(Object.keys(MODE_META) as Mode[]).map((m) => (
               <button
                 key={m}
@@ -99,7 +99,7 @@ export function ChatPage() {
       <GlassCard tone="warm" elevated className="overflow-hidden">
         <div
           ref={scroller}
-          className="h-[68vh] overflow-y-auto px-5 md:px-7 py-6 space-y-5"
+          className="h-[60vh] md:h-[68vh] overflow-y-auto px-5 md:px-7 py-6 space-y-5"
         >
           <AnimatePresence initial={false}>
             {turns.map((t, i) => {

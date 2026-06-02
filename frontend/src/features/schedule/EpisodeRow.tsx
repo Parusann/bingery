@@ -10,15 +10,15 @@ export function EpisodeRow({ episode }: { episode: ScheduleWeekEpisode }) {
   const title = episode.anime.title_english ?? episode.anime.title;
 
   const containerCls = [
-    "grid grid-cols-[60px_1fr_auto] gap-[18px] items-center",
-    "px-4 py-[10px] rounded-lg border transition-colors group",
+    "grid grid-cols-[52px_1fr_auto] md:grid-cols-[60px_1fr_auto] gap-3 md:gap-[18px] items-center",
+    "px-3 md:px-4 py-2.5 md:py-[10px] rounded-lg border transition-colors group",
     highlighted
       ? "bg-gold/[0.025] border-gold/20 hover:bg-gold/[0.055] hover:border-gold/[0.34]"
       : "bg-row-bg border-row-bd hover:bg-row-bg-hover hover:border-line-2",
   ].join(" ");
 
   const titleCls = [
-    "font-display text-[21px] leading-tight tracking-tight line-clamp-1",
+    "font-display text-[17px] md:text-[21px] leading-tight tracking-tight line-clamp-1",
     highlighted ? "bg-gradient-to-b from-ink to-gold bg-clip-text text-transparent" : "text-ink",
   ].join(" ");
 
@@ -29,10 +29,10 @@ export function EpisodeRow({ episode }: { episode: ScheduleWeekEpisode }) {
           <img
             src={episode.anime.image_url}
             alt=""
-            className="h-[80px] w-[60px] rounded-lg object-cover shadow-md"
+            className="h-[70px] w-[52px] md:h-[80px] md:w-[60px] rounded-lg object-cover shadow-md"
           />
         ) : (
-          <div className="h-[80px] w-[60px] rounded-lg bg-white/5" />
+          <div className="h-[70px] w-[52px] md:h-[80px] md:w-[60px] rounded-lg bg-white/5" />
         )}
         {highlighted && (
           <span className="absolute -top-1 -right-1 flex h-4 w-4 items-center justify-center rounded-full bg-gold text-[10px] text-bg">
