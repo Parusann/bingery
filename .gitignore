@@ -44,6 +44,7 @@ demo-captures/
 
 # Design handoff bundles — transient, not versioned with the repo
 Bingery/
+Bingery */
 
 # Orphan root npm lockfile (the real lockfile is frontend/package-lock.json)
 /package-lock.json
