@@ -1607,6 +1607,86 @@
       .waitlist{ grid-template-columns: 1fr; padding: 36px 28px; }
       .site-foot{ grid-template-columns: 1fr 1fr; }
     }
+
+    /* ─────────  MOBILE (<=768px) — reformat only; desktop rules untouched  ───────── */
+    @media (max-width: 767px){
+      .stage{ padding: 0 18px; }
+
+      /* nav — links already hidden <1080; keep brand + sound + sign in tidy */
+      nav.top{ margin: 0 -18px; padding: 12px 18px 11px; gap: 12px; }
+      nav.top.scrolled{ padding: 10px 18px; }
+      .brand{ font-size: 22px; margin-right: 0; }
+      .sound-toggle{ margin-left: auto; }
+      .signin{ padding: 9px 16px; font-size: 13px; }
+
+      /* hero */
+      .hero{ gap: 36px; padding: 28px 0 8px; min-height: 0; }
+      .logo-lockup{ margin-bottom: 24px; gap: 12px; max-width: 100%; }
+      .logo-row{ gap: 14px; }
+      .logo-emblem{ width: 60px; height: 60px; }
+      .logo-wordmark{ font-size: 44px; }
+      .logo-tagline{ font-size: 10px; letter-spacing: .24em; gap: 10px; }
+      h1.headline{ font-size: 40px !important; line-height: 1.05; margin-bottom: 20px; }
+      p.sub{ font-size: 15px; margin-bottom: 26px; }
+      .actions{ gap: 10px; }
+      .btn{ padding: 12px 20px; font-size: 14px; }
+      .scroll-hint{ display: none; }
+
+      /* AI rec card stacks: poster above info, centered */
+      .rec-card{ padding: 20px; border-radius: 18px; }
+      .rec-body{ grid-template-columns: 1fr; gap: 22px; justify-items: center; }
+      .poster-stack{ width: 150px; height: 212px; }
+      .rec-info{ width: 100%; }
+      .rec-title{ font-size: 26px; }
+
+      /* marquee */
+      .marquee-wrap{ margin-bottom: 44px; }
+      .marquee-label{ left: 18px; }
+      .mini{ width: 100px; height: 140px; }
+
+      /* alive / spline */
+      .alive{ margin: 0 0 36px; border-radius: 20px; min-height: 0; }
+      .alive-text{ padding: 32px 22px; }
+      .alive h2{ font-size: 30px; }
+      .alive p{ font-size: 14.5px; }
+      .alive-meta{ gap: 22px; flex-wrap: wrap; }
+      .alive-spline{ min-height: 300px; }
+
+      /* features bento (already 1col <1080) */
+      .features{ margin: 8px 0 56px; padding: 0 !important; gap: 14px !important; }
+      .feat{ min-height: 0; padding: 24px 22px 22px; }
+      .feat h3{ font-size: 26px; }
+
+      /* testimonials (already 1col <1080) */
+      .testimonials{ margin: 48px 0 16px; gap: 16px; }
+      .quote-body{ font-size: 17px; }
+
+      /* waitlist */
+      .waitlist{ margin: 36px 0 56px; padding: 32px 22px; gap: 28px; }
+      .waitlist h2{ font-size: 32px; }
+      .waitlist-input-row{ flex-direction: column; align-items: stretch; border-radius: 16px; padding: 8px; gap: 8px; }
+      .waitlist-input{ padding: 10px 12px; text-align: center; }
+      .waitlist-submit{ width: 100%; justify-content: center; }
+      .waitlist-perks{ flex-wrap: wrap; }
+
+      /* footer */
+      .site-foot{ grid-template-columns: 1fr 1fr; gap: 24px 20px; padding: 40px 0 28px; }
+      .foot-bottom{ flex-direction: column; gap: 14px; text-align: center; align-items: center; }
+
+      /* command palette */
+      .cmd-backdrop{ padding-top: 10vh; }
+    }
+
+    /* ─────────  very small phones (<=420px)  ───────── */
+    @media (max-width: 420px){
+      h1.headline{ font-size: 34px !important; }
+      .logo-wordmark{ font-size: 38px; }
+      .logo-emblem{ width: 52px; height: 52px; }
+      .rec-title{ font-size: 23px; }
+      .feat h3{ font-size: 24px; }
+      .alive h2{ font-size: 27px; }
+      .waitlist h2{ font-size: 28px; }
+    }
   </style>
 </head>
 <body>
