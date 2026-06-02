@@ -1,214 +1,284 @@
-# Bingery Backend
+<div align="center">
 
-Flask API server for the Bingery anime catalog and recommendation platform.
+# 🍿 Bingery
+
+### An anime discovery, tracking & recommendation app — with an AI guide, community fan‑genres, and sub/dub release tracking.
+
+[![Live](https://img.shields.io/badge/live-bingery.fly.dev-e6a680?style=for-the-badge)](https://bingery.fly.dev)
+
+![React](https://img.shields.io/badge/React-18-61DAFB?logo=react&logoColor=black)
+![TypeScript](https://img.shields.io/badge/TypeScript-5.6-3178C6?logo=typescript&logoColor=white)
+![Vite](https://img.shields.io/badge/Vite-5-646CFF?logo=vite&logoColor=white)
+![Tailwind](https://img.shields.io/badge/Tailwind-3.4-38BDF8?logo=tailwindcss&logoColor=white)
+![Flask](https://img.shields.io/badge/Flask-3.0-000000?logo=flask&logoColor=white)
+![Python](https://img.shields.io/badge/Python-3.13-3776AB?logo=python&logoColor=white)
+![Fly.io](https://img.shields.io/badge/deploy-Fly.io-8B5CF6?logo=flydotio&logoColor=white)
+![Tests](https://img.shields.io/badge/tests-301%20passing-3FB950)
+
+</div>
 
 ---
 
-## Quick Start
+**Bingery** is a full‑stack anime companion. Search a full [AniList](https://anilist.co)‑synced catalog, track what you're watching across **both sub and dub**, get picks from a **conversational AI guide**, vote on community **"fan genres,"** and follow a **weekly airing schedule** — all wrapped in a hand‑crafted, glassmorphic dark UI that's fully responsive down to a phone.
+
+> 🔗 **Live:** **[bingery.fly.dev](https://bingery.fly.dev)** &nbsp;·&nbsp; Try the **Guide** chat, open any title for its **fan‑genres** and **"watch the rest in order"** strip, or check the **Schedule** for this week's sub & dub episodes.
+
+<!-- Add screenshots here, e.g.:
+<div align="center">
+  <img src="docs/screenshots/discover.png" width="49%" />
+  <img src="docs/screenshots/detail-mobile.png" width="24%" />
+</div>
+-->
+
+---
+
+## ✨ Features
+
+### Discover & browse
+- **Full catalog** synced from the AniList GraphQL API, with poster grids and rich detail pages.
+- **Fuzzy search** with live autocomplete (powered by `rapidfuzz`) and faceted filters.
+- **Seasonal** browser for what's airing each season.
+
+### Track everything — sub *and* dub
+- **Watchlist** with watch statuses, favorites, and per‑title progress.
+- **Airing Schedule**: a weekly view tracking **sub *and* dub** episode releases, a "my shows only" filter, and per‑day jump navigation.
+- **Dub sourcing** from multiple feeds (Crunchyroll RSS + AnimeSchedule.net), plus crowd‑sourced **dub reports** with an admin moderation queue.
+
+### Personalize
+- **For You** recommendations driven by a **taste profile** and behavioral **rec signals**.
+- **Ratings** — score titles and talk a rating through with the AI.
+- **Collections** — build custom, shareable lists.
+
+### The AI Guide 🤖
+A conversational assistant with three modes:
+- **Recommend** — describe a mood, get a curated handful of picks.
+- **Rate with AI** — talk through how a show felt and land on a score.
+- **Onboard** — build your taste profile in a few questions.
+
+Backed by **pluggable providers** — cloud **Anthropic (Claude)** or a local/tunneled **Ollama** model — with structured **tool‑calling** so the model can search the catalog and act on your library.
+
+### Rich detail pages
+- **Community fan‑genres** — vote on the genres that *actually* describe a show.
+- **"Watch the rest in order"** — a related‑franchise strip that walks the series chronologically.
+- **Similar titles**, a **next‑episode** widget, and a one‑tap **dub report**.
+
+### Insights & social
+- **Stats** — an activity heatmap, genre breakdown, rating histogram, and overview cards.
+- **Activity** feed and a side‑by‑side **Compare** of any two titles (genres, scores, studios, your ratings).
+
+### Thoughtful touches
+- **NSFW toggle** — show/hide Ecchi‑tagged titles (Hentai is always hidden).
+- **JWT auth** with a one‑command **demo user**.
+- **Fully mobile‑optimized** — native‑feel bottom‑tab navigation, a "More" sheet, and modals that become bottom sheets below 768px, with the desktop experience preserved pixel‑for‑pixel.
+
+---
+
+## 🧱 Tech stack
+
+| Layer | Technologies |
+| --- | --- |
+| **Frontend** | React 18 · TypeScript 5.6 · Vite 5 · Tailwind CSS 3.4 · TanStack Query 5 · Zustand · React Router 6 · Framer Motion · lucide‑react |
+| **Backend** | Python 3.13 · Flask 3 · Flask‑SQLAlchemy · Flask‑JWT‑Extended · Flask‑Bcrypt · Flask‑CORS · Marshmallow · RapidFuzz |
+| **Data & AI** | AniList GraphQL · Crunchyroll RSS · AnimeSchedule.net API · Anthropic (Claude) · Ollama |
+| **Database** | SQLite (SQLAlchemy ORM) on a Fly.io persistent volume |
+| **Infra** | Docker (multi‑stage) · Fly.io (region `yyz`) · Gunicorn · GitHub Actions (scheduled syncs) |
+| **Testing** | pytest · pytest‑flask · responses (backend) · Vitest · Testing Library · Playwright (frontend) |
+
+---
+
+## 🏗️ Architecture
+
+```mermaid
+flowchart LR
+  U["📱 Browser / mobile"] -->|HTTPS| SPA["React SPA<br/>Vite · Tailwind"]
+  SPA -->|/api/*| API["Flask API<br/>(gunicorn)"]
+  API --> DB[("SQLite<br/>Fly volume")]
+  API --> AI{"AI provider"}
+  AI --> ANT["Anthropic<br/>Claude"]
+  AI --> OLL["Ollama<br/>local / tunneled"]
+
+  subgraph Sync["Scheduled sync jobs (CLI / cron)"]
+    SY1["sync_anilist.py"]
+    SY2["sync_dub_crunchyroll.py"]
+    SY3["sync_dub_animeschedule.py"]
+  end
+  AniList[("AniList GraphQL")] --> SY1
+  CR[("Crunchyroll RSS")] --> SY2
+  ASN[("AnimeSchedule API")] --> SY3
+  Sync --> DB
+```
+
+A single **Flask** application exposes a JSON API under `/api/*` and serves the built **React** SPA. Catalog and release data are kept fresh by **resumable CLI sync jobs** (run on a schedule via GitHub Actions / Render cron). The AI Guide talks to a **provider abstraction** so the same chat works against Claude in the cloud or a local Ollama model. State lives in **SQLite** on a Fly.io persistent volume.
+
+---
+
+## 📂 Project structure
+
+```
+bingery/
+├── app.py                      # Flask app factory + blueprint registry
+├── config.py                   # Env-driven config + production safety guards
+├── models.py                   # SQLAlchemy models (Anime, User, Watchlist, …)
+├── routes/                     # 16 API blueprints (auth, anime, schedule, chatbot, …)
+├── utils/                      # AniList client, dub sources, AI providers, NSFW, tokens
+├── tests/                      # pytest suite (301 tests)
+│
+├── sync_anilist.py             # Resumable AniList catalog sync (CLI)
+├── sync_dub_crunchyroll.py     # Dub schedule from Crunchyroll RSS (CLI)
+├── sync_dub_animeschedule.py   # Dub schedule from AnimeSchedule.net (CLI)
+├── seed.py · seed_demo_user.py # DB bootstrap / curated demo data
+├── seed_dub_schedule.py        # Synthetic dub-lag seed (also imported by routes)
+├── migrate_watchlist.py        # One-off data migration
+│
+├── frontend/                   # React + TypeScript + Vite SPA
+│   ├── src/
+│   │   ├── features/           # discover, details, schedule, watchlist, chat, stats, …
+│   │   ├── layout/             # AppShell, Header + mobile chrome (BottomTabBar, MoreSheet…)
+│   │   ├── design/             # design system — tokens, GlassCard, Modal, motion
+│   │   ├── hooks/ · stores/    # TanStack Query hooks + Zustand stores
+│   │   └── routes.tsx
+│   └── public/landing.html     # standalone marketing landing page (iframed)
+│
+├── docs/                       # DEPLOYMENT.md + design specs & implementation plans
+├── Dockerfile · fly.toml       # Fly.io deployment (multi-stage build)
+├── render.yaml · Procfile      # Render cron workers / process definition
+└── .github/workflows/          # scheduled dub-schedule refresh
+```
+
+---
+
+## 🚀 Getting started
+
+### Prerequisites
+- **Python 3.13+** and **Node.js 20+**
+- (Optional) an **Anthropic API key** *or* a running **Ollama** instance for the AI Guide
+
+### 1 · Backend
 
 ```bash
-# 1. Install dependencies
-cd bingery-backend
+# from the repo root
+python -m venv .venv && source .venv/bin/activate   # Windows: .venv\Scripts\activate
 pip install -r requirements.txt
 
-# 2. Seed the database with sample data
-python seed.py
-
-# 3. Run the server
-python app.py
+cp .env.example .env            # then edit values (see Configuration below)
+python seed.py                  # bootstrap a fresh dev DB with ~20 curated titles
+python app.py                   # dev server → http://localhost:5000
 ```
 
-The API will be running at `http://localhost:5000`.
+> For a richer dev database, run a catalog sync: `python sync_anilist.py --max-pages 5`
+> (a full sync is large and takes hours — `--max-pages` caps it for local use).
+> Add the curated demo account with `python seed_demo_user.py`.
 
-**Demo login:** `demo@bingery.app` / `demo123`
+### 2 · Frontend
+
+```bash
+cd frontend
+npm install
+npm run dev                     # Vite dev server → http://localhost:5173
+```
+
+The Vite dev server proxies `/api/*` to the Flask backend, so run both together.
 
 ---
 
-## Database Schema
+## ⚙️ Configuration
 
-### Users
-| Column        | Type     | Notes                        |
-|---------------|----------|------------------------------|
-| id            | Integer  | Primary key                  |
-| username      | String   | Unique, min 3 chars          |
-| email         | String   | Unique                       |
-| password_hash | String   | Bcrypt hashed                |
-| avatar_url    | String   | Optional                     |
-| bio           | String   | Max 500 chars                |
-| created_at    | DateTime | Auto-set                     |
+All backend config is environment‑driven (`config.py` + `.env`). Key variables:
 
-### Anime
-| Column         | Type    | Notes                                |
-|----------------|---------|--------------------------------------|
-| id             | Integer | Primary key                          |
-| mal_id         | Integer | MyAnimeList ID (unique)              |
-| anilist_id     | Integer | AniList ID (unique)                  |
-| title          | String  | Japanese/romaji title                |
-| title_english  | String  | English title                        |
-| title_japanese | String  | Japanese title                       |
-| synopsis       | Text    | Description                          |
-| api_score      | Float   | Score from MAL/AniList               |
-| year           | Integer | Release year                         |
-| season         | String  | spring/summer/fall/winter            |
-| episodes       | Integer | Episode count                        |
-| studio         | String  | Animation studio                     |
-| image_url      | String  | Cover image                          |
-| status         | String  | Airing / Finished Airing / Upcoming  |
-| source         | String  | Manga / Light Novel / Original / etc |
+| Variable | Purpose | Default |
+| --- | --- | --- |
+| `AI_PROVIDER` | `ollama` or `anthropic` | `ollama` |
+| `ANTHROPIC_API_KEY` / `ANTHROPIC_MODEL` | Claude provider | — / `claude-sonnet-4-6` |
+| `OLLAMA_BASE_URL` / `OLLAMA_MODEL` | Local/tunneled Ollama provider | `localhost:11434` / `gemma4:e4b` |
+| `OLLAMA_CF_ACCESS_CLIENT_ID/SECRET` | Cloudflare Access token for a gated Ollama tunnel | — |
+| `DATABASE_URL` | SQLAlchemy connection string | `sqlite:///bingery.db` |
+| `SECRET_KEY` / `JWT_SECRET_KEY` | Flask session & JWT signing secrets | `change-me` |
+| `CORS_ORIGINS` | Comma‑separated allowed origins for `/api/*` | `*` (dev) |
+| `FLASK_ENV` | Set to `production` on deploy | — |
+| `ANIMESCHEDULE_API_KEY` | Bearer token for the AnimeSchedule dub sync | — |
 
-### Ratings (1–10 Score)
-| Column   | Type    | Notes                                 |
-|----------|---------|---------------------------------------|
-| id       | Integer | Primary key                           |
-| user_id  | Integer | FK → Users                            |
-| anime_id | Integer | FK → Anime                            |
-| score    | Integer | 1–10 (enforced by CHECK constraint)   |
-| review   | Text    | Optional review text (max 2000 chars) |
-
-Unique constraint on `(user_id, anime_id)` — one rating per user per anime.
-
-### Fan Genre Votes
-| Column    | Type    | Notes                           |
-|-----------|---------|---------------------------------|
-| id        | Integer | Primary key                     |
-| user_id   | Integer | FK → Users                      |
-| anime_id  | Integer | FK → Anime                      |
-| genre_tag | String  | The genre the user voted for    |
-
-Unique constraint on `(user_id, anime_id, genre_tag)` — one vote per genre per user per anime.
-Users can submit up to 15 genre tags per anime.
-
-### Genres (Official API Genres)
-| Column   | Type   | Notes                                            |
-|----------|--------|--------------------------------------------------|
-| id       | Integer| Primary key                                      |
-| name     | String | Genre name (unique)                              |
-| category | String | standard / demographic / theme                   |
-
-Linked to Anime via `anime_genres` association table (many-to-many).
+> 🔒 **Production safety guards:** when `FLASK_ENV=production`, the app **refuses to boot** with default `change-me` secrets or a wildcard (`*`) CORS origin — misconfiguration fails fast instead of shipping insecure.
 
 ---
 
-## API Endpoints
+## 🧪 Testing
 
-### Authentication
+```bash
+# Backend — 301 tests
+python -m pytest -q
 
-| Method | Endpoint             | Auth | Description          |
-|--------|----------------------|------|----------------------|
-| POST   | `/api/auth/register` | No   | Create account       |
-| POST   | `/api/auth/login`    | No   | Login, get JWT token |
-| GET    | `/api/auth/me`       | Yes  | Get your profile     |
-| PATCH  | `/api/auth/me`       | Yes  | Update your profile  |
-
-### Anime
-
-| Method | Endpoint                     | Auth | Description                      |
-|--------|------------------------------|------|----------------------------------|
-| GET    | `/api/anime`                 | No   | List/search anime (paginated)    |
-| GET    | `/api/anime/<id>`            | Opt  | Full anime detail                |
-| GET    | `/api/anime/<id>/ratings`    | No   | All user ratings for this anime  |
-| GET    | `/api/anime/genres`          | No   | Official genres (grouped)        |
-| GET    | `/api/anime/top`             | No   | Top rated by community           |
-
-### Ratings & Fan Genres
-
-| Method | Endpoint                       | Auth | Description                              |
-|--------|--------------------------------|------|------------------------------------------|
-| POST   | `/api/anime/<id>/rate`         | Yes  | Rate 1–10 (create/update)                |
-| DELETE | `/api/anime/<id>/rate`         | Yes  | Remove your rating                       |
-| POST   | `/api/anime/<id>/fan-genres`   | Yes  | Submit fan genre votes                   |
-| GET    | `/api/anime/<id>/fan-genres`   | No   | Get aggregated fan genre data            |
-
-### AniList Integration
-
-| Method | Endpoint                       | Auth | Description                              |
-|--------|--------------------------------|------|------------------------------------------|
-| GET    | `/api/anilist/search?q=`       | No   | Search AniList (no DB save)              |
-| GET    | `/api/anilist/anime/<id>`      | No   | Get anime details from AniList           |
-| GET    | `/api/anilist/trending`        | No   | Currently trending anime                 |
-| GET    | `/api/anilist/seasonal`        | No   | Seasonal anime (?year=&season=)          |
-| POST   | `/api/anilist/sync`            | Yes  | Sync AniList anime to local DB           |
-| POST   | `/api/anime/<id>/review`       | Yes  | Combined: rate + fan genres in one call  |
-| GET    | `/api/fan-genres/allowed`      | No   | All allowed fan genre tags (grouped)     |
-
-### User Data
-
-| Method | Endpoint                    | Auth | Description              |
-|--------|-----------------------------|------|--------------------------|
-| GET    | `/api/me/ratings`           | Yes  | Your rated anime         |
-| GET    | `/api/users/<id>/ratings`   | No   | A user's rated anime     |
+# Frontend — type-check, unit/component, e2e
+cd frontend
+npm run lint          # tsc -b (type-check)
+npm run test:run      # Vitest unit/component tests
+npm run e2e           # Playwright end-to-end
+```
 
 ---
 
-## Fan Genre System
+## 📡 API overview
 
-Users can tag anime with genres they think apply. These accumulate across all users and display as **Fan Genre Categories** on each anime's profile, showing:
+The Flask backend exposes JSON under `/api/*`. Blueprints by domain:
 
-- **Genre name** — e.g., "Isekai", "Shounen", "Mind-Bending"
-- **Vote count** — how many users tagged this genre
-- **Percentage** — proportion of raters who picked this genre
+| Area | Mount | Area | Mount |
+| --- | --- | --- | --- |
+| Auth | `/api/auth` | Stats | `/api/stats` |
+| Anime & detail | `/api/anime` | Activity | `/api/activity` |
+| Search | `/api/search` | Seasonal | `/api/seasonal` |
+| Ratings | `/api` | Compare | `/api/compare` |
+| Watchlist | `/api/watchlist` | Schedule | `/api` |
+| Collections | `/api/collections` | Dub reports | `/api/dub-reports` |
+| Recommendations | `/api/recommend` | Admin | `/api/admin` |
+| AI Guide (chat) | `/api/chat` | Health | `/api/health` |
 
-### Available Fan Genres (59 total)
-
-**Standard:** Action, Adventure, Comedy, Drama, Fantasy, Horror, Mystery, Romance, Sci-Fi, Slice of Life, Supernatural, Thriller, Sports, Music
-
-**Demographic:** Shounen, Shoujo, Seinen, Josei, Kodomomuke
-
-**Thematic:** Isekai, Mecha, Magical Girl, Harem, Reverse Harem, Martial Arts, Military, Psychological, Ecchi, Gore, Survival, Post-Apocalyptic, Cyberpunk, Steampunk, Historical, Samurai, Vampire, Zombie, Demons, Dark Fantasy, Mythology, Reincarnation, Time Travel, Virtual Reality, Game, Cooking, Medical, Detective
-
-**Tone/Style:** Wholesome, Feel-Good, Tearjerker, Mind-Bending, Slow Burn, Fast-Paced, Episodic, Satirical, Coming of Age, Tragic
-
-**Setting:** School, Workplace, Space, Underworld, Urban, Rural, Kingdom, Tournament, Dungeon
+Auth is **JWT** (`Flask-JWT-Extended`) with **bcrypt**‑hashed passwords.
 
 ---
 
-## Example API Calls
+## 🚢 Deployment
 
-### Register
+The production app runs on **[Fly.io](https://fly.io)** (region `yyz` / Toronto) from a multi‑stage **Docker** image — the frontend is built with Vite and served by the Flask/gunicorn backend, with **SQLite on a persistent volume**.
+
 ```bash
-curl -X POST http://localhost:5000/api/auth/register \
-  -H "Content-Type: application/json" \
-  -d '{"username":"newuser","email":"user@example.com","password":"mypassword"}'
+fly deploy                      # build image, release, health-check
+fly status -a bingery
+curl https://bingery.fly.dev/api/health    # → {"status":"ok"}
 ```
 
-### Login
-```bash
-curl -X POST http://localhost:5000/api/auth/login \
-  -H "Content-Type: application/json" \
-  -d '{"email":"demo@bingery.app","password":"demo123"}'
-```
+- **`render.yaml`** defines **Render cron workers** that run the catalog/dub sync jobs on a schedule.
+- **`.github/workflows/refresh-schedule.yml`** refreshes the dub schedule via GitHub Actions.
+- See **[`docs/DEPLOYMENT.md`](docs/DEPLOYMENT.md)** for the full runbook (including the Ollama‑over‑Cloudflare‑Access tunnel).
 
-### Rate + Tag an anime
-```bash
-curl -X POST http://localhost:5000/api/anime/1/review \
-  -H "Content-Type: application/json" \
-  -H "Authorization: Bearer YOUR_JWT_TOKEN" \
-  -d '{
-    "score": 9,
-    "review": "Absolutely brilliant cat-and-mouse thriller",
-    "genres": ["Mystery", "Thriller", "Shounen", "Psychological", "Mind-Bending"]
-  }'
-```
+---
 
-### Browse anime
-```bash
-curl "http://localhost:5000/api/anime?search=death&genre=Mystery&sort=api_score&order=desc"
-```
+## 🎨 Design system
 
-### Get fan genre data
-```bash
-curl http://localhost:5000/api/anime/1/fan-genres
-```
+A bespoke dark, glassmorphic aesthetic defined by design tokens in `frontend/src/design/tokens.ts`:
 
-Response:
-```json
-{
-  "fan_genres": [
-    { "genre": "Mystery", "votes": 3, "percentage": 100.0 },
-    { "genre": "Thriller", "votes": 3, "percentage": 100.0 },
-    { "genre": "Shounen", "votes": 3, "percentage": 100.0 },
-    { "genre": "Mind-Bending", "votes": 2, "percentage": 66.7 },
-    { "genre": "Psychological", "votes": 2, "percentage": 66.7 }
-  ]
-}
-```
+- **Palette** — near‑black violet background (`#080510`), warm **amber** accent (`#e6a680`), with peach/gold accents for the schedule.
+- **Type** — an elegant serif display (Instrument Serif / Fraunces), clean sans body (Geist / Inter), and a mono for labels (Geist Mono / JetBrains Mono).
+- **Surfaces** — translucent `GlassCard`s with layered inset highlights, ambient gradient blobs, a film‑grain overlay, and a WebGL "liquid glass" hero surface.
+- **Motion** — Framer Motion springs and eased transitions, with reusable variants and a shared motion vocabulary.
+- **Responsive** — Tailwind's default breakpoints; mobile is the unprefixed base and desktop (`md:`+, ≥768px) is preserved exactly.
+
+---
+
+## 🗺️ Roadmap & data sources
+
+Bingery aggregates and credits these open data sources:
+- **[AniList](https://anilist.co)** — catalog, metadata, scores (GraphQL API).
+- **Crunchyroll** (public release RSS) & **[AnimeSchedule.net](https://animeschedule.net)** — dub release timing.
+
+Design specs and phased implementation plans live under [`docs/superpowers/`](docs/superpowers/) — the project was built feature‑by‑feature with written specs and TDD.
+
+---
+
+## 📄 License
+
+© 2026 Parusann. Personal project — all rights reserved. (No open‑source license is currently granted; add a `LICENSE` file to set redistribution terms.)
+
+<div align="center">
+
+**[▶ Open the live app](https://bingery.fly.dev)**
+
+</div>

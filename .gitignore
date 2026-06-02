@@ -45,6 +45,5 @@ demo-captures/
 # Design handoff bundles — transient, not versioned with the repo
 Bingery/
 
-# Editor/tooling notes that must never enter the public repo
-CLAUDE.md
-claude.md
+# Orphan root npm lockfile (the real lockfile is frontend/package-lock.json)
+/package-lock.json
