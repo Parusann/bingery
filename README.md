@@ -23,12 +23,9 @@
 
 > 🔗 **Live:** **[bingery.fly.dev](https://bingery.fly.dev)** &nbsp;·&nbsp; Try the **Guide** chat, open any title for its **fan‑genres** and **"watch the rest in order"** strip, or check the **Schedule** for this week's sub & dub episodes.
 
-<!-- Add screenshots here, e.g.:
 <div align="center">
-  <img src="docs/screenshots/discover.png" width="49%" />
-  <img src="docs/screenshots/detail-mobile.png" width="24%" />
+  <img src="screenshots/landing.png" alt="Bingery — landing page" width="90%" />
 </div>
--->
 
 ---
 
@@ -72,6 +69,31 @@ Backed by **pluggable providers** — cloud **Anthropic (Claude)** or a local/tu
 - **Fully mobile‑optimized** — native‑feel bottom‑tab navigation, a "More" sheet, and modals that become bottom sheets below 768px, with the desktop experience preserved pixel‑for‑pixel.
 
 ---
+
+## 📸 Screenshots
+
+<table>
+  <tr>
+    <td width="50%" valign="top"><img src="screenshots/discover.png" alt="Discover"/><br/><sub><b>Discover</b> — search &amp; browse the AniList-synced catalog</sub></td>
+    <td width="50%" valign="top"><img src="screenshots/schedule.png" alt="Schedule"/><br/><sub><b>Schedule</b> — weekly sub &amp; dub episode tracking</sub></td>
+  </tr>
+  <tr>
+    <td valign="top"><img src="screenshots/watchlist.png" alt="Watchlist"/><br/><sub><b>Watchlist</b> — statuses, favorites &amp; progress</sub></td>
+    <td valign="top"><img src="screenshots/for-you.png" alt="For You"/><br/><sub><b>For You</b> — taste-driven recommendations</sub></td>
+  </tr>
+  <tr>
+    <td valign="top"><img src="screenshots/seasonal.png" alt="Seasonal"/><br/><sub><b>Seasonal</b> — browse by airing season</sub></td>
+    <td valign="top"><img src="screenshots/chat.png" alt="AI Guide chat"/><br/><sub><b>AI Guide</b> — recommend, rate &amp; onboard</sub></td>
+  </tr>
+  <tr>
+    <td valign="top"><img src="screenshots/stats.png" alt="Stats"/><br/><sub><b>Stats</b> — heatmap, genre breakdown &amp; rating histogram</sub></td>
+    <td valign="top"><img src="screenshots/activity.png" alt="Activity"/><br/><sub><b>Activity</b> — your recent watch history</sub></td>
+  </tr>
+  <tr>
+    <td valign="top"><img src="screenshots/compare.png" alt="Compare"/><br/><sub><b>Compare</b> — two titles side by side</sub></td>
+    <td valign="top"><img src="screenshots/watch-in-order.png" alt="Watch the rest in order"/><br/><sub><b>Watch in order</b> — the related-franchise strip</sub></td>
+  </tr>
+</table>
 
 ## 🧱 Tech stack
 
