@@ -46,6 +46,12 @@ class Config:
 
     ANTHROPIC_API_KEY = os.environ.get("ANTHROPIC_API_KEY", "")
 
+    # Email verification (sign-up codes). 'console' logs the code (dev);
+    # 'brevo' sends via the Brevo HTTP API (production).
+    EMAIL_PROVIDER = (os.environ.get("EMAIL_PROVIDER") or "console").strip().lower()
+    BREVO_API_KEY = os.environ.get("BREVO_API_KEY", "")
+    EMAIL_FROM = os.environ.get("EMAIL_FROM", "")
+
     # Frontend origins allowed to call /api/*. Comma-separated. Default '*'
     # is fine for local dev; production MUST set this to the Pages origin.
     CORS_ORIGINS = _split_origins(os.environ.get("CORS_ORIGINS"))
@@ -60,6 +66,15 @@ class Config:
         if "*" in CORS_ORIGINS:
             problems.append(
                 "CORS_ORIGINS is '*' — set it to your Cloudflare Pages origin"
+            )
+        if EMAIL_PROVIDER != "brevo":
+            problems.append(
+                "EMAIL_PROVIDER must be 'brevo' in production (console would "
+                "log verification codes instead of emailing them)"
+            )
+        elif not BREVO_API_KEY or not EMAIL_FROM:
+            problems.append(
+                "BREVO_API_KEY and EMAIL_FROM must be set when EMAIL_PROVIDER=brevo"
             )
         if problems:
             sys.stderr.write(
