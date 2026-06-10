@@ -64,7 +64,7 @@ class BrevoEmailProvider:
                 json=payload,
                 timeout=10,
             )
-        except Exception as exc:
+        except requests.exceptions.RequestException as exc:
             raise EmailSendError(f"Brevo unreachable: {type(exc).__name__}") from exc
         if not 200 <= resp.status_code < 300:
             raise EmailSendError(f"Brevo returned {resp.status_code}")

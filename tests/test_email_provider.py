@@ -2,6 +2,7 @@
 import logging
 
 import pytest
+import requests
 import responses
 
 from utils.email_provider import (
@@ -80,7 +81,7 @@ def test_brevo_network_error_raises(monkeypatch):
     responses.add(
         responses.POST,
         "https://api.brevo.com/v3/smtp/email",
-        body=ConnectionError("boom"),
+        body=requests.exceptions.ConnectionError("boom"),
     )
     with pytest.raises(EmailSendError):
         BrevoEmailProvider().send_verification_code("someone@example.com", "654321")
