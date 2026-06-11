@@ -134,14 +134,17 @@ def verify():
         db.session.commit()
         return uniform
 
+    # Snapshot while the ORM object is guaranteed live (before any rollback).
+    pending_username = pending.username
+
     # ── Race guard: the username/email may have been claimed since ───────
-    if db.session.query(User).filter_by(username=pending.username).first():
+    if db.session.query(User).filter_by(username=pending_username).first():
         return jsonify({"error": "Username already taken."}), 409
     if db.session.query(User).filter_by(email=email).first():
         return jsonify({"error": "Email already registered."}), 409
 
     user = User(
-        username=pending.username,
+        username=pending_username,
         email=email,
         password_hash=pending.password_hash,
         display_name=pending.display_name,
@@ -155,7 +158,7 @@ def verify():
         # the SELECT race guards and this commit. Map back to the same
         # 409s; fall back to the uniform body for anything else.
         db.session.rollback()
-        if db.session.query(User).filter_by(username=pending.username).first():
+        if db.session.query(User).filter_by(username=pending_username).first():
             return jsonify({"error": "Username already taken."}), 409
         if db.session.query(User).filter_by(email=email).first():
             return jsonify({"error": "Email already registered."}), 409
