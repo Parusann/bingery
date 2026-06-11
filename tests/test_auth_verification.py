@@ -275,3 +275,31 @@ def test_resend_unknown_email_uniform_200(client, sent_codes):
     assert r.status_code == 200
     assert r.get_json() == {"ok": True}
     assert sent_codes == []
+
+
+def test_resend_send_failure_keeps_old_code_valid(client, sent_codes, monkeypatch):
+    import routes.auth as auth_module
+    from utils.email_provider import EmailSendError
+
+    _register(client)
+    old_code = _code_for(sent_codes)
+
+    real_now = auth_module._utcnow()
+    monkeypatch.setattr(auth_module, "_utcnow", lambda: real_now + timedelta(seconds=61))
+
+    class _Boom:
+        def send_verification_code(self, to_email, code):
+            raise EmailSendError("down")
+
+    monkeypatch.setattr("routes.auth.get_email_provider", lambda: _Boom())
+    r = _resend(client)
+    assert r.status_code == 200
+    assert r.get_json() == {"ok": True}
+
+    # Rollback undid all state changes: no budget burned, no cooldown started.
+    pending = db.session.query(PendingSignup).one()
+    assert pending.resend_count == 0
+    assert pending.attempts_remaining == 5
+
+    # The original code still verifies (clock is +61s, well inside the 10-min TTL).
+    assert _verify(client, old_code).status_code == 201
