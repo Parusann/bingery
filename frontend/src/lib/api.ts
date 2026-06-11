@@ -7,6 +7,7 @@ import type {
   FavoriteResponse,
   RatingsResponse,
   RecommendationsResponse,
+  RegisterPendingResponse,
   ReviewResponse,
   SimilarResponse,
   RelatedResponse,
@@ -115,7 +116,17 @@ export const api = {
       body: JSON.stringify(body),
     }),
   register: (body: { email: string; password: string; username: string; display_name?: string }) =>
-    request<AuthResponse>("/auth/register", {
+    request<RegisterPendingResponse>("/auth/register", {
+      method: "POST",
+      body: JSON.stringify(body),
+    }),
+  verifyEmail: (body: { email: string; code: string }) =>
+    request<AuthResponse>("/auth/verify", {
+      method: "POST",
+      body: JSON.stringify(body),
+    }),
+  resendCode: (body: { email: string }) =>
+    request<{ ok: true }>("/auth/resend", {
       method: "POST",
       body: JSON.stringify(body),
     }),

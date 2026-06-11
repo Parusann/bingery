@@ -19,6 +19,11 @@ export interface AuthResponse {
   user: User;
 }
 
+export interface RegisterPendingResponse {
+  verification_required: true;
+  email: string;
+}
+
 export interface AnimeListResponse {
   anime: AnimeSummary[];
   page: number;
