@@ -40,17 +40,20 @@ export function AuthForm({ onSuccess }: { onSuccess?: () => void }) {
         await signIn({ email, password });
         onSuccess?.();
       } else if (step === "form") {
+        const normEmail = email.trim().toLowerCase();
         await signUp({
-          email,
+          email: normEmail,
           password,
           username,
           display_name: displayName.trim() || undefined,
         });
+        setEmail(normEmail);
         setCode("");
         setResendIn(RESEND_SECONDS);
         setResent(false);
         setStep("verify");
       } else {
+        setResent(false);
         await verifyEmail({ email: email.trim().toLowerCase(), code });
         onSuccess?.();
       }
