@@ -67,6 +67,30 @@ class User(db.Model):
         return data
 
 
+# ─── PendingSignup (awaiting email verification) ───────────────────────────
+
+class PendingSignup(db.Model):
+    """A sign-up awaiting email verification. Becomes a User when the
+    6-digit code is verified; never serialized to clients.
+
+    All datetimes are naive UTC (SQLite returns naive values), set
+    explicitly by routes/auth.py rather than via column defaults so the
+    route's monkeypatchable clock is the single time source.
+    """
+
+    id = db.Column(db.Integer, primary_key=True)
+    email = db.Column(db.String(120), unique=True, nullable=False, index=True)
+    username = db.Column(db.String(80), nullable=False)
+    password_hash = db.Column(db.String(128), nullable=False)
+    display_name = db.Column(db.String(80), nullable=True, default=None)
+    code_hash = db.Column(db.String(128), nullable=False)
+    code_expires_at = db.Column(db.DateTime, nullable=False)
+    attempts_remaining = db.Column(db.Integer, nullable=False, default=5)
+    resend_count = db.Column(db.Integer, nullable=False, default=0)
+    last_sent_at = db.Column(db.DateTime, nullable=False)
+    created_at = db.Column(db.DateTime, nullable=False)
+
+
 # ─── Anime ───────────────────────────────────────────────────────────────────
 
 class Anime(db.Model):
