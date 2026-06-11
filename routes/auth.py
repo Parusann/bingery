@@ -2,6 +2,7 @@ import secrets
 from datetime import datetime, timedelta, timezone
 
 from flask import Blueprint, request, jsonify
+from sqlalchemy.exc import IntegrityError
 from flask_bcrypt import Bcrypt
 from flask_jwt_extended import (
     create_access_token,
@@ -94,8 +95,63 @@ def register():
             503,
         )
 
-    db.session.commit()
+    try:
+        db.session.commit()
+    except IntegrityError:
+        # Two simultaneous registrations for the same email: the loser's
+        # insert collides on the unique email. The winner's code was sent;
+        # the user can simply retry (which overwrites the pending row).
+        db.session.rollback()
+        return (
+            jsonify({"error": "Couldn't send the verification email. Please try again."}),
+            503,
+        )
     return jsonify({"verification_required": True, "email": email}), 202
+
+
+@auth_bp.route("/verify", methods=["POST"])
+def verify():
+    """Exchange a pending signup + correct code for a real account + JWT.
+
+    Every failure mode (unknown email, expired, attempts exhausted, wrong
+    code) returns the same body so nothing is leaked about which it was.
+    """
+    data = request.get_json() or {}
+    email = (data.get("email") or "").strip().lower()
+    code = (data.get("code") or "").strip()
+    uniform = jsonify({"error": "Invalid or expired code."}), 400
+
+    pending = db.session.query(PendingSignup).filter_by(email=email).first()
+    if not pending or not code:
+        return uniform
+
+    now = _utcnow()
+    if now > pending.code_expires_at or pending.attempts_remaining <= 0:
+        return uniform
+
+    if not bcrypt.check_password_hash(pending.code_hash, code):
+        pending.attempts_remaining -= 1
+        db.session.commit()
+        return uniform
+
+    # ── Race guard: the username/email may have been claimed since ───────
+    if db.session.query(User).filter_by(username=pending.username).first():
+        return jsonify({"error": "Username already taken."}), 409
+    if db.session.query(User).filter_by(email=email).first():
+        return jsonify({"error": "Email already registered."}), 409
+
+    user = User(
+        username=pending.username,
+        email=email,
+        password_hash=pending.password_hash,
+        display_name=pending.display_name,
+    )
+    db.session.add(user)
+    db.session.delete(pending)
+    db.session.commit()
+
+    token = create_access_token(identity=str(user.id))
+    return jsonify({"token": token, "user": user.to_dict()}), 201
 
 
 @auth_bp.route("/login", methods=["POST"])

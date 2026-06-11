@@ -84,7 +84,7 @@ def test_reregister_overwrites_pending(client, sent_codes):
     assert len(rows) == 1
     assert rows[0].username == "newname"
     assert len(sent_codes) == 2
-    assert sent_codes[0][1] != rows[0].code_hash  # plaintext never stored
+    assert sent_codes[0][1] not in rows[0].code_hash  # plaintext never stored
 
 
 def test_register_email_failure_returns_503(client, monkeypatch):
@@ -115,3 +115,102 @@ def test_register_purges_stale_pendings(client, sent_codes, monkeypatch):
 
     assert db.session.query(PendingSignup).filter_by(email="old@example.com").count() == 0
     assert db.session.query(PendingSignup).filter_by(email="new@example.com").count() == 1
+
+
+def _code_for(sent_codes, email="new@example.com"):
+    return [c for (to, c) in sent_codes if to == email][-1]
+
+
+def _verify(client, code, email="new@example.com"):
+    return client.post("/api/auth/verify", json={"email": email, "code": code})
+
+
+UNIFORM = {"error": "Invalid or expired code."}
+
+
+def test_verify_happy_path_creates_user_and_token(client, sent_codes):
+    _register(client)
+    r = _verify(client, _code_for(sent_codes))
+    assert r.status_code == 201
+    body = r.get_json()
+    assert body["user"]["username"] == "newbie"
+    assert body["user"]["email"] == "new@example.com"
+
+    # Pending row consumed; real user exists; token works.
+    assert db.session.query(PendingSignup).count() == 0
+    assert db.session.query(User).filter_by(email="new@example.com").count() == 1
+    me = client.get("/api/auth/me", headers={"Authorization": f"Bearer {body['token']}"})
+    assert me.status_code == 200
+
+    # And the password from registration works for login.
+    login = client.post(
+        "/api/auth/login",
+        json={"email": "new@example.com", "password": "password123"},
+    )
+    assert login.status_code == 200
+
+
+def test_verify_wrong_code_decrements_attempts(client, sent_codes):
+    _register(client)
+    right = _code_for(sent_codes)
+    wrong = "000000" if right != "000000" else "000001"
+
+    r = _verify(client, wrong)
+    assert r.status_code == 400
+    assert r.get_json() == UNIFORM
+    pending = db.session.query(PendingSignup).one()
+    assert pending.attempts_remaining == 4
+
+    # The right code still works while attempts remain.
+    assert _verify(client, right).status_code == 201
+
+
+def test_verify_attempts_exhaustion_blocks_even_correct_code(client, sent_codes):
+    _register(client)
+    right = _code_for(sent_codes)
+    wrong = "000000" if right != "000000" else "000001"
+
+    for _ in range(5):
+        assert _verify(client, wrong).status_code == 400
+    # Correct code is now dead too — must resend.
+    r = _verify(client, right)
+    assert r.status_code == 400
+    assert r.get_json() == UNIFORM
+    assert db.session.query(User).count() == 0
+
+
+def test_verify_expired_code(client, sent_codes, monkeypatch):
+    import routes.auth as auth_module
+
+    _register(client)
+    right = _code_for(sent_codes)
+    real_now = auth_module._utcnow()
+    monkeypatch.setattr(auth_module, "_utcnow", lambda: real_now + timedelta(minutes=11))
+
+    r = _verify(client, right)
+    assert r.status_code == 400
+    assert r.get_json() == UNIFORM
+
+
+def test_verify_unknown_email_uniform(client):
+    r = _verify(client, "123456", email="nobody@example.com")
+    assert r.status_code == 400
+    assert r.get_json() == UNIFORM
+
+
+def test_verify_username_race_returns_409(client, sent_codes, app):
+    """Someone claims the username between register and verify."""
+    from flask_bcrypt import Bcrypt
+
+    _register(client)
+    other = User(
+        username="newbie",
+        email="other@example.com",
+        password_hash=Bcrypt(app).generate_password_hash("pw123456").decode("utf-8"),
+    )
+    db.session.add(other)
+    db.session.commit()
+
+    r = _verify(client, _code_for(sent_codes))
+    assert r.status_code == 409
+    assert r.get_json() == {"error": "Username already taken."}
