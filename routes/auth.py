@@ -148,10 +148,55 @@ def verify():
     )
     db.session.add(user)
     db.session.delete(pending)
-    db.session.commit()
+    try:
+        db.session.commit()
+    except IntegrityError:
+        # Concurrent verify/signup claimed the username or email between
+        # the SELECT race guards and this commit. Map back to the same
+        # 409s; fall back to the uniform body for anything else.
+        db.session.rollback()
+        if db.session.query(User).filter_by(username=pending.username).first():
+            return jsonify({"error": "Username already taken."}), 409
+        if db.session.query(User).filter_by(email=email).first():
+            return jsonify({"error": "Email already registered."}), 409
+        return uniform
 
     token = create_access_token(identity=str(user.id))
     return jsonify({"token": token, "user": user.to_dict()}), 201
+
+
+@auth_bp.route("/resend", methods=["POST"])
+def resend():
+    """Re-issue a verification code. Constant response regardless of
+    whether the email has a pending signup (anti-enumeration); cooldown
+    and the resend cap are silent no-ops."""
+    data = request.get_json() or {}
+    email = (data.get("email") or "").strip().lower()
+    ok = jsonify({"ok": True}), 200
+
+    pending = db.session.query(PendingSignup).filter_by(email=email).first()
+    if not pending:
+        return ok
+
+    now = _utcnow()
+    if now - pending.last_sent_at < RESEND_COOLDOWN or pending.resend_count >= MAX_RESENDS:
+        return ok
+
+    code = _generate_code()
+    pending.code_hash = bcrypt.generate_password_hash(code).decode("utf-8")
+    pending.code_expires_at = now + CODE_TTL
+    pending.attempts_remaining = 5
+    pending.resend_count += 1
+    pending.last_sent_at = now
+
+    try:
+        get_email_provider().send_verification_code(email, code)
+    except EmailSendError:
+        db.session.rollback()
+        return ok  # constant response even on send failure
+
+    db.session.commit()
+    return ok
 
 
 @auth_bp.route("/login", methods=["POST"])

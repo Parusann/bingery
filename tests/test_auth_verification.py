@@ -214,3 +214,64 @@ def test_verify_username_race_returns_409(client, sent_codes, app):
     r = _verify(client, _code_for(sent_codes))
     assert r.status_code == 409
     assert r.get_json() == {"error": "Username already taken."}
+
+
+def _resend(client, email="new@example.com"):
+    return client.post("/api/auth/resend", json={"email": email})
+
+
+def test_resend_within_cooldown_is_silent_noop(client, sent_codes):
+    _register(client)
+    r = _resend(client)
+    assert r.status_code == 200
+    assert r.get_json() == {"ok": True}
+    assert len(sent_codes) == 1  # nothing new sent
+
+
+def test_resend_after_cooldown_issues_new_code(client, sent_codes, monkeypatch):
+    import routes.auth as auth_module
+
+    _register(client)
+    old_code = _code_for(sent_codes)
+    # burn two attempts so we can see the reset
+    wrong = "000000" if old_code != "000000" else "000001"
+    _verify(client, wrong)
+
+    real_now = auth_module._utcnow()
+    monkeypatch.setattr(auth_module, "_utcnow", lambda: real_now + timedelta(seconds=61))
+
+    assert _resend(client).status_code == 200
+    assert len(sent_codes) == 2
+    new_code = _code_for(sent_codes)
+
+    pending = db.session.query(PendingSignup).one()
+    assert pending.attempts_remaining == 5
+    assert pending.resend_count == 1
+
+    # Old code dead, new code works.
+    assert _verify(client, old_code).status_code == 400 or old_code == new_code
+    assert _verify(client, new_code).status_code == 201
+
+
+def test_resend_cap_at_five(client, sent_codes, monkeypatch):
+    import routes.auth as auth_module
+
+    _register(client)
+    real_now = auth_module._utcnow()
+    for i in range(1, 8):
+        monkeypatch.setattr(
+            auth_module, "_utcnow",
+            lambda offset=i: real_now + timedelta(seconds=61 * offset),
+        )
+        assert _resend(client).status_code == 200
+
+    pending = db.session.query(PendingSignup).one()
+    assert pending.resend_count == 5
+    assert len(sent_codes) == 1 + 5  # initial + 5 resends, then capped
+
+
+def test_resend_unknown_email_uniform_200(client, sent_codes):
+    r = _resend(client, email="nobody@example.com")
+    assert r.status_code == 200
+    assert r.get_json() == {"ok": True}
+    assert sent_codes == []
