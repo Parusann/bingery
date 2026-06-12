@@ -2,7 +2,7 @@ from flask import Blueprint, request, jsonify
 from flask_jwt_extended import jwt_required, get_jwt_identity, verify_jwt_in_request
 from sqlalchemy import func
 from models import db, Anime, Genre, Rating, FanGenreVote, anime_genres, WatchlistEntry
-from utils.nsfw import maybe_exclude_nsfw
+from utils.nsfw import HARD_BLOCKED_GENRES, maybe_exclude_nsfw
 
 anime_bp = Blueprint("anime", __name__, url_prefix="/api/anime")
 
@@ -124,6 +124,13 @@ def get_related(anime_id):
     items = []
     for aid, node in nodes.items():
         a = local.get(aid)
+        # Hard-block NSFW policy applies to the strip like everywhere else:
+        # AniList's isAdult flag for remote-only nodes, local genre tags
+        # for catalog entries.
+        if node.get("is_adult"):
+            continue
+        if a and any(g.name in HARD_BLOCKED_GENRES for g in a.official_genres):
+            continue
         year, month, day = node.get("year"), node.get("month"), node.get("day")
         sort_key = (
             year if year is not None else 9999,
@@ -192,7 +199,7 @@ def list_genres():
 @anime_bp.route("/top", methods=["GET"])
 def top_anime():
     """Top-rated anime by community score."""
-    limit = min(request.args.get("limit", 10, type=int), 50)
+    limit = max(1, min(request.args.get("limit", 10, type=int) or 10, 50))
 
     subq = (
         db.session.query(

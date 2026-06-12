@@ -566,3 +566,13 @@ def test_upsert_persists_popularity(app):
         fetched_again = Anime.query.filter_by(anilist_id=555555).first()
         assert fetched_again is not None
         assert fetched_again.popularity == 99999
+
+
+def test_normalize_null_average_score_stays_none():
+    """AniList returns null averageScore for unrated titles; storing 0.0
+    would overwrite real scores on re-sync (the upsert skips None)."""
+    from utils.anilist import AniListClient
+
+    client = AniListClient()
+    out = client._normalize_anime({"id": 1, "idMal": None, "title": {"romaji": "X"}})
+    assert out["api_score"] is None
