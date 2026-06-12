@@ -38,15 +38,23 @@ def _generate_code() -> str:
 
 @auth_bp.route("/register", methods=["POST"])
 def register():
-    data = request.get_json() or {}
+    data = request.get_json(silent=True) or {}
 
-    # ── Validate ──────────────────────────────────────────────────────────
+    # ── Validate (types first: non-string JSON values must 400, not 500;
+    #    length caps match the column sizes so Postgres can't 500) ────────
     errors = []
-    if not data.get("username") or len(data["username"].strip()) < 3:
+    username_raw = data.get("username")
+    email_raw = data.get("email")
+    password_raw = data.get("password")
+    if not isinstance(username_raw, str) or len(username_raw.strip()) < 3:
         errors.append("Username must be at least 3 characters.")
-    if not data.get("email") or "@" not in data.get("email", ""):
+    elif len(username_raw.strip()) > 80:
+        errors.append("Username must be at most 80 characters.")
+    if not isinstance(email_raw, str) or "@" not in email_raw:
         errors.append("A valid email is required.")
-    if not data.get("password") or len(data["password"]) < 6:
+    elif len(email_raw.strip()) > 120:
+        errors.append("Email must be at most 120 characters.")
+    if not isinstance(password_raw, str) or len(password_raw) < 6:
         errors.append("Password must be at least 6 characters.")
     if errors:
         return jsonify({"error": " ".join(errors)}), 400
@@ -106,7 +114,10 @@ def register():
     try:
         get_email_provider().send_verification_code(email, code)
     except EmailSendError:
-        db.session.commit()  # keep the pending row; the user can retry
+        # Roll back so a failed send never replaces a previously emailed
+        # (still valid) code or starts a cooldown for an email that never
+        # went out — mirrors the /resend failure path.
+        db.session.rollback()
         return (
             jsonify({"error": "Couldn't send the verification email. Please try again."}),
             503,
@@ -138,7 +149,7 @@ def verify():
     Every failure mode (unknown email, expired, attempts exhausted, wrong
     code) returns the same body so nothing is leaked about which it was.
     """
-    data = request.get_json() or {}
+    data = request.get_json(silent=True) or {}
     email = (data.get("email") or "").strip().lower()
     code = (data.get("code") or "").strip()
     uniform = jsonify({"error": "Invalid or expired code."}), 400
@@ -206,7 +217,7 @@ def resend():
     """Re-issue a verification code. Constant response regardless of
     whether the email has a pending signup (anti-enumeration); cooldown
     and the resend cap are silent no-ops."""
-    data = request.get_json() or {}
+    data = request.get_json(silent=True) or {}
     email = (data.get("email") or "").strip().lower()
     ok = jsonify({"ok": True}), 200
 
@@ -241,12 +252,17 @@ def resend():
 
 @auth_bp.route("/login", methods=["POST"])
 def login():
-    data = request.get_json() or {}
+    data = request.get_json(silent=True) or {}
     email = (data.get("email") or "").strip().lower()
     password = data.get("password") or ""
 
     user = db.session.query(User).filter_by(email=email).first()
-    if not user or not bcrypt.check_password_hash(user.password_hash, password):
+    # Anti-timing-oracle: unknown emails cost the same bcrypt check as a
+    # wrong password, so timing doesn't reveal which emails are registered.
+    password_ok = bcrypt.check_password_hash(
+        user.password_hash if user else _DUMMY_CODE_HASH, password
+    )
+    if not user or not password_ok:
         return jsonify({"error": "Invalid email or password."}), 401
 
     token = create_access_token(identity=str(user.id))
@@ -269,16 +285,27 @@ def update_profile():
     if not user:
         return jsonify({"error": "User not found."}), 404
 
-    data = request.get_json() or {}
-    if "username" in data and data["username"].strip():
-        existing = db.session.query(User).filter_by(username=data["username"].strip()).first()
-        if existing and existing.id != user.id:
-            return jsonify({"error": "Username already taken."}), 409
-        user.username = data["username"].strip()
+    data = request.get_json(silent=True) or {}
+    if "username" in data:
+        uname = data["username"]
+        if not isinstance(uname, str):
+            return jsonify({"error": "Username must be a string."}), 400
+        uname = uname.strip()
+        if len(uname) > 80:
+            return jsonify({"error": "Username must be at most 80 characters."}), 400
+        if uname:
+            existing = db.session.query(User).filter_by(username=uname).first()
+            if existing and existing.id != user.id:
+                return jsonify({"error": "Username already taken."}), 409
+            user.username = uname
     if "bio" in data:
+        if data["bio"] is not None and not isinstance(data["bio"], str):
+            return jsonify({"error": "Bio must be a string."}), 400
         user.bio = (data["bio"] or "")[:500]
     if "avatar_url" in data:
-        user.avatar_url = data["avatar_url"]
+        if data["avatar_url"] is not None and not isinstance(data["avatar_url"], str):
+            return jsonify({"error": "Avatar URL must be a string."}), 400
+        user.avatar_url = (data["avatar_url"] or "")[:300] or None
     if "display_name" in data:
         dn = data["display_name"]
         user.display_name = dn.strip()[:80] if isinstance(dn, str) and dn.strip() else None

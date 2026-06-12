@@ -89,3 +89,37 @@ def test_update_profile_can_change_display_name(client, sent_codes):
     )
     assert r3.status_code == 200
     assert r3.get_json()["user"]["display_name"] is None
+
+
+def test_login_unknown_email_burns_dummy_bcrypt_check(client, monkeypatch):
+    """Anti-enumeration: unknown emails must cost one bcrypt check like the
+    wrong-password path, so login timing does not reveal registered emails."""
+    import routes.auth as auth_module
+
+    calls = []
+    real = auth_module.bcrypt.check_password_hash
+    monkeypatch.setattr(
+        auth_module.bcrypt,
+        "check_password_hash",
+        lambda pw_hash, pw: (calls.append(pw_hash), real(pw_hash, pw))[1],
+    )
+    r = client.post(
+        "/api/auth/login",
+        json={"email": "ghost@example.com", "password": "pw123456"},
+    )
+    assert r.status_code == 401
+    assert r.get_json() == {"error": "Invalid email or password."}
+    assert len(calls) == 1
+
+
+def test_patch_me_rejects_non_string_fields(client, auth_headers):
+    headers, _user = auth_headers
+    assert client.patch("/api/auth/me", json={"username": 123}, headers=headers).status_code == 400
+    assert client.patch("/api/auth/me", json={"bio": 123}, headers=headers).status_code == 400
+    assert client.patch("/api/auth/me", json={"avatar_url": 123}, headers=headers).status_code == 400
+
+
+def test_patch_me_rejects_overlong_username(client, auth_headers):
+    headers, _user = auth_headers
+    r = client.patch("/api/auth/me", json={"username": "x" * 81}, headers=headers)
+    assert r.status_code == 400
