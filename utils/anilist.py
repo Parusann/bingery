@@ -33,6 +33,7 @@ RATE_LIMIT_DELAY = 0.7  # seconds between requests
 # this in-process cache is effectively global.
 _RELATIONS_CACHE: dict = {}
 RELATIONS_CACHE_TTL = 60 * 60 * 24  # 24 hours
+RELATIONS_CACHE_MAX = 512  # entries; oldest evicted beyond this
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -78,6 +79,7 @@ query ($id: Int) {
   Media(id: $id, type: ANIME) {
     id
     type
+    isAdult
     title { romaji english }
     format
     seasonYear
@@ -89,6 +91,7 @@ query ($id: Int) {
         node {
           id
           type
+          isAdult
           title { romaji english }
           format
           seasonYear
@@ -245,7 +248,9 @@ class AniListClient:
         # Existing callers rely on the shared AnimeFields fragment being appended.
         return self._execute(query + ANIME_FRAGMENT, variables)
 
-    def _execute(self, full_query: str, variables: Optional[dict] = None) -> dict:
+    def _execute(
+        self, full_query: str, variables: Optional[dict] = None, _attempt: int = 0
+    ) -> dict:
         """Send an already-complete GraphQL document (no fragment appended)."""
         self._rate_limit()
         payload = {"query": full_query}
@@ -255,10 +260,15 @@ class AniListClient:
         response = self.session.post(ANILIST_API, json=payload, timeout=15)
 
         if response.status_code == 429:
-            retry_after = int(response.headers.get("Retry-After", 60))
+            if _attempt >= 2:
+                raise Exception("AniList rate limit persisted after retries")
+            try:
+                retry_after = min(int(response.headers.get("Retry-After", 60)), 60)
+            except ValueError:
+                retry_after = 60
             print(f"  Rate limited. Waiting {retry_after}s...")
             time.sleep(retry_after)
-            return self._execute(full_query, variables)
+            return self._execute(full_query, variables, _attempt=_attempt + 1)
 
         response.raise_for_status()
         data = response.json()
@@ -287,6 +297,7 @@ class AniListClient:
             "release_date": release_date,
             "image_url": cover.get("large") or cover.get("medium"),
             "type": node.get("type"),
+            "is_adult": bool(node.get("isAdult")),
         }
 
     def _normalize_relations(self, media: dict) -> dict:
@@ -308,6 +319,14 @@ class AniListClient:
         data = self._execute(RELATIONS_QUERY, {"id": anilist_id})
         result = self._normalize_relations(data["Media"])
         _RELATIONS_CACHE[anilist_id] = (now, result)
+        if len(_RELATIONS_CACHE) > RELATIONS_CACHE_MAX:
+            # Bound memory: drop expired entries first, then the oldest
+            # (dict preserves insertion order).
+            cutoff = now - RELATIONS_CACHE_TTL
+            for k in [k for k, (ts, _) in _RELATIONS_CACHE.items() if ts < cutoff]:
+                del _RELATIONS_CACHE[k]
+            while len(_RELATIONS_CACHE) > RELATIONS_CACHE_MAX:
+                _RELATIONS_CACHE.pop(next(iter(_RELATIONS_CACHE)))
         return result
 
     def _normalize_anime(self, media: dict) -> dict:
@@ -377,7 +396,9 @@ class AniListClient:
             "title_english": media["title"].get("english"),
             "title_japanese": media["title"].get("native"),
             "synopsis": description,
-            "api_score": (media.get("averageScore") or 0) / 10,  # AniList is 0-100, we use 0-10
+            # AniList is 0-100, we use 0-10. Null (unrated) stays None so a
+            # re-sync never overwrites a real score (the upsert skips None).
+            "api_score": (media["averageScore"] / 10) if media.get("averageScore") is not None else None,
             "year": media.get("seasonYear") or (media.get("startDate") or {}).get("year"),
             "season": season_map.get(media.get("season")),
             "episodes": media.get("episodes"),

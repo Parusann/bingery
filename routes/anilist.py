@@ -1,7 +1,22 @@
+import hmac
+import os
+
 from flask import Blueprint, request, jsonify, current_app
-from flask_jwt_extended import jwt_required
 
 anilist_bp = Blueprint("anilist", __name__, url_prefix="/api/anilist")
+
+
+def _require_admin_secret():
+    """Catalog mutation is admin-only: header X-Admin-Secret must match
+    ADMIN_SYNC_SECRET (same scheme as routes/admin.py). Returns an error
+    response tuple, or None when authorized."""
+    expected = os.environ.get("ADMIN_SYNC_SECRET")
+    if not expected:
+        return jsonify({"error": "Sync is not enabled on this server."}), 503
+    provided = request.headers.get("X-Admin-Secret") or ""
+    if not hmac.compare_digest(provided, expected):
+        return jsonify({"error": "Unauthorized."}), 401
+    return None
 
 
 @anilist_bp.route("/search", methods=["GET"])
@@ -29,8 +44,9 @@ def search_anilist():
             "results": result["results"],
             "page_info": result["page_info"],
         }), 200
-    except Exception as e:
-        return jsonify({"error": f"AniList search failed: {str(e)}"}), 502
+    except Exception:
+        current_app.logger.exception("AniList search failed")
+        return jsonify({"error": "AniList search failed."}), 502
 
 
 @anilist_bp.route("/anime/<int:anilist_id>", methods=["GET"])
@@ -45,15 +61,17 @@ def get_anilist_anime(anilist_id):
         client = AniListClient()
         anime = client.get_anime(anilist_id)
         return jsonify({"anime": anime}), 200
-    except Exception as e:
-        return jsonify({"error": f"AniList fetch failed: {str(e)}"}), 502
+    except Exception:
+        current_app.logger.exception("AniList fetch failed")
+        return jsonify({"error": "AniList fetch failed."}), 502
 
 
 @anilist_bp.route("/sync", methods=["POST"])
-@jwt_required()
 def sync_from_anilist():
     """
-    Sync anime from AniList to the local database.
+    Sync anime from AniList to the local database. Admin-only: requires
+    the X-Admin-Secret header (it mutates the shared catalog and burns
+    AniList rate budget).
     POST /api/anilist/sync
     Body: { "mode": "popular", "pages": 2 }
     Body: { "mode": "search", "query": "isekai", "pages": 1 }
@@ -63,12 +81,22 @@ def sync_from_anilist():
     """
     from utils.anilist import sync_anime_from_anilist
 
-    data = request.get_json() or {}
+    denied = _require_admin_secret()
+    if denied is not None:
+        return denied
+
+    data = request.get_json(silent=True) or {}
     mode = data.get("mode", "popular")
-    pages = min(data.get("pages", 1), 10)  # cap at 10 pages
 
     if mode not in ("popular", "top", "trending", "seasonal", "search"):
         return jsonify({"error": "Invalid mode."}), 400
+    try:
+        pages = int(data.get("pages", 1))
+    except (TypeError, ValueError):
+        return jsonify({"error": "'pages' must be an integer."}), 400
+    pages = max(1, min(pages, 10))  # cap at 10 pages
+    if mode == "seasonal" and (not data.get("season") or not data.get("year")):
+        return jsonify({"error": "'season' and 'year' are required for seasonal mode."}), 400
 
     try:
         total = sync_anime_from_anilist(
@@ -80,8 +108,9 @@ def sync_from_anilist():
             season_year=data.get("year"),
         )
         return jsonify({"synced": total, "mode": mode}), 200
-    except Exception as e:
-        return jsonify({"error": f"Sync failed: {str(e)}"}), 502
+    except Exception:
+        current_app.logger.exception("AniList sync failed")
+        return jsonify({"error": "Sync failed."}), 502
 
 
 @anilist_bp.route("/trending", methods=["GET"])
@@ -89,13 +118,14 @@ def get_trending():
     """Get currently trending anime from AniList."""
     from utils.anilist import AniListClient
 
-    per_page = min(request.args.get("per_page", 20, type=int), 50)
+    per_page = max(1, min(request.args.get("per_page", 20, type=int) or 20, 50))
     try:
         client = AniListClient()
         result = client.get_trending(page=1, per_page=per_page)
         return jsonify({"results": result["results"]}), 200
-    except Exception as e:
-        return jsonify({"error": f"AniList fetch failed: {str(e)}"}), 502
+    except Exception:
+        current_app.logger.exception("AniList trending fetch failed")
+        return jsonify({"error": "AniList fetch failed."}), 502
 
 
 @anilist_bp.route("/seasonal", methods=["GET"])
@@ -112,10 +142,11 @@ def get_seasonal():
     if not year or season not in ("WINTER", "SPRING", "SUMMER", "FALL"):
         return jsonify({"error": "year (int) and season (WINTER/SPRING/SUMMER/FALL) required."}), 400
 
-    per_page = min(request.args.get("per_page", 30, type=int), 50)
+    per_page = max(1, min(request.args.get("per_page", 30, type=int) or 30, 50))
     try:
         client = AniListClient()
         result = client.get_seasonal(year, season, page=1, per_page=per_page)
         return jsonify({"results": result["results"]}), 200
-    except Exception as e:
-        return jsonify({"error": f"AniList fetch failed: {str(e)}"}), 502
+    except Exception:
+        current_app.logger.exception("AniList seasonal fetch failed")
+        return jsonify({"error": "AniList fetch failed."}), 502
