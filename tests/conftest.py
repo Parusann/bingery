@@ -53,3 +53,20 @@ def auth_headers(app):
         token = create_access_token(identity=str(user.id))
 
     return {"Authorization": f"Bearer {token}"}, user
+
+
+@pytest.fixture
+def sent_codes(monkeypatch):
+    """Capture (to_email, code) instead of sending real email.
+
+    routes/auth.py imports get_email_provider at module level, so patch the
+    name in that namespace.
+    """
+    sent: list[tuple[str, str]] = []
+
+    class _Recorder:
+        def send_verification_code(self, to_email, code):
+            sent.append((to_email, code))
+
+    monkeypatch.setattr("routes.auth.get_email_provider", lambda: _Recorder())
+    return sent
