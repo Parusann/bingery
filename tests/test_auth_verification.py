@@ -75,8 +75,14 @@ def test_register_taken_username_conflicts(client, sent_codes, auth_headers):
     assert r.get_json() == {"error": "Username already taken."}
 
 
-def test_reregister_overwrites_pending(client, sent_codes):
+def test_reregister_overwrites_pending(client, sent_codes, monkeypatch):
+    import routes.auth as auth_module
+
     _register(client)
+
+    # Past the send cooldown, a re-register fully overwrites: new code sent.
+    real_now = auth_module._utcnow()
+    monkeypatch.setattr(auth_module, "_utcnow", lambda: real_now + timedelta(seconds=61))
     r = _register(client, username="newname", password="otherpass1")
     assert r.status_code == 202
 
@@ -85,6 +91,26 @@ def test_reregister_overwrites_pending(client, sent_codes):
     assert rows[0].username == "newname"
     assert len(sent_codes) == 2
     assert sent_codes[0][1] not in rows[0].code_hash  # plaintext never stored
+
+
+def test_reregister_within_cooldown_updates_identity_without_send(client, sent_codes):
+    _register(client)
+    old_code = _code_for(sent_codes)
+
+    r = _register(client, username="newname", password="otherpass1")
+    assert r.status_code == 202
+    assert len(sent_codes) == 1  # no second email inside the cooldown
+
+    pending = db.session.query(PendingSignup).filter_by(email="new@example.com").one()
+    assert pending.username == "newname"
+
+    # The originally emailed code still verifies, and the LATEST password wins.
+    assert _verify(client, old_code).status_code == 201
+    login = client.post(
+        "/api/auth/login",
+        json={"email": "new@example.com", "password": "otherpass1"},
+    )
+    assert login.status_code == 200
 
 
 def test_register_email_failure_returns_503(client, monkeypatch):
