@@ -226,3 +226,36 @@ def test_public_endpoint_omits_owner_identifiers(client, auth_headers):
     body = r.get_json()["collection"]
     assert "user_id" not in body
     assert "share_token" not in body
+
+
+def test_item_changes_bump_collection_updated_at(client, app, auth_headers):
+    """Adding/removing items must bump updated_at so the 'recently
+    updated' list order reflects item activity, not just renames."""
+    from models import db, Anime, Collection
+
+    headers, _user = auth_headers
+    with app.app_context():
+        a = Anime(title="For Collection", anilist_id=23001, api_score=8.0)
+        db.session.add(a)
+        db.session.commit()
+        aid = a.id
+
+    created = client.post(
+        "/api/collections", headers=headers, json={"name": "Bump Test"}
+    ).get_json()["collection"]
+    cid = created["id"]
+    before = db.session.get(Collection, cid).updated_at
+
+    r = client.post(
+        f"/api/collections/{cid}/items", headers=headers, json={"anime_id": aid}
+    )
+    assert r.status_code == 201
+    db.session.expire_all()
+    after_add = db.session.get(Collection, cid).updated_at
+    assert after_add > before
+
+    r = client.delete(f"/api/collections/{cid}/items/{aid}", headers=headers)
+    assert r.status_code == 204
+    db.session.expire_all()
+    after_remove = db.session.get(Collection, cid).updated_at
+    assert after_remove > after_add
