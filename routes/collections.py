@@ -1,4 +1,6 @@
 """Collections routes."""
+from datetime import datetime
+
 from flask import Blueprint, request, jsonify
 from flask_jwt_extended import jwt_required, get_jwt_identity
 
@@ -126,6 +128,8 @@ def add_item(collection_id: int):
         note=(data.get("note") or "")[:500] or None,
     )
     db.session.add(item)
+    # Item activity counts as an update for the "recently updated" order.
+    c.updated_at = datetime.utcnow()
     db.session.commit()
     return jsonify({"item": item.to_dict()}), 201
 
@@ -139,6 +143,7 @@ def remove_item(collection_id: int, anime_id: int):
     if not item:
         return "", 204
     db.session.delete(item)
+    c.updated_at = datetime.utcnow()
     db.session.commit()
     return "", 204
 
