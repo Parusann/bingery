@@ -58,8 +58,9 @@ describe("SchedulePage", () => {
       </MemoryRouter>,
     );
     expect(screen.getByText(/what's/i)).toBeInTheDocument();
-    expect(screen.getByLabelText(/previous week/i)).toBeInTheDocument();
-    expect(screen.getByLabelText(/next week/i)).toBeInTheDocument();
+    // The day strip renders mobile + desktop variants, each with chevrons.
+    expect(screen.getAllByLabelText(/previous week/i).length).toBeGreaterThan(0);
+    expect(screen.getAllByLabelText(/next week/i).length).toBeGreaterThan(0);
     expect(container.querySelectorAll('section[id^="day-"]').length).toBe(7);
   });
 
