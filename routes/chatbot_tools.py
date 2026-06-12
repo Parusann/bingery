@@ -172,8 +172,10 @@ def execute_tool(tool_name, tool_input, user_id=None):
 
     if tool_name == "search_anime_database":
         query = Anime.query
-        if tool_input.get("query"):
-            q = tool_input["query"]
+        # Argument names must match the ToolSchema in utils/ai_tools.py —
+        # that's the contract the model writes calls against.
+        if tool_input.get("title"):
+            q = tool_input["title"]
             query = query.filter(
                 db.or_(Anime.title.ilike(f"%{q}%"), Anime.title_english.ilike(f"%{q}%"))
             )
@@ -182,7 +184,7 @@ def execute_tool(tool_name, tool_input, user_id=None):
         if tool_input.get("min_score"):
             query = query.filter(Anime.api_score >= tool_input["min_score"])
 
-        sort = tool_input.get("sort_by", "score")
+        sort = tool_input.get("sort", "score")
         if sort == "year":
             query = query.order_by(Anime.year.desc().nullslast())
         elif sort == "popularity":

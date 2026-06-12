@@ -2,11 +2,28 @@
 import json
 import responses
 
-from utils.ai_provider import Message, ToolSchema
+from utils.ai_provider import Message, ToolCall, ToolSchema
 from utils.ai_providers.ollama_provider import OllamaProvider
 
 
 OLLAMA_URL = "http://localhost:11434/api/chat"
+
+
+def test_assistant_tool_turn_round_trips_native_tool_calls():
+    """Assistant turns carrying structured tool calls must reach Ollama as
+    its native tool_calls field, not get silently dropped."""
+    msgs = [
+        Message(
+            role="assistant",
+            content="",
+            tool_calls=[ToolCall(id="t1", name="search_db", arguments={"q": "x"})],
+        ),
+    ]
+    out = OllamaProvider._to_ollama_messages(msgs, None)
+    assert out[0]["role"] == "assistant"
+    assert out[0]["tool_calls"] == [
+        {"function": {"name": "search_db", "arguments": {"q": "x"}}}
+    ]
 
 
 @responses.activate
