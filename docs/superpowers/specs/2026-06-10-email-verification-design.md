@@ -85,7 +85,7 @@ No `to_dict` needed (never serialized to clients). A module-level `_now()` helpe
 1. Validation identical to today (username ≥3, email contains `@`, password ≥6; same 400 list-style error body).
 2. Uniqueness vs `user` table identical to today (two 409s).
 3. **Lazy purge:** delete `pending_signup` rows with `created_at` older than 24 h.
-4. Upsert pending: if a `pending_signup` exists for this email, **overwrite it** (new username/password/display_name, fresh code, attempts reset, `resend_count` reset) — the previous holder never proved ownership.
+4. Upsert pending: if a `pending_signup` exists for this email, **overwrite it** (new username/password/display_name, fresh code, attempts reset, `resend_count` reset) — the previous holder never proved ownership. **Send cooldown (security hardening, added in final review):** if the existing pending was emailed less than 60 s ago, register updates only the identity fields (username/password/display_name), keeps the already-emailed code valid, sends nothing, and still returns 202 — so an unauthenticated register loop cannot email-bomb an address or drain the Brevo quota.
 5. Generate code, store bcrypt hash, set expiry/last_sent_at, **send the email**.
 6. Success → **202** `{"verification_required": true, "email": "<normalized email>"}`. No token, no user.
 7. Email send failure → roll back nothing (keep the pending row), return **503** `{"error": "Couldn't send the verification email. Please try again."}`.

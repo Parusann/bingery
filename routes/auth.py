@@ -70,8 +70,20 @@ def register():
 
     # ── Upsert the pending signup (re-register overwrites: the previous
     #    holder never proved ownership of this email) ──────────────────────
-    code = _generate_code()
     pending = db.session.query(PendingSignup).filter_by(email=email).first()
+    if pending is not None and now - pending.last_sent_at < RESEND_COOLDOWN:
+        # Same cooldown as /resend — an unauthenticated register loop must
+        # not become an email cannon. Keep the already-emailed code valid,
+        # but apply the latest identity fields so a quick "fix my typo"
+        # re-submit still wins when the user verifies.
+        pending.username = username
+        pending.password_hash = bcrypt.generate_password_hash(data["password"]).decode("utf-8")
+        pending.display_name = display_name
+        pending.created_at = now
+        db.session.commit()
+        return jsonify({"verification_required": True, "email": email}), 202
+
+    code = _generate_code()
     if pending is None:
         pending = PendingSignup(email=email, created_at=now)
         db.session.add(pending)
