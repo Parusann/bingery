@@ -4,6 +4,23 @@ if (typeof Element !== "undefined" && !Element.prototype.scrollIntoView) {
   Element.prototype.scrollIntoView = function () {};
 }
 
+// jsdom has no matchMedia; useIsDesktop (Modal bottom-sheet branching)
+// needs it. Default to desktop so components behave like the wide
+// viewport the original tests were written against.
+if (typeof window !== "undefined" && typeof window.matchMedia !== "function") {
+  window.matchMedia = (query: string): MediaQueryList =>
+    ({
+      matches: query.includes("min-width"),
+      media: query,
+      onchange: null,
+      addListener: () => {},
+      removeListener: () => {},
+      addEventListener: () => {},
+      removeEventListener: () => {},
+      dispatchEvent: () => false,
+    }) as MediaQueryList;
+}
+
 // Node 22+ ships an experimental built-in `localStorage` global that requires
 // `--localstorage-file=<path>` to function. Without it, calls like
 // `localStorage.clear()` throw "is not a function". We replace it with an
