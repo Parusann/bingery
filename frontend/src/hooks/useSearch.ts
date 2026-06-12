@@ -9,17 +9,30 @@ export function useSearch(query: string, minChars = 2, delay = 250) {
   useEffect(() => {
     if (query.length < minChars) {
       setResults([]);
+      setLoading(false);
       return;
     }
     setLoading(true);
+    // Superseded requests must not overwrite newer results when their
+    // responses arrive out of order.
+    let cancelled = false;
     const id = setTimeout(() => {
       api
         .autocomplete(query)
-        .then((r) => setResults(r.results ?? []))
-        .catch(() => setResults([]))
-        .finally(() => setLoading(false));
+        .then((r) => {
+          if (!cancelled) setResults(r.results ?? []);
+        })
+        .catch(() => {
+          if (!cancelled) setResults([]);
+        })
+        .finally(() => {
+          if (!cancelled) setLoading(false);
+        });
     }, delay);
-    return () => clearTimeout(id);
+    return () => {
+      cancelled = true;
+      clearTimeout(id);
+    };
   }, [query, minChars, delay]);
 
   return { results, loading };

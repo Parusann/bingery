@@ -1,6 +1,7 @@
 import { describe, expect, it, beforeEach, vi, afterEach } from "vitest";
 import { useAuth } from "@/stores/auth";
-import { api } from "@/lib/api";
+import { api, ApiError } from "@/lib/api";
+import { queryClient } from "@/lib/queryClient";
 
 beforeEach(() => {
   localStorage.clear();
@@ -67,6 +68,28 @@ describe("auth store", () => {
     spy.mockResolvedValueOnce({ ok: true });
     await useAuth.getState().resendCode({ email: "a@b.c" });
     expect(useAuth.getState().error).toBeNull();
+  });
+
+  it("restore keeps the token on transient network failure", async () => {
+    api.setToken("xyz");
+    vi.spyOn(api, "me").mockRejectedValue(new TypeError("Failed to fetch"));
+    await useAuth.getState().restore();
+    expect(api.getToken()).toBe("xyz");
+    expect(useAuth.getState().status).toBe("idle");
+  });
+
+  it("restore clears the token when the server rejects it", async () => {
+    api.setToken("xyz");
+    vi.spyOn(api, "me").mockRejectedValue(new ApiError("expired", 401));
+    await useAuth.getState().restore();
+    expect(api.getToken()).toBeNull();
+  });
+
+  it("signOut clears the react-query cache", () => {
+    const spy = vi.spyOn(queryClient, "clear");
+    api.setToken("abc");
+    useAuth.getState().signOut();
+    expect(spy).toHaveBeenCalled();
   });
 
   it("restore() fetches /me when token present", async () => {

@@ -62,6 +62,14 @@ export class ApiError extends Error {
   }
 }
 
+// Registered by the auth store: called when a non-auth endpoint answers
+// 401 with a token attached, i.e. the token expired or was revoked
+// mid-session. Lets the app leave the zombie "authenticated" state.
+let unauthorizedHandler: (() => void) | null = null;
+export function onUnauthorized(handler: (() => void) | null) {
+  unauthorizedHandler = handler;
+}
+
 function getToken(): string | null {
   try {
     return localStorage.getItem(TOKEN_KEY);
@@ -92,8 +100,21 @@ async function request<T>(
 
   const res = await fetch(BASE + applyNsfwParam(path), { ...init, headers });
   const text = await res.text();
-  const data = text ? JSON.parse(text) : {};
+  // Non-JSON bodies (proxy HTML error pages, empty 502s) must surface as
+  // ApiError, not a raw SyntaxError from JSON.parse.
+  let data: any = {};
+  if (text) {
+    try {
+      data = JSON.parse(text);
+    } catch {
+      data = {};
+    }
+  }
   if (!res.ok) {
+    if (res.status === 401 && t && !path.startsWith("/auth/")) {
+      setToken(null);
+      unauthorizedHandler?.();
+    }
     throw new ApiError(
       data.error ?? `Request failed (${res.status})`,
       res.status,

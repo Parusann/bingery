@@ -1,5 +1,6 @@
 import { create } from "zustand";
-import { api } from "@/lib/api";
+import { api, ApiError, onUnauthorized } from "@/lib/api";
+import { queryClient } from "@/lib/queryClient";
 import type { User } from "@/types/models";
 
 export type AuthStatus = "idle" | "loading" | "authenticated" | "error";
@@ -66,6 +67,8 @@ export const useAuth = create<AuthState>((set) => ({
   },
   signOut() {
     api.setToken(null);
+    // User-scoped data must not survive into the next session.
+    queryClient.clear();
     set({ user: null, status: "idle", error: null });
   },
   async restore() {
@@ -74,9 +77,20 @@ export const useAuth = create<AuthState>((set) => ({
     try {
       const res = await api.me();
       set({ user: res.user, status: "authenticated" });
-    } catch {
-      api.setToken(null);
+    } catch (e) {
+      // Only discard the token when the server rejected it — a transient
+      // network failure must not log the user out.
+      if (e instanceof ApiError && (e.status === 401 || e.status === 422)) {
+        api.setToken(null);
+      }
       set({ user: null, status: "idle" });
     }
   },
 }));
+
+// Expired/revoked token detected mid-session by the API client: leave the
+// authenticated state and drop user-scoped cache.
+onUnauthorized(() => {
+  queryClient.clear();
+  useAuth.setState({ user: null, status: "idle" });
+});
