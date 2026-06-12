@@ -25,7 +25,11 @@ def _split_origins(raw: str | None) -> list[str]:
 
 def _is_production() -> bool:
     env = (os.environ.get("FLASK_ENV") or "").strip().lower()
-    return env in ("production", "prod")
+    if env:
+        return env in ("production", "prod")
+    # Fail closed on Fly: FLY_APP_NAME is always set in the runtime, so a
+    # dropped FLASK_ENV line can't silently disable the boot guards.
+    return bool(os.environ.get("FLY_APP_NAME"))
 
 
 class Config:

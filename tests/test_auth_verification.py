@@ -127,8 +127,60 @@ def test_register_email_failure_returns_503(client, monkeypatch):
     r = _register(client)
     assert r.status_code == 503
     assert "verification email" in r.get_json()["error"]
-    # Pending row is kept so a retry can resend.
-    assert db.session.query(PendingSignup).filter_by(email="new@example.com").count() == 1
+    # Rolled back cleanly: no phantom pending row holding an unsent code.
+    assert db.session.query(PendingSignup).filter_by(email="new@example.com").count() == 0
+
+
+def test_register_email_failure_on_reregister_keeps_old_code_valid(client, sent_codes, monkeypatch):
+    """A failed re-register send must not replace the already-emailed code
+    or start a cooldown for an email that never went out."""
+    import routes.auth as auth_module
+    from utils.email_provider import EmailSendError
+
+    _register(client)
+    old_code = _code_for(sent_codes)
+
+    real_now = auth_module._utcnow()
+    monkeypatch.setattr(auth_module, "_utcnow", lambda: real_now + timedelta(seconds=61))
+
+    class _Boom:
+        def send_verification_code(self, to_email, code):
+            raise EmailSendError("down")
+
+    monkeypatch.setattr("routes.auth.get_email_provider", lambda: _Boom())
+    r = _register(client, username="newname")
+    assert r.status_code == 503
+
+    # The originally emailed code still verifies.
+    assert _verify(client, old_code).status_code == 201
+
+
+def test_register_rejects_non_string_fields_with_400(client, sent_codes):
+    r = client.post(
+        "/api/auth/register",
+        json={"username": 123, "email": ["x"], "password": 99},
+    )
+    assert r.status_code == 400
+    assert isinstance(r.get_json()["error"], str)
+    assert sent_codes == []
+
+
+def test_register_rejects_overlong_fields_with_400(client, sent_codes):
+    """username/email beyond their column sizes must 400, not 500 on
+    Postgres (SQLite silently accepts overlong strings)."""
+    r = _register(client, username="u" * 81, email=("e" * 115) + "@example.com")
+    assert r.status_code == 400
+    assert "at most" in r.get_json()["error"]
+    assert sent_codes == []
+
+
+def test_auth_endpoints_return_json_for_non_json_bodies(client):
+    """A text/plain body must produce a JSON error, not a werkzeug 415
+    HTML page."""
+    for path in ("/api/auth/register", "/api/auth/verify", "/api/auth/resend", "/api/auth/login"):
+        r = client.post(path, data="plain text", content_type="text/plain")
+        assert r.status_code in (200, 400, 401), path
+        assert r.get_json() is not None, path
 
 
 def test_register_collision_adopts_winner_code_and_latest_identity(client, sent_codes, monkeypatch):
