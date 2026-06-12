@@ -9,7 +9,11 @@ interface AuthState {
   status: AuthStatus;
   error: string | null;
   signIn: (body: { email: string; password: string }) => Promise<void>;
+  /** Starts sign-up: sends the verification code. Does NOT authenticate. */
   signUp: (body: { email: string; password: string; username: string; display_name?: string }) => Promise<void>;
+  /** Completes sign-up: exchanges email+code for a token and signs in. */
+  verifyEmail: (body: { email: string; code: string }) => Promise<void>;
+  resendCode: (body: { email: string }) => Promise<void>;
   signOut: () => void;
   restore: () => Promise<void>;
 }
@@ -32,11 +36,30 @@ export const useAuth = create<AuthState>((set) => ({
   async signUp(body) {
     set({ status: "loading", error: null });
     try {
-      const res = await api.register(body);
+      await api.register(body);
+      // No token yet — the verify step completes authentication.
+      set({ status: "idle" });
+    } catch (e) {
+      set({ status: "error", error: (e as Error).message });
+      throw e;
+    }
+  },
+  async verifyEmail(body) {
+    set({ status: "loading", error: null });
+    try {
+      const res = await api.verifyEmail(body);
       api.setToken(res.token);
       set({ user: res.user, status: "authenticated" });
     } catch (e) {
       set({ status: "error", error: (e as Error).message });
+      throw e;
+    }
+  },
+  async resendCode(body) {
+    try {
+      await api.resendCode(body);
+    } catch (e) {
+      set({ error: (e as Error).message });
       throw e;
     }
   },
