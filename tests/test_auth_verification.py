@@ -1,8 +1,6 @@
 """Tests for the email-verification sign-up flow (pending_signup + endpoints)."""
 from datetime import datetime, timedelta
 
-import pytest
-
 from models import db, PendingSignup, User
 
 
@@ -55,10 +53,15 @@ def test_register_creates_pending_not_user(client, sent_codes):
     assert code not in pending.code_hash
 
 
-def test_register_validation_errors_unchanged(client, sent_codes):
+def test_register_validation_errors_join_into_string(client, sent_codes):
     r = client.post("/api/auth/register", json={"username": "ab"})
     assert r.status_code == 400
-    assert isinstance(r.get_json()["error"], list)
+    err = r.get_json()["error"]
+    # One string, like every other error body in the API — not a list.
+    assert isinstance(err, str)
+    assert "Username must be at least 3 characters." in err
+    assert "A valid email is required." in err
+    assert "Password must be at least 6 characters." in err
     assert sent_codes == []
 
 
@@ -128,6 +131,59 @@ def test_register_email_failure_returns_503(client, monkeypatch):
     assert db.session.query(PendingSignup).filter_by(email="new@example.com").count() == 1
 
 
+def test_register_collision_adopts_winner_code_and_latest_identity(client, sent_codes, monkeypatch):
+    """Simultaneous registrations for one email: the loser's commit hits the
+    unique constraint. It must answer 202 and apply the latest identity to
+    the winner's row, keeping the winner's already-emailed code valid."""
+    import routes.auth as auth_module
+    from sqlalchemy.exc import IntegrityError
+
+    real_commit = db.session.commit
+    state = {"raced": False}
+
+    def racing_commit():
+        if state["raced"]:
+            return real_commit()
+        state["raced"] = True
+        # Simulate the concurrent winner: discard the loser's INSERT, commit
+        # the winner's row in its place, then fail like the DB would.
+        db.session.rollback()
+        now = auth_module._utcnow()
+        winner = PendingSignup(
+            email="new@example.com",
+            username="winner",
+            password_hash="w" * 60,
+            code_hash=auth_module.bcrypt.generate_password_hash("111222").decode("utf-8"),
+            code_expires_at=now + auth_module.CODE_TTL,
+            last_sent_at=now,
+            created_at=now,
+        )
+        db.session.add(winner)
+        real_commit()
+        raise IntegrityError(
+            "INSERT INTO pending_signup", {},
+            Exception("UNIQUE constraint failed: pending_signup.email"),
+        )
+
+    monkeypatch.setattr(db.session, "commit", racing_commit)
+
+    r = _register(client)
+    assert r.status_code == 202
+    assert r.get_json() == {"verification_required": True, "email": "new@example.com"}
+
+    rows = db.session.query(PendingSignup).filter_by(email="new@example.com").all()
+    assert len(rows) == 1
+    assert rows[0].username == "newbie"  # latest identity applied
+
+    # The winner's emailed code still verifies, with the latest credentials.
+    assert _verify(client, "111222").status_code == 201
+    login = client.post(
+        "/api/auth/login",
+        json={"email": "new@example.com", "password": "password123"},
+    )
+    assert login.status_code == 200
+
+
 def test_register_purges_stale_pendings(client, sent_codes, monkeypatch):
     import routes.auth as auth_module
 
@@ -191,6 +247,34 @@ def test_verify_wrong_code_decrements_attempts(client, sent_codes):
     assert _verify(client, right).status_code == 201
 
 
+def test_concurrent_wrong_attempts_do_not_lose_decrements(client, sent_codes, monkeypatch):
+    """Two wrong-code requests racing: each must burn one attempt even when
+    the second SELECTed before the first committed (lost-update guard)."""
+    import routes.auth as auth_module
+
+    _register(client)
+    right = _code_for(sent_codes)
+    wrong = "000000" if right != "000000" else "000001"
+
+    real_check = auth_module.bcrypt.check_password_hash
+
+    def racing_check(pw_hash, pw):
+        # A concurrent wrong attempt lands between this request's SELECT and
+        # its decrement: a SQL-side decrement the ORM snapshot doesn't see.
+        db.session.query(PendingSignup).filter_by(email="new@example.com").update(
+            {PendingSignup.attempts_remaining: PendingSignup.attempts_remaining - 1},
+            synchronize_session=False,
+        )
+        return real_check(pw_hash, pw)
+
+    monkeypatch.setattr(auth_module.bcrypt, "check_password_hash", racing_check)
+
+    r = _verify(client, wrong)
+    assert r.status_code == 400
+    pending = db.session.query(PendingSignup).one()
+    assert pending.attempts_remaining == 3  # 5 - concurrent(1) - this request(1)
+
+
 def test_verify_attempts_exhaustion_blocks_even_correct_code(client, sent_codes):
     _register(client)
     right = _code_for(sent_codes)
@@ -222,6 +306,25 @@ def test_verify_unknown_email_uniform(client):
     r = _verify(client, "123456", email="nobody@example.com")
     assert r.status_code == 400
     assert r.get_json() == UNIFORM
+
+
+def test_verify_unknown_email_burns_dummy_bcrypt_check(client, monkeypatch):
+    """Anti-timing-oracle: the unknown-email path must cost one bcrypt check
+    like the wrong-code path, so response timing doesn't reveal whether a
+    pending signup exists for the email."""
+    import routes.auth as auth_module
+
+    calls = []
+    real = auth_module.bcrypt.check_password_hash
+    monkeypatch.setattr(
+        auth_module.bcrypt,
+        "check_password_hash",
+        lambda pw_hash, pw: (calls.append(pw_hash), real(pw_hash, pw))[1],
+    )
+    r = _verify(client, "123456", email="nobody@example.com")
+    assert r.status_code == 400
+    assert r.get_json() == UNIFORM
+    assert len(calls) == 1
 
 
 def test_verify_username_race_returns_409(client, sent_codes, app):
@@ -301,6 +404,44 @@ def test_resend_unknown_email_uniform_200(client, sent_codes):
     assert r.status_code == 200
     assert r.get_json() == {"ok": True}
     assert sent_codes == []
+
+
+def test_resend_unknown_email_burns_dummy_hash(client, monkeypatch):
+    """Anti-timing-oracle: the no-pending path must do the same bcrypt work
+    as a real resend (the outbound email's latency stays unavoidable)."""
+    import routes.auth as auth_module
+
+    calls = []
+    real = auth_module.bcrypt.generate_password_hash
+    monkeypatch.setattr(
+        auth_module.bcrypt,
+        "generate_password_hash",
+        lambda pw: (calls.append(pw), real(pw))[1],
+    )
+    r = _resend(client, email="nobody@example.com")
+    assert r.status_code == 200
+    assert r.get_json() == {"ok": True}
+    assert len(calls) == 1
+
+
+def test_resend_cooldown_noop_burns_dummy_hash(client, sent_codes, monkeypatch):
+    """The silent cooldown no-op must cost the same bcrypt work as the
+    no-pending path, so the two stay indistinguishable by timing."""
+    import routes.auth as auth_module
+
+    _register(client)
+
+    calls = []
+    real = auth_module.bcrypt.generate_password_hash
+    monkeypatch.setattr(
+        auth_module.bcrypt,
+        "generate_password_hash",
+        lambda pw: (calls.append(pw), real(pw))[1],
+    )
+    r = _resend(client)  # within the 60s cooldown → silent no-op
+    assert r.status_code == 200
+    assert len(calls) == 1
+    assert len(sent_codes) == 1  # still no new email
 
 
 def test_resend_send_failure_keeps_old_code_valid(client, sent_codes, monkeypatch):

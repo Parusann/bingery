@@ -55,6 +55,20 @@ describe("auth store", () => {
     expect(api.getToken()).toBeNull();
   });
 
+  it("resendCode clears a stale error on success", async () => {
+    const spy = vi
+      .spyOn(api, "resendCode")
+      .mockRejectedValueOnce(new Error("Too many requests"));
+    await expect(
+      useAuth.getState().resendCode({ email: "a@b.c" })
+    ).rejects.toThrow("Too many requests");
+    expect(useAuth.getState().error).toBe("Too many requests");
+
+    spy.mockResolvedValueOnce({ ok: true });
+    await useAuth.getState().resendCode({ email: "a@b.c" });
+    expect(useAuth.getState().error).toBeNull();
+  });
+
   it("restore() fetches /me when token present", async () => {
     api.setToken("xyz");
     vi.spyOn(api, "me").mockResolvedValue({

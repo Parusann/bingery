@@ -58,6 +58,7 @@ export const useAuth = create<AuthState>((set) => ({
   async resendCode(body) {
     try {
       await api.resendCode(body);
+      set({ error: null });
     } catch (e) {
       set({ error: (e as Error).message });
       throw e;
