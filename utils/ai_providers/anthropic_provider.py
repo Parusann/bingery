@@ -6,7 +6,21 @@ from typing import Any, Iterator
 
 import anthropic
 
-from utils.ai_provider import AIResponse, Message, ToolCall, ToolSchema
+from utils.ai_provider import (
+    AIResponse,
+    Message,
+    ProviderUnavailableError,
+    ToolCall,
+    ToolSchema,
+)
+
+# Transient failures mapped to ProviderUnavailableError so the chatbot
+# route can return its friendly 503 instead of a generic 500.
+_UNAVAILABLE_EXC = (
+    anthropic.APIConnectionError,  # includes APITimeoutError
+    anthropic.RateLimitError,
+    anthropic.InternalServerError,
+)
 
 
 class AnthropicProvider:
@@ -35,7 +49,12 @@ class AnthropicProvider:
         if tools:
             kwargs["tools"] = [self._to_anthropic_tool(t) for t in tools]
 
-        resp = client.messages.create(**kwargs)
+        try:
+            resp = client.messages.create(**kwargs)
+        except _UNAVAILABLE_EXC as exc:
+            raise ProviderUnavailableError(
+                f"Anthropic API unavailable: {type(exc).__name__}"
+            ) from exc
         return self._parse_response(resp)
 
     def stream(self, messages, tools=None, system=None, max_tokens=2048) -> Iterator[str]:
@@ -50,9 +69,14 @@ class AnthropicProvider:
         if tools:
             kwargs["tools"] = [self._to_anthropic_tool(t) for t in tools]
 
-        with client.messages.stream(**kwargs) as stream:
-            for chunk in stream.text_stream:
-                yield chunk
+        try:
+            with client.messages.stream(**kwargs) as stream:
+                for chunk in stream.text_stream:
+                    yield chunk
+        except _UNAVAILABLE_EXC as exc:
+            raise ProviderUnavailableError(
+                f"Anthropic API unavailable: {type(exc).__name__}"
+            ) from exc
 
     @staticmethod
     def _to_anthropic_messages(messages: list[Message]) -> list[dict]:
@@ -67,6 +91,19 @@ class AnthropicProvider:
                         "content": m.content,
                     }],
                 })
+            elif m.role == "assistant" and m.tool_calls:
+                # tool_result blocks are only accepted when the preceding
+                # assistant turn carries matching tool_use blocks.
+                blocks: list[dict] = []
+                if m.content:
+                    blocks.append({"type": "text", "text": m.content})
+                blocks.extend({
+                    "type": "tool_use",
+                    "id": c.id,
+                    "name": c.name,
+                    "input": c.arguments,
+                } for c in m.tool_calls)
+                out.append({"role": "assistant", "content": blocks})
             else:
                 out.append({"role": m.role, "content": m.content})
         return out
