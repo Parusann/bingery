@@ -75,6 +75,65 @@ def test_brevo_non_2xx_raises(monkeypatch):
 
 
 @responses.activate
+def test_brevo_non_2xx_logs_response_body(monkeypatch, caplog):
+    """Brevo puts the actionable error detail in the response body — it must
+    land in the server log, not be discarded."""
+    monkeypatch.setenv("BREVO_API_KEY", "test-key")
+    monkeypatch.setenv("EMAIL_FROM", "codes@example.com")
+    responses.add(
+        responses.POST,
+        "https://api.brevo.com/v3/smtp/email",
+        json={"code": "unauthorized", "message": "Key not found"},
+        status=401,
+    )
+    with caplog.at_level(logging.ERROR):
+        with pytest.raises(EmailSendError):
+            BrevoEmailProvider().send_verification_code("someone@example.com", "654321")
+    assert "401" in caplog.text
+    assert "Key not found" in caplog.text
+
+
+@responses.activate
+def test_brevo_copy_derives_ttl_from_shared_constant(monkeypatch):
+    """The expiry wording must come from CODE_TTL_MINUTES, not a literal."""
+    import utils.email_provider as ep
+
+    monkeypatch.setenv("BREVO_API_KEY", "test-key")
+    monkeypatch.setenv("EMAIL_FROM", "codes@example.com")
+    assert getattr(ep, "CODE_TTL_MINUTES", None) is not None
+    monkeypatch.setattr(ep, "CODE_TTL_MINUTES", 7)
+    responses.add(
+        responses.POST,
+        "https://api.brevo.com/v3/smtp/email",
+        json={"messageId": "x"},
+        status=201,
+    )
+    ep.BrevoEmailProvider().send_verification_code("someone@example.com", "654321")
+    req = responses.calls[0].request
+    body = req.body.decode() if isinstance(req.body, bytes) else req.body
+    assert "expires in 7 minutes" in body
+    assert "10 minutes" not in body
+
+
+def test_route_ttl_matches_email_copy_constant():
+    from datetime import timedelta
+
+    from routes.auth import CODE_TTL
+    from utils.email_provider import CODE_TTL_MINUTES
+
+    assert CODE_TTL == timedelta(minutes=CODE_TTL_MINUTES)
+
+
+def test_providers_satisfy_email_provider_protocol():
+    """Both providers must satisfy the EmailProvider Protocol, mirroring the
+    AIProvider pattern in utils/ai_provider.py."""
+    from utils.email_provider import EmailProvider
+
+    assert isinstance(ConsoleEmailProvider(), EmailProvider)
+    assert isinstance(BrevoEmailProvider(), EmailProvider)
+
+
+@responses.activate
 def test_brevo_network_error_raises(monkeypatch):
     monkeypatch.setenv("BREVO_API_KEY", "test-key")
     monkeypatch.setenv("EMAIL_FROM", "codes@example.com")

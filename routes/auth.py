@@ -10,15 +10,19 @@ from flask_jwt_extended import (
     get_jwt_identity,
 )
 from models import db, PendingSignup, User
-from utils.email_provider import EmailSendError, get_email_provider
+from utils.email_provider import CODE_TTL_MINUTES, EmailSendError, get_email_provider
 
 auth_bp = Blueprint("auth", __name__, url_prefix="/api/auth")
 bcrypt = Bcrypt()
 
-CODE_TTL = timedelta(minutes=10)
+CODE_TTL = timedelta(minutes=CODE_TTL_MINUTES)
 RESEND_COOLDOWN = timedelta(seconds=60)
 MAX_RESENDS = 5
 PENDING_MAX_AGE = timedelta(hours=24)
+
+# Burned on the no-pending paths of verify()/resend() so their timing
+# matches the real-work paths (anti-enumeration).
+_DUMMY_CODE_HASH = bcrypt.generate_password_hash("000000").decode("utf-8")
 
 
 def _utcnow() -> datetime:
@@ -45,7 +49,7 @@ def register():
     if not data.get("password") or len(data["password"]) < 6:
         errors.append("Password must be at least 6 characters.")
     if errors:
-        return jsonify({"error": errors}), 400
+        return jsonify({"error": " ".join(errors)}), 400
 
     username = data["username"].strip()
     email = data["email"].strip().lower()
@@ -84,13 +88,14 @@ def register():
         return jsonify({"verification_required": True, "email": email}), 202
 
     code = _generate_code()
+    password_hash = bcrypt.generate_password_hash(data["password"]).decode("utf-8")
     if pending is None:
         pending = PendingSignup(email=email, created_at=now)
         db.session.add(pending)
     else:
         pending.created_at = now
     pending.username = username
-    pending.password_hash = bcrypt.generate_password_hash(data["password"]).decode("utf-8")
+    pending.password_hash = password_hash
     pending.display_name = display_name
     pending.code_hash = bcrypt.generate_password_hash(code).decode("utf-8")
     pending.code_expires_at = now + CODE_TTL
@@ -111,13 +116,18 @@ def register():
         db.session.commit()
     except IntegrityError:
         # Two simultaneous registrations for the same email: the loser's
-        # insert collides on the unique email. The winner's code was sent;
-        # the user can simply retry (which overwrites the pending row).
+        # INSERT collides on the unique email. The winner's code was already
+        # emailed to this same address, so keep it valid and apply the latest
+        # identity fields — the same semantics as the cooldown branch above.
         db.session.rollback()
-        return (
-            jsonify({"error": "Couldn't send the verification email. Please try again."}),
-            503,
-        )
+        winner = db.session.query(PendingSignup).filter_by(email=email).first()
+        if winner is None:
+            return jsonify({"error": "Something went wrong. Please try again."}), 503
+        winner.username = username
+        winner.password_hash = password_hash
+        winner.display_name = display_name
+        winner.created_at = now
+        db.session.commit()
     return jsonify({"verification_required": True, "email": email}), 202
 
 
@@ -135,6 +145,9 @@ def verify():
 
     pending = db.session.query(PendingSignup).filter_by(email=email).first()
     if not pending or not code:
+        # Anti-timing-oracle: cost one bcrypt check like the wrong-code
+        # path below, so timing doesn't reveal whether a pending exists.
+        bcrypt.check_password_hash(_DUMMY_CODE_HASH, code or "000000")
         return uniform
 
     now = _utcnow()
@@ -142,7 +155,15 @@ def verify():
         return uniform
 
     if not bcrypt.check_password_hash(pending.code_hash, code):
-        pending.attempts_remaining -= 1
+        # Atomic decrement: the WHERE predicate stops concurrent wrong
+        # attempts from stretching the budget via lost updates.
+        db.session.query(PendingSignup).filter(
+            PendingSignup.id == pending.id,
+            PendingSignup.attempts_remaining > 0,
+        ).update(
+            {PendingSignup.attempts_remaining: PendingSignup.attempts_remaining - 1},
+            synchronize_session=False,
+        )
         db.session.commit()
         return uniform
 
@@ -190,11 +211,15 @@ def resend():
     ok = jsonify({"ok": True}), 200
 
     pending = db.session.query(PendingSignup).filter_by(email=email).first()
-    if not pending:
-        return ok
-
     now = _utcnow()
-    if now - pending.last_sent_at < RESEND_COOLDOWN or pending.resend_count >= MAX_RESENDS:
+    if (
+        not pending
+        or now - pending.last_sent_at < RESEND_COOLDOWN
+        or pending.resend_count >= MAX_RESENDS
+    ):
+        # Anti-timing-oracle: every silent no-op costs one bcrypt hash like
+        # a real resend; only the outbound email's latency stays distinct.
+        bcrypt.generate_password_hash("000000")
         return ok
 
     code = _generate_code()
