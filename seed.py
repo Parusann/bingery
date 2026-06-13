@@ -1,13 +1,26 @@
 """
 Seed the database with initial genres, anime, and demo user data.
-Run:  python seed.py
+Run:  python seed.py            (local SQLite only)
+      python seed.py --force    (any backend — DESTRUCTIVE)
 """
+
+import os
+import sys
 
 from app import create_app
 from models import db, Genre, Anime, User, Rating, FanGenreVote, anime_genres
 from flask_bcrypt import Bcrypt
 
 bcrypt = Bcrypt()
+
+
+def _drop_allowed(database_uri: str, force: bool) -> bool:
+    """seed() runs db.drop_all(). Only permit that against a local SQLite
+    file (dev), or when explicitly forced — so a deploy hook that runs
+    seed.py can never silently wipe a production Postgres database."""
+    if force:
+        return True
+    return database_uri.startswith("sqlite")
 
 # ═══════════════════════════════════════════════════════════════════════════════
 # GENRES  (official — what you'd get from MAL / AniList APIs)
@@ -269,9 +282,18 @@ DEMO_RATINGS = [
 ]
 
 
-def seed():
+def seed(force=False):
     app = create_app()
     with app.app_context():
+        uri = app.config.get("SQLALCHEMY_DATABASE_URI", "")
+        if not _drop_allowed(uri, force):
+            sys.stderr.write(
+                "Refusing to seed: this DROPS ALL TABLES and the target is "
+                "not a local SQLite database.\n"
+                f"  DB: {uri}\n"
+                "  Re-run with --force (or BINGERY_SEED_FORCE=1) to override.\n"
+            )
+            raise SystemExit(2)
         print("Dropping all tables...")
         db.drop_all()
         print("Creating all tables...")
@@ -357,4 +379,5 @@ def seed():
 
 
 if __name__ == "__main__":
-    seed()
+    force = "--force" in sys.argv or os.environ.get("BINGERY_SEED_FORCE") == "1"
+    seed(force=force)

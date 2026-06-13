@@ -44,6 +44,10 @@ class Config:
             "postgres://", "postgresql://", 1
         )
     SQLALCHEMY_TRACK_MODIFICATIONS = False
+    # pool_pre_ping recycles connections dropped by the Postgres server
+    # (Fly/Render free tiers close idle connections), avoiding stale-handle
+    # 500s on the first request after an idle period.
+    SQLALCHEMY_ENGINE_OPTIONS = {"pool_pre_ping": True}
 
     JWT_SECRET_KEY = os.environ.get("JWT_SECRET_KEY", _DEV_JWT_SECRET)
     JWT_ACCESS_TOKEN_EXPIRES = timedelta(days=7)
@@ -63,6 +67,11 @@ class Config:
     # Production safety guards — refuse to start with dev secrets exposed.
     if _is_production():
         problems: list[str] = []
+        if not os.environ.get("DATABASE_URL"):
+            problems.append(
+                "DATABASE_URL is unset — production would fall back to an "
+                "ephemeral SQLite file that resets on every redeploy"
+            )
         if SECRET_KEY == _DEV_SECRET_KEY:
             problems.append("SECRET_KEY is unset (still the dev default)")
         if JWT_SECRET_KEY == _DEV_JWT_SECRET:
