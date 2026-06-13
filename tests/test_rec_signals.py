@@ -378,3 +378,26 @@ class TestGetSignalProfile:
         fresh = get_signal_profile(u.id)
         assert fresh["schema_version"] >= 1
         assert fresh["top_genres"] == []
+
+
+def test_score_candidates_hard_blocks_hentai_even_with_include_nsfw(app):
+    """include_nsfw=True reveals soft-blocked (Ecchi) but the hard block
+    (Hentai) must still apply — it must never be recommended."""
+    from models import db, User, Anime, Genre
+    from routes.rec_signals import build_signal_profile, score_candidates
+
+    with app.app_context():
+        u = User(email="nsfwsc@x.com", username="nsfwsc", password_hash="x")
+        db.session.add(u)
+        safe = Anime(title="Safe Pick", anilist_id=31001, api_score=8.0)
+        hentai = Anime(title="Hard Blocked", anilist_id=31002, api_score=9.0)
+        g = Genre(name="Hentai", category="standard")
+        hentai.official_genres.append(g)
+        db.session.add_all([safe, hentai])
+        db.session.commit()
+        hentai_id = hentai.id
+
+        profile = build_signal_profile(u.id)
+        results = score_candidates(u.id, profile, limit=50, include_nsfw=True)
+        ids = {c["id"] for c in results}
+        assert hentai_id not in ids

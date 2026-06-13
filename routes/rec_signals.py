@@ -18,7 +18,12 @@ from collections import Counter
 from sqlalchemy import func
 
 from models import db, User, Anime, Rating, FanGenreVote, WatchlistEntry, Genre, anime_genres
-from utils.nsfw import maybe_exclude_nsfw, HARD_BLOCKED_GENRES
+from utils.nsfw import (
+    maybe_exclude_nsfw,
+    exclude_hard_blocked,
+    exclude_soft_blocked,
+    HARD_BLOCKED_GENRES,
+)
 
 SIGNAL_PROFILE_SCHEMA_VERSION = 1
 
@@ -367,11 +372,13 @@ def score_candidates(user_id, signal_profile, limit=40, include_nsfw=False):
 
     # Pull the candidate universe
     query = db.session.query(Anime).filter(~Anime.id.in_(excluded)) if excluded else db.session.query(Anime)
+    # Hentai (hard-blocked) is excluded regardless of include_nsfw; only the
+    # soft tier (Ecchi) is revealed when include_nsfw=True. maybe_exclude_nsfw
+    # skips the hard block entirely when include_nsfw is True, so apply the
+    # hard block explicitly here.
+    query = exclude_hard_blocked(query)
     if not include_nsfw:
-        query = maybe_exclude_nsfw(query)
-    # We still exclude hard-blocked genres regardless of include_nsfw flag
-    # (Hentai). maybe_exclude_nsfw handles that when include_nsfw=False; do
-    # nothing extra here.
+        query = exclude_soft_blocked(query)
 
     candidates_raw = query.all()
 
