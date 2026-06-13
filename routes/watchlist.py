@@ -1,7 +1,8 @@
 from flask import Blueprint, request, jsonify
 from flask_jwt_extended import jwt_required, get_jwt_identity
 from sqlalchemy.exc import IntegrityError
-from models import db, Anime, Rating, WatchlistEntry, WATCH_STATUSES
+from sqlalchemy.orm import selectinload
+from models import db, Anime, Rating, FanGenreVote, WatchlistEntry, WATCH_STATUSES
 
 
 def _parse_episodes(value):
@@ -43,10 +44,44 @@ def get_watchlist():
     else:
         query = query.order_by(WatchlistEntry.updated_at.desc())
 
+    # Eager-load the anime + its genres so building each entry doesn't fire
+    # a query per row for them.
+    query = query.options(
+        selectinload(WatchlistEntry.anime).selectinload(Anime.official_genres)
+    )
+
     paginated = query.paginate(page=page, per_page=per_page, error_out=False)
+    items = paginated.items
+
+    # Batch the per-entry rating + fan-genre lookups that to_dict(include_anime)
+    # would otherwise issue one-by-one (the N+1). Page anime_ids are bounded by
+    # per_page (<=100), safe for SQLite's IN(...) variable limit.
+    anime_ids = [e.anime_id for e in items]
+    score_by_anime = {}
+    votes_by_anime = {}
+    if anime_ids:
+        score_by_anime = dict(
+            db.session.query(Rating.anime_id, Rating.score).filter(
+                Rating.user_id == user_id, Rating.anime_id.in_(anime_ids)
+            )
+        )
+        for aid, tag in db.session.query(
+            FanGenreVote.anime_id, FanGenreVote.genre_tag
+        ).filter(
+            FanGenreVote.user_id == user_id, FanGenreVote.anime_id.in_(anime_ids)
+        ):
+            votes_by_anime.setdefault(aid, []).append(tag)
+
+    entries = []
+    for e in items:
+        d = e.to_dict(include_anime=False)
+        d["anime"] = e.anime.to_dict(include_community=False)
+        d["score"] = score_by_anime.get(e.anime_id)
+        d["genres"] = votes_by_anime.get(e.anime_id, [])
+        entries.append(d)
 
     return jsonify({
-        "entries": [e.to_dict(include_anime=True) for e in paginated.items],
+        "entries": entries,
         "total": paginated.total,
         "page": paginated.page,
         "pages": paginated.pages,

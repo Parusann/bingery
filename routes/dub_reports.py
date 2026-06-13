@@ -164,15 +164,28 @@ def update_dub_report(report_id: int):
             400,
         )
 
+    submitter = db.session.get(User, report.submitted_by)
+    username = submitter.username if submitter else f"id{report.submitted_by}"
+
     if target_status == "accepted":
         episode = db.session.get(Episode, report.episode_id)
         if episode is None:
             # Cascade rules normally prevent this, but guard for safety.
             return jsonify({"error": "linked episode no longer exists"}), 409
-        submitter = db.session.get(User, report.submitted_by)
-        username = submitter.username if submitter else f"id{report.submitted_by}"
         episode.air_date_dub = report.air_date
         episode.dub_source = f"user:{username}"
+    elif target_status == "rejected" and report.status == "accepted":
+        # Reverting a previously-accepted report: undo the override it wrote,
+        # but only if the episode still attributes the dub date to THIS report
+        # (a later sync feed or another report may have taken ownership since).
+        episode = db.session.get(Episode, report.episode_id)
+        if (
+            episode is not None
+            and episode.dub_source == f"user:{username}"
+            and episode.air_date_dub == report.air_date
+        ):
+            episode.air_date_dub = None
+            episode.dub_source = None
 
     report.status = target_status
     report.reviewed_at = datetime.now(timezone.utc)

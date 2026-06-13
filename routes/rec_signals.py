@@ -16,9 +16,15 @@ from datetime import datetime, timezone
 from collections import Counter
 
 from sqlalchemy import func
+from sqlalchemy.orm import selectinload
 
 from models import db, User, Anime, Rating, FanGenreVote, WatchlistEntry, Genre, anime_genres
-from utils.nsfw import maybe_exclude_nsfw, HARD_BLOCKED_GENRES
+from utils.nsfw import (
+    maybe_exclude_nsfw,
+    exclude_hard_blocked,
+    exclude_soft_blocked,
+    HARD_BLOCKED_GENRES,
+)
 
 SIGNAL_PROFILE_SCHEMA_VERSION = 1
 
@@ -367,13 +373,17 @@ def score_candidates(user_id, signal_profile, limit=40, include_nsfw=False):
 
     # Pull the candidate universe
     query = db.session.query(Anime).filter(~Anime.id.in_(excluded)) if excluded else db.session.query(Anime)
+    # Hentai (hard-blocked) is excluded regardless of include_nsfw; only the
+    # soft tier (Ecchi) is revealed when include_nsfw=True. maybe_exclude_nsfw
+    # skips the hard block entirely when include_nsfw is True, so apply the
+    # hard block explicitly here.
+    query = exclude_hard_blocked(query)
     if not include_nsfw:
-        query = maybe_exclude_nsfw(query)
-    # We still exclude hard-blocked genres regardless of include_nsfw flag
-    # (Hentai). maybe_exclude_nsfw handles that when include_nsfw=False; do
-    # nothing extra here.
+        query = exclude_soft_blocked(query)
 
-    candidates_raw = query.all()
+    # Eager-load official_genres so the per-candidate `a.official_genres`
+    # access below doesn't fire a query each (N+1 over the whole catalog).
+    candidates_raw = query.options(selectinload(Anime.official_genres)).all()
 
     # Top-100 popular IDs for surprise_bonus
     top_100_ids = {
@@ -385,6 +395,28 @@ def score_candidates(user_id, signal_profile, limit=40, include_nsfw=False):
         .all()
     }
 
+    # Batch the fan-genre tags for every candidate in one grouped query
+    # instead of calling a.get_fan_genres() per anime (was 2 queries each).
+    # FanGenreVote is small (per-app, not per-user), so a single full
+    # aggregate is cheaper than N round-trips and dodges SQLite's
+    # variable-count limit on a big IN (...) of candidate ids.
+    fan_tags_by_anime: dict[int, list[str]] = {}
+    fg_rows = (
+        db.session.query(
+            FanGenreVote.anime_id,
+            FanGenreVote.genre_tag,
+            func.count(FanGenreVote.id).label("votes"),
+        )
+        .group_by(FanGenreVote.anime_id, FanGenreVote.genre_tag)
+        .all()
+    )
+    _fg_accum: dict[int, list] = {}
+    for aid, tag, votes in fg_rows:
+        _fg_accum.setdefault(aid, []).append((tag, votes))
+    for aid, pairs in _fg_accum.items():
+        pairs.sort(key=lambda p: p[1], reverse=True)  # match get_fan_genres order
+        fan_tags_by_anime[aid] = [t for t, _ in pairs[:5]]
+
     scored = []
     for a in candidates_raw:
         cand = {
@@ -392,7 +424,7 @@ def score_candidates(user_id, signal_profile, limit=40, include_nsfw=False):
             "title": a.title,
             "studio": a.studio,
             "genres": [g.name for g in a.official_genres],
-            "fan_genres": [fg["genre"] for fg in (a.get_fan_genres() or [])[:5]],
+            "fan_genres": fan_tags_by_anime.get(a.id, []),
             "api_score": a.api_score,
             "year": a.year,
             "episodes": a.episodes,

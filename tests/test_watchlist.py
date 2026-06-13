@@ -123,3 +123,49 @@ def test_bulk_add_happy_path_skips_unknown_ids(client, app, auth_headers):
     )
     assert r.status_code == 200
     assert r.get_json()["added"] == 2
+
+
+def test_list_watchlist_does_not_n_plus_one(client, app, auth_headers):
+    """Listing a page of entries must batch the per-entry anime / rating /
+    fan-vote lookups instead of issuing ~4 queries per entry."""
+    from models import db, Anime, Rating, FanGenreVote, WatchlistEntry, Genre
+
+    headers, user = auth_headers
+    with app.app_context():
+        g = Genre(name="Action", category="standard")
+        db.session.add(g)
+        for i in range(8):
+            a = Anime(title=f"W{i}", anilist_id=41000 + i, api_score=8.0)
+            a.official_genres.append(g)
+            db.session.add(a)
+            db.session.flush()
+            db.session.add(WatchlistEntry(user_id=user.id, anime_id=a.id, status="watching"))
+            db.session.add(Rating(user_id=user.id, anime_id=a.id, score=8))
+            db.session.add(FanGenreVote(user_id=user.id, anime_id=a.id, genre_tag="Action"))
+        db.session.commit()
+
+    with app.app_context():
+        n = {"c": 0}
+        from sqlalchemy import event
+        engine = db.engine
+
+        def _before(conn, cursor, statement, params, context, executemany):
+            if statement.lstrip().upper().startswith("SELECT"):
+                n["c"] += 1
+
+        event.listen(engine, "before_cursor_execute", _before)
+        try:
+            resp = client.get("/api/watchlist", headers=headers)
+        finally:
+            event.remove(engine, "before_cursor_execute", _before)
+
+    assert resp.status_code == 200
+    body = resp.get_json()
+    assert len(body["entries"]) == 8
+    # Output is preserved: each entry carries anime, score and genres.
+    e0 = body["entries"][0]
+    assert e0["anime"]["title"].startswith("W")
+    assert e0["score"] == 8
+    assert e0["genres"] == ["Action"]
+    # Batched: query count must not scale with the 8 entries (was ~4 per entry).
+    assert n["c"] <= 12, f"expected batched queries, got {n['c']}"
