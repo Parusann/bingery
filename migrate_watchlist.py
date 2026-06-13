@@ -13,13 +13,9 @@ def migrate():
         # Create only new tables (won't drop existing ones)
         db.create_all()
 
-        # Check if we already migrated
-        existing = WatchlistEntry.query.first()
-        if existing:
-            print("  Watchlist table already has data — skipping migration.")
-            return
-
-        # Create watchlist entries from existing ratings
+        # Per-row idempotency below already skips entries that exist, so the
+        # migration is safe to re-run after a partial pass — no early-out
+        # that would strand ratings added since the first run.
         ratings = Rating.query.all()
         count = 0
         for r in ratings:
