@@ -8,6 +8,11 @@ services:
     envVars:
       - key: PYTHON_VERSION
         value: "3.12.3"
+      # Activates the config.py production boot guards (refuses dev secrets,
+      # wildcard CORS, console email). Without this the web service would
+      # silently run with insecure defaults.
+      - key: FLASK_ENV
+        value: production
       - key: AI_PROVIDER
         value: anthropic
       - key: ANTHROPIC_MODEL
@@ -18,8 +23,25 @@ services:
         value: http://localhost:11434
       - key: ANTHROPIC_API_KEY
         sync: false
+      - key: SECRET_KEY
+        generateValue: true
       - key: JWT_SECRET_KEY
         generateValue: true
+      # Same-origin SPA, but the boot guard refuses a wildcard — set this to
+      # the service's public URL.
+      - key: CORS_ORIGINS
+        value: https://bingery.onrender.com
+      # Email verification: production refuses to boot on the console provider.
+      - key: EMAIL_PROVIDER
+        value: brevo
+      - key: BREVO_API_KEY
+        sync: false
+      - key: EMAIL_FROM
+        sync: false
+      # Required by the admin sync endpoint (POST /api/anilist/sync,
+      # /api/admin/sync-dub-sources).
+      - key: ADMIN_SYNC_SECRET
+        sync: false
       - key: DATABASE_URL
         fromDatabase:
           name: bingery-db
