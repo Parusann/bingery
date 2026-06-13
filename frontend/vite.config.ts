@@ -15,6 +15,8 @@ export default defineConfig({
   },
   build: {
     outDir: "dist",
-    sourcemap: true,
+    // No public source maps in the shipped bundle — they expose the full
+    // unminified source. Flip on locally when debugging a prod build.
+    sourcemap: false,
   },
 });

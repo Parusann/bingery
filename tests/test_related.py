@@ -36,6 +36,100 @@ def test_request_appends_fragment_but_execute_does_not(monkeypatch):
     assert "fragment AnimeFields" not in sent["query"]
 
 
+def test_normalize_relation_node_carries_is_adult():
+    out = AniListClient._normalize_relation_node(
+        {"id": 1, "title": {"romaji": "X"}, "isAdult": True}
+    )
+    assert out["is_adult"] is True
+    out = AniListClient._normalize_relation_node({"id": 2, "title": {"romaji": "Y"}})
+    assert out["is_adult"] is False
+
+
+def test_429_responses_are_retried_boundedly(monkeypatch):
+    """A persistent 429 must give up after a couple of retries instead of
+    recursing forever inside a web worker."""
+    client = AniListClient()
+    monkeypatch.setattr(client, "_rate_limit", lambda: None)
+    monkeypatch.setattr("utils.anilist.time.sleep", lambda s: None)
+    calls = {"n": 0}
+
+    class _Resp429:
+        status_code = 429
+        headers = {"Retry-After": "0"}
+
+        def raise_for_status(self):
+            pass
+
+        def json(self):
+            return {}
+
+    def fake_post(url, json=None, timeout=None):
+        calls["n"] += 1
+        return _Resp429()
+
+    monkeypatch.setattr(client.session, "post", fake_post)
+
+    with pytest.raises(Exception):
+        client._execute("query { x }")
+    assert calls["n"] <= 4
+
+
+def test_relations_cache_is_bounded(monkeypatch):
+    import utils.anilist as al
+
+    al._RELATIONS_CACHE.clear()
+    monkeypatch.setattr(al, "RELATIONS_CACHE_MAX", 2)
+    client = AniListClient()
+
+    def fake_execute(q, v=None):
+        return {
+            "Media": {
+                "id": v["id"],
+                "type": "ANIME",
+                "title": {"romaji": "X"},
+                "relations": {"edges": []},
+            }
+        }
+
+    monkeypatch.setattr(client, "_execute", fake_execute)
+    for i in (1, 2, 3):
+        client.get_anime_relations(i)
+    assert len(al._RELATIONS_CACHE) <= 2
+    al._RELATIONS_CACHE.clear()
+
+
+def test_related_endpoint_filters_hard_blocked_entries(client, app, monkeypatch):
+    """The franchise strip must apply the hard-block NSFW policy: locally
+    Hentai-tagged entries and AniList isAdult nodes never render."""
+    from models import db, Anime, Genre
+
+    with app.app_context():
+        base = Anime(title="Base Show", anilist_id=500, api_score=8.0)
+        bad = Anime(title="Naughty Spinoff", anilist_id=501, api_score=8.0)
+        g = Genre(name="Hentai", category="standard")
+        bad.official_genres.append(g)
+        db.session.add_all([base, bad])
+        db.session.commit()
+        base_id = base.id
+
+    fake_nodes = {
+        500: {"title": "Base Show", "format": "TV", "year": 2020, "month": 1,
+              "day": 1, "release_date": "2020-01-01", "image_url": None},
+        501: {"title": "Naughty Spinoff", "format": "OVA", "year": 2021, "month": 1,
+              "day": 1, "release_date": "2021-01-01", "image_url": None},
+        502: {"title": "Remote Adult", "format": "OVA", "year": 2022, "month": 1,
+              "day": 1, "release_date": None, "image_url": None, "is_adult": True},
+    }
+    monkeypatch.setattr("utils.anilist.assemble_franchise", lambda aid, fetch: fake_nodes)
+
+    r = client.get(f"/api/anime/{base_id}/related")
+    assert r.status_code == 200
+    titles = [x["title"] for x in r.get_json()["related"]]
+    assert "Base Show" in titles
+    assert "Naughty Spinoff" not in titles  # locally hard-blocked
+    assert "Remote Adult" not in titles     # AniList isAdult flag
+
+
 def test_normalize_relations_shapes_self_and_edges():
     client = AniListClient()
     media = {

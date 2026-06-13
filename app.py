@@ -94,7 +94,10 @@ def create_app(config_class=Config):
     @app.route("/", defaults={"path": ""})
     @app.route("/<path:path>")
     def spa(path: str):
-        # API routes are handled above; anything else serves the SPA index.
+        # Unknown /api/* requests must not fall through to the SPA shell —
+        # return a JSON 404 so API clients never receive a 200 index.html.
+        if path.startswith("api/"):
+            return jsonify({"error": "Not found."}), 404
         full = os.path.join(app.static_folder, path)
         if path and os.path.exists(full) and os.path.isfile(full):
             return send_from_directory(app.static_folder, path)
@@ -106,6 +109,12 @@ def create_app(config_class=Config):
         if flask_request.path.startswith("/api/"):
             return jsonify({"error": "Not found."}), 404
         return send_from_directory(app.static_folder, "index.html")
+
+    @app.errorhandler(405)
+    def method_not_allowed(e):
+        if flask_request.path.startswith("/api/"):
+            return jsonify({"error": "Method not allowed."}), 405
+        return e
 
     @app.errorhandler(500)
     def server_error(e):
@@ -123,8 +132,9 @@ app = create_app()
 
 if __name__ == "__main__":
     port = int(os.environ.get("FLASK_PORT", "5000"))
+    debug = os.environ.get("FLASK_DEBUG", "").strip().lower() in ("1", "true", "yes")
     print(f"\n  Bingery running at http://localhost:{port}")
     print(f"  Frontend:  http://localhost:{port}/")
     print(f"  API:       http://localhost:{port}/api/health")
     print()
-    app.run(debug=True, port=port)
+    app.run(debug=debug, port=port)

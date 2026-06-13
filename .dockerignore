@@ -21,8 +21,12 @@ frontend/test-results
 frontend/e2e/demo/.auth
 bingery.db
 bingery.db-journal
+*.db
+*.db.bak
 *.log
 demo-captures
+screenshots
+Bingery*
 docs
 tests
 .env

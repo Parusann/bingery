@@ -26,16 +26,18 @@ def rate_anime(anime_id):
     if not isinstance(score, int) or score < 1 or score > 10:
         return jsonify({"error": "Score must be an integer from 1 to 10."}), 400
 
-    review = (data.get("review") or "")[:2000]
-
-    # Upsert — update if already rated, otherwise create
+    # Upsert — update if already rated, otherwise create. The review is
+    # only touched when the key is present, so a score-only re-rate (the
+    # star widget) can't wipe an existing review.
     rating = db.session.query(Rating).filter_by(user_id=user_id, anime_id=anime_id).first()
     if rating:
         rating.score = score
-        rating.review = review
+        if "review" in data:
+            rating.review = (data["review"] or "")[:2000]
     else:
         rating = Rating(
-            user_id=user_id, anime_id=anime_id, score=score, review=review
+            user_id=user_id, anime_id=anime_id, score=score,
+            review=(data.get("review") or "")[:2000],
         )
         db.session.add(rating)
 
@@ -224,27 +226,35 @@ def submit_full_review(anime_id):
     if not isinstance(score, int) or score < 1 or score > 10:
         return jsonify({"error": "Score must be an integer from 1 to 10."}), 400
 
-    review_text = (data.get("review") or "")[:2000]
+    # Validate genres up front so a bad payload can't half-apply.
+    if "genres" in data:
+        genres = data["genres"]
+        if not isinstance(genres, list) or len(genres) > 15:
+            return jsonify({"error": "'genres' must be a list of at most 15 tags."}), 400
 
     rating = db.session.query(Rating).filter_by(user_id=user_id, anime_id=anime_id).first()
     if rating:
         rating.score = score
-        rating.review = review_text
+        if "review" in data:
+            rating.review = (data["review"] or "")[:2000]
     else:
         rating = Rating(
-            user_id=user_id, anime_id=anime_id, score=score, review=review_text
+            user_id=user_id, anime_id=anime_id, score=score,
+            review=(data.get("review") or "")[:2000],
         )
         db.session.add(rating)
 
-    # ── Fan genres ────────────────────────────────────────────────────────
-    genres = data.get("genres", [])
-    if isinstance(genres, list) and len(genres) <= 15:
-        valid_genres = [g for g in genres if g in ALLOWED_FAN_GENRES]
+    # ── Fan genres — only replaced when the key is present, so omitting
+    #    it can't wipe the user's existing votes ──────────────────────────
+    echoed_votes = None
+    if "genres" in data:
+        valid_genres = [g for g in data["genres"] if g in ALLOWED_FAN_GENRES]
         db.session.query(FanGenreVote).filter_by(user_id=user_id, anime_id=anime_id).delete()
         for genre_tag in valid_genres:
             db.session.add(
                 FanGenreVote(user_id=user_id, anime_id=anime_id, genre_tag=genre_tag)
             )
+        echoed_votes = valid_genres
 
     # ── Auto-watchlist ────────────────────────────────────────────────────
     wl = db.session.query(WatchlistEntry).filter_by(user_id=user_id, anime_id=anime_id).first()
@@ -262,9 +272,16 @@ def submit_full_review(anime_id):
 
     db.session.commit()
 
+    if echoed_votes is None:
+        echoed_votes = [
+            v.genre_tag
+            for v in db.session.query(FanGenreVote).filter_by(
+                user_id=user_id, anime_id=anime_id
+            )
+        ]
     return jsonify({
         "rating": rating.to_dict(),
-        "user_genre_votes": genres,
+        "user_genre_votes": echoed_votes,
         "community_score": anime.get_community_score(),
         "rating_count": anime.get_rating_count(),
         "fan_genres": anime.get_fan_genres(),

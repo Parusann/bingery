@@ -217,16 +217,19 @@ All backend config is environment‑driven (`config.py` + `.env`). Key variables
 | `SECRET_KEY` / `JWT_SECRET_KEY` | Flask session & JWT signing secrets | `change-me` |
 | `CORS_ORIGINS` | Comma‑separated allowed origins for `/api/*` | `*` (dev) |
 | `FLASK_ENV` | Set to `production` on deploy | — |
+| `EMAIL_PROVIDER` | `console` (logs codes) or `brevo` (sends email) | `console` |
+| `BREVO_API_KEY` / `EMAIL_FROM` | Brevo API key + verified sender — required when `EMAIL_PROVIDER=brevo` | — |
+| `ADMIN_SYNC_SECRET` | Shared secret (`X-Admin-Secret`) for the admin sync endpoints | — |
 | `ANIMESCHEDULE_API_KEY` | Bearer token for the AnimeSchedule dub sync | — |
 
-> 🔒 **Production safety guards:** when `FLASK_ENV=production`, the app **refuses to boot** with default `change-me` secrets or a wildcard (`*`) CORS origin — misconfiguration fails fast instead of shipping insecure.
+> 🔒 **Production safety guards:** when `FLASK_ENV=production`, the app **refuses to boot** unless `DATABASE_URL` is set, the `change-me` secrets are replaced, `CORS_ORIGINS` is not a wildcard (`*`), and `EMAIL_PROVIDER=brevo` with `BREVO_API_KEY` + `EMAIL_FROM` set — misconfiguration fails fast instead of shipping insecure.
 
 ---
 
 ## 🧪 Testing
 
 ```bash
-# Backend — 301 tests
+# Backend — 391 tests
 python -m pytest -q
 
 # Frontend — type-check, unit/component, e2e

@@ -17,6 +17,7 @@ export function AuthForm({ onSuccess }: { onSuccess?: () => void }) {
   const [displayName, setDisplayName] = useState("");
   const [code, setCode] = useState("");
   const [resendIn, setResendIn] = useState(RESEND_SECONDS);
+  const [resending, setResending] = useState(false);
   const [resent, setResent] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
@@ -65,13 +66,17 @@ export function AuthForm({ onSuccess }: { onSuccess?: () => void }) {
   };
 
   const resend = async () => {
+    if (resending) return;
     setError(null);
+    setResending(true);
     try {
       await resendCode({ email: email.trim().toLowerCase() });
       setResendIn(RESEND_SECONDS);
       setResent(true);
     } catch (e) {
       setError((e as Error).message);
+    } finally {
+      setResending(false);
     }
   };
 
@@ -112,10 +117,14 @@ export function AuthForm({ onSuccess }: { onSuccess?: () => void }) {
           <button
             type="button"
             onClick={resend}
-            disabled={resendIn > 0}
+            disabled={resending || resendIn > 0}
             className="text-text-muted hover:text-text disabled:opacity-50 disabled:hover:text-text-muted"
           >
-            {resendIn > 0 ? `Resend in ${resendIn}s` : "Resend code"}
+            {resendIn > 0
+              ? `Resend in ${resendIn}s`
+              : resending
+                ? "Sending…"
+                : "Resend code"}
           </button>
           <button
             type="button"

@@ -20,8 +20,10 @@ describe("DayStrip", () => {
         onNextWeek={noop}
       />,
     );
+    // The strip renders a mobile and a desktop variant, so each weekday
+    // label appears at least once (typically twice).
     ["SUN", "MON", "TUE", "WED", "THU", "FRI", "SAT"].forEach((d) =>
-      expect(screen.getByText(d)).toBeInTheDocument(),
+      expect(screen.getAllByText(d).length).toBeGreaterThan(0),
     );
     dates.forEach((d) => {
       const dayNum = Number(d.split("-")[2]);
@@ -58,7 +60,7 @@ describe("DayStrip", () => {
         onNextWeek={() => {}}
       />,
     );
-    fireEvent.click(screen.getByText("27"));
+    fireEvent.click(screen.getAllByText("27")[0]);
     expect(onChipClick).toHaveBeenCalledWith("2026-05-27");
   });
 
@@ -75,8 +77,8 @@ describe("DayStrip", () => {
         onNextWeek={onNextWeek}
       />,
     );
-    fireEvent.click(screen.getByLabelText(/previous week/i));
-    fireEvent.click(screen.getByLabelText(/next week/i));
+    fireEvent.click(screen.getAllByLabelText(/previous week/i)[0]);
+    fireEvent.click(screen.getAllByLabelText(/next week/i)[0]);
     expect(onPrevWeek).toHaveBeenCalled();
     expect(onNextWeek).toHaveBeenCalled();
   });

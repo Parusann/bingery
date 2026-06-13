@@ -224,6 +224,15 @@ class OllamaProvider:
                     "name": m.tool_name or "",
                     "content": m.content,
                 })
+            elif m.role == "assistant" and m.tool_calls:
+                out.append({
+                    "role": "assistant",
+                    "content": m.content,
+                    "tool_calls": [
+                        {"function": {"name": c.name, "arguments": c.arguments}}
+                        for c in m.tool_calls
+                    ],
+                })
             else:
                 out.append({"role": m.role, "content": m.content})
         return out

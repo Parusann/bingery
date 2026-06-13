@@ -1,5 +1,6 @@
 from flask import Blueprint, request, jsonify
 from models import db, Anime, Genre, anime_genres
+from utils.nsfw import maybe_exclude_nsfw
 
 search_bp = Blueprint("search", __name__, url_prefix="/api/search")
 
@@ -15,10 +16,10 @@ def autocomplete():
     if len(q) < 2:
         return jsonify({"results": []}), 200
 
-    limit = min(request.args.get("limit", 8, type=int), 20)
+    limit = max(1, min(request.args.get("limit", 8, type=int) or 8, 20))
 
     results = (
-        Anime.query
+        maybe_exclude_nsfw(Anime.query)
         .filter(db.or_(
             Anime.title.ilike(f"%{q}%"),
             Anime.title_english.ilike(f"%{q}%"),
@@ -63,10 +64,10 @@ def full_search():
     min_score = request.args.get("min_score", type=float)
     status = request.args.get("status", "").strip()
     sort = request.args.get("sort", "score")
-    page = request.args.get("page", 1, type=int)
-    per_page = min(request.args.get("per_page", 24, type=int), 100)
+    page = max(1, request.args.get("page", 1, type=int) or 1)
+    per_page = max(1, min(request.args.get("per_page", 24, type=int) or 24, 100))
 
-    query = Anime.query
+    query = maybe_exclude_nsfw(Anime.query)
 
     if q:
         query = query.filter(db.or_(

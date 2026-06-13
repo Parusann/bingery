@@ -15,6 +15,10 @@ class Message:
     content: str
     tool_call_id: str | None = None
     tool_name: str | None = None
+    # Set on assistant turns that requested tool calls, so providers can
+    # round-trip them in their native format (Anthropic requires tool_use
+    # blocks for a later tool_result to be accepted).
+    tool_calls: list[ToolCall] | None = None
 
 
 @dataclass
