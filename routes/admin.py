@@ -14,6 +14,7 @@ Auth: header `X-Admin-Secret` must match the `ADMIN_SYNC_SECRET` env var.
 
 from __future__ import annotations
 
+import hmac
 import os
 from datetime import timedelta
 
@@ -26,7 +27,8 @@ def _check_secret() -> None:
     expected = os.environ.get("ADMIN_SYNC_SECRET")
     if not expected:
         abort(503, description="ADMIN_SYNC_SECRET not configured on the server")
-    if request.headers.get("X-Admin-Secret") != expected:
+    provided = request.headers.get("X-Admin-Secret") or ""
+    if not hmac.compare_digest(provided, expected):
         abort(401)
 
 

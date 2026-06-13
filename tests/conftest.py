@@ -6,7 +6,12 @@ import pytest
 os.environ.setdefault("AI_PROVIDER", "anthropic")
 os.environ.setdefault("ANTHROPIC_API_KEY", "test-key")
 os.environ.setdefault("JWT_SECRET_KEY", "test-jwt-secret")
-os.environ.setdefault("DATABASE_URL", "sqlite:///:memory:")
+# Force the test database UNCONDITIONALLY. setdefault would leave a real
+# DATABASE_URL from the developer's shell in place, and the per-test
+# config override below is a no-op (the engine is already bound at
+# create_app() time) — so without this, db.drop_all() in the teardown
+# could wipe a real database.
+os.environ["DATABASE_URL"] = "sqlite:///:memory:"
 
 
 @pytest.fixture
@@ -22,6 +27,12 @@ def app():
     )
 
     with flask_app.app_context():
+        # Hard safety net: never create/drop tables against a non-memory DB
+        # (the bound engine, not just config, is what drop_all() uses).
+        bound_uri = str(db.engine.url)
+        assert ":memory:" in bound_uri, (
+            f"refusing to run tests against non-memory database: {bound_uri}"
+        )
         db.create_all()
         yield flask_app
         db.session.remove()

@@ -2,8 +2,48 @@
 from unittest.mock import MagicMock, patch
 import pytest
 
-from utils.ai_provider import Message, ToolSchema
+from utils.ai_provider import Message, ProviderUnavailableError, ToolCall, ToolSchema
 from utils.ai_providers.anthropic_provider import AnthropicProvider
+
+
+def test_assistant_tool_turn_becomes_tool_use_blocks():
+    """The Anthropic API rejects a tool_result whose tool_use_id has no
+    matching tool_use block in the preceding assistant turn, so the
+    assistant turn must round-trip its tool calls as structured blocks."""
+    msgs = [
+        Message(role="user", content="hi"),
+        Message(
+            role="assistant",
+            content="",
+            tool_calls=[ToolCall(id="t1", name="search_db", arguments={"q": "x"})],
+        ),
+        Message(role="tool", tool_call_id="t1", tool_name="search_db", content="[]"),
+    ]
+
+    out = AnthropicProvider._to_anthropic_messages(msgs)
+
+    assistant_blocks = out[1]["content"]
+    assert {"type": "tool_use", "id": "t1", "name": "search_db", "input": {"q": "x"}} in assistant_blocks
+    assert out[2]["role"] == "user"
+    assert out[2]["content"][0]["type"] == "tool_result"
+    assert out[2]["content"][0]["tool_use_id"] == "t1"
+
+
+@patch("utils.ai_providers.anthropic_provider.anthropic.Anthropic")
+def test_connection_error_maps_to_provider_unavailable(anthropic_cls):
+    """Transient API failures must surface as ProviderUnavailableError so
+    the chat route returns its friendly 503 instead of a 500."""
+    import anthropic as anthropic_sdk
+    import httpx
+
+    client = anthropic_cls.return_value
+    client.messages.create.side_effect = anthropic_sdk.APIConnectionError(
+        request=httpx.Request("POST", "https://api.anthropic.com/v1/messages"),
+    )
+
+    provider = AnthropicProvider(api_key="k")
+    with pytest.raises(ProviderUnavailableError):
+        provider.chat([Message(role="user", content="hi")])
 
 
 def _fake_text_response(text: str):

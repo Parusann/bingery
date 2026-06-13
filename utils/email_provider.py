@@ -8,12 +8,17 @@ from __future__ import annotations
 
 import logging
 import os
+from typing import Protocol, runtime_checkable
 
 import requests
 
 logger = logging.getLogger(__name__)
 
 BREVO_ENDPOINT = "https://api.brevo.com/v3/smtp/email"
+
+# Single source of truth for the code lifetime; routes/auth.py derives its
+# CODE_TTL from this so the email copy can never drift from the real TTL.
+CODE_TTL_MINUTES = 10
 
 
 class EmailSendError(RuntimeError):
@@ -22,6 +27,13 @@ class EmailSendError(RuntimeError):
     The register route catches this and returns a 503 so the user can
     simply retry — the pending signup row is kept.
     """
+
+
+@runtime_checkable
+class EmailProvider(Protocol):
+    """What the auth routes need from a provider (mirrors AIProvider)."""
+
+    def send_verification_code(self, to_email: str, code: str) -> None: ...
 
 
 class ConsoleEmailProvider:
@@ -43,8 +55,8 @@ class BrevoEmailProvider:
             "subject": "Your Bingery verification code",
             "textContent": (
                 f"Your Bingery verification code is {code}.\n\n"
-                "This code expires in 10 minutes. If you didn't create a "
-                "Bingery account, you can ignore this email."
+                f"This code expires in {CODE_TTL_MINUTES} minutes. If you "
+                "didn't create a Bingery account, you can ignore this email."
             ),
             "htmlContent": (
                 "<div style=\"font-family:Arial,sans-serif;max-width:420px;"
@@ -52,9 +64,9 @@ class BrevoEmailProvider:
                 "<h2 style=\"margin:0 0 12px\">Your Bingery verification code</h2>"
                 f"<p style=\"font-size:32px;font-weight:bold;font-family:monospace;"
                 f"letter-spacing:6px;margin:16px 0\">{code}</p>"
-                "<p style=\"color:#555\">This code expires in 10 minutes. "
-                "If you didn't create a Bingery account, you can ignore this "
-                "email.</p></div>"
+                f"<p style=\"color:#555\">This code expires in {CODE_TTL_MINUTES} "
+                "minutes. If you didn't create a Bingery account, you can "
+                "ignore this email.</p></div>"
             ),
         }
         try:
@@ -67,10 +79,15 @@ class BrevoEmailProvider:
         except requests.exceptions.RequestException as exc:
             raise EmailSendError(f"Brevo unreachable: {type(exc).__name__}") from exc
         if not 200 <= resp.status_code < 300:
+            # Brevo puts the actionable detail (bad key, unvalidated sender,
+            # ...) in the body; keep it server-side for debugging.
+            logger.error(
+                "Brevo send failed: %s %s", resp.status_code, resp.text[:500]
+            )
             raise EmailSendError(f"Brevo returned {resp.status_code}")
 
 
-def get_email_provider():
+def get_email_provider() -> EmailProvider:
     """Return an email provider selected by the `EMAIL_PROVIDER` env var."""
     name = (os.getenv("EMAIL_PROVIDER") or "console").strip().lower()
     if name == "console":

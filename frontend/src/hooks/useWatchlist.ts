@@ -1,18 +1,24 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api } from "@/lib/api";
+import { useAuth } from "@/stores/auth";
 import type { WatchStatus } from "@/types/models";
 
 export function useWatchlist(status?: WatchStatus) {
+  const user = useAuth((s) => s.user);
   return useQuery({
     queryKey: ["watchlist", status ?? "all"],
     queryFn: () => api.getWatchlist(status ? `?status=${status}` : ""),
+    // Signed-out visitors have no watchlist — don't fire guaranteed 401s.
+    enabled: !!user,
   });
 }
 
 export function useWatchlistStats() {
+  const user = useAuth((s) => s.user);
   return useQuery({
     queryKey: ["watchlist-stats"],
     queryFn: () => api.getWatchlistStats(),
+    enabled: !!user,
   });
 }
 

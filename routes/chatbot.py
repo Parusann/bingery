@@ -11,7 +11,7 @@ from models import db, Anime
 from utils.ai_provider import Message, ProviderUnavailableError, get_provider
 from utils.ai_tools import ALL_TOOLS
 from utils.nsfw import HARD_BLOCKED_GENRES, SOFT_BLOCKED_GENRES
-from routes.chatbot_tools import execute_tool, build_system_prompt
+from routes.chatbot_tools import BINGERY_SYSTEM, execute_tool, build_system_prompt
 from routes.chat_context import build_llm_context
 
 
@@ -215,7 +215,9 @@ def chat_message():
     for m in history:
         role = m.get("role", "user")
         content = m.get("content", "")
-        if role in ("user", "assistant", "system"):
+        # Never accept system-role messages from the client — that would
+        # let callers inject instructions above the real system prompt.
+        if role in ("user", "assistant"):
             messages.append(Message(role=role, content=content))
     messages.append(Message(role="user", content=user_msg))
 
@@ -240,21 +242,21 @@ def chat_message():
             resp = provider.chat(messages=messages, tools=ALL_TOOLS, system=system)
 
             if resp.tool_calls:
-                # Append the assistant's tool-use turn.
+                # Append the assistant's tool-use turn with the calls kept
+                # structured — providers round-trip them in native format.
                 messages.append(Message(
                     role="assistant",
-                    content=json.dumps([
-                        {"name": c.name, "arguments": c.arguments, "id": c.id}
-                        for c in resp.tool_calls
-                    ]),
+                    content=resp.text or "",
+                    tool_calls=resp.tool_calls,
                 ))
                 for call in resp.tool_calls:
+                    # execute_tool already returns a JSON string.
                     result = execute_tool(call.name, call.arguments, user_id)
                     messages.append(Message(
                         role="tool",
                         tool_call_id=call.id,
                         tool_name=call.name,
-                        content=json.dumps(result),
+                        content=result,
                     ))
                 continue
 
