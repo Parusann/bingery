@@ -9,11 +9,18 @@
 #       JWT_SECRET_KEY=$(python -c 'import secrets;print(secrets.token_urlsafe(48))') \
 #       SECRET_KEY=$(python -c 'import secrets;print(secrets.token_urlsafe(48))') \
 #       CORS_ORIGINS=https://YOUR-PAGES-DOMAIN \
+#       EMAIL_PROVIDER=brevo \
+#       BREVO_API_KEY=... \
+#       EMAIL_FROM=Bingery@your-domain \
+#       ADMIN_SYNC_SECRET=$(python -c 'import secrets;print(secrets.token_urlsafe(32))') \
 #       AI_PROVIDER=ollama \
 #       OLLAMA_BASE_URL=https://ollama.YOUR-DOMAIN \
 #       OLLAMA_MODEL=gemma4:e4b \
 #       OLLAMA_CF_ACCESS_CLIENT_ID=... \
 #       OLLAMA_CF_ACCESS_CLIENT_SECRET=...
+#   # FLASK_ENV=production (set in [env] below) makes the app refuse to boot
+#   # unless EMAIL_PROVIDER=brevo + BREVO_API_KEY + EMAIL_FROM are all set,
+#   # so the email secrets above are required, not optional.
 #   fly deploy
 #   # Then ship the SQLite file once:
 #   fly ssh sftp shell

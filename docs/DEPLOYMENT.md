@@ -51,11 +51,14 @@ offline" instead of 500ing).
 
 1. **12-factor the config**. `app.py` should read every secret from `os.environ`:
    - `DATABASE_URL` (default to `sqlite:////data/bingery.db` in prod)
-   - `JWT_SECRET_KEY`
-   - `OLLAMA_HOST` (e.g. `https://ollama.yourdomain`)
+   - `JWT_SECRET_KEY`, `SECRET_KEY`
+   - `OLLAMA_BASE_URL` (e.g. `https://ollama.yourdomain`)
    - `OLLAMA_MODEL` (`gemma4:e4b`)
-   - `OLLAMA_AUTH_HEADER` (the service token name + value)
+   - `OLLAMA_CF_ACCESS_CLIENT_ID` / `OLLAMA_CF_ACCESS_CLIENT_SECRET` (Cloudflare
+     Access service token; or `OLLAMA_EXTRA_HEADERS` as a JSON escape hatch)
    - `AI_PROVIDER` (`ollama` or `anthropic` as a fallback)
+   - `EMAIL_PROVIDER=brevo`, `BREVO_API_KEY`, `EMAIL_FROM` (sign-up codes)
+   - `ADMIN_SYNC_SECRET` (admin sync endpoints)
 2. **Graceful Ollama-offline path**. In `utils/ai_provider.py`, catch
    ConnectionError + timeouts; return a structured `provider_unavailable`
    error that `chatbot.py` converts to a friendly 503 response.
@@ -73,7 +76,9 @@ offline" instead of 500ing).
 
 1. **Backend → Fly.io**
    - `fly launch` (no Postgres, mount volume `/data`)
-   - `fly secrets set JWT_SECRET_KEY=… OLLAMA_HOST=… OLLAMA_AUTH_HEADER=…`
+   - `fly secrets set JWT_SECRET_KEY=… SECRET_KEY=… CORS_ORIGINS=… OLLAMA_BASE_URL=… OLLAMA_CF_ACCESS_CLIENT_ID=… OLLAMA_CF_ACCESS_CLIENT_SECRET=… EMAIL_PROVIDER=brevo BREVO_API_KEY=… EMAIL_FROM=… ADMIN_SYNC_SECRET=…`
+     (`FLASK_ENV=production` is set in `fly.toml`, so the email secrets are
+     required — the app refuses to boot without them)
    - `fly deploy`
    - `fly ssh console` → copy `bingery.db` to `/data/bingery.db`
 2. **Ollama tunnel → home PC**
@@ -123,8 +128,9 @@ for a personal project; not great for showing recruiters.
 
 ## Things deferred
 
-- Email / OAuth login (currently demo user only). Adding social login
-  before public launch is a small follow-up.
+- OAuth / social login. Email + password with verification codes shipped
+  (see `routes/auth.py` + `utils/email_provider.py`); social login would be
+  the next add.
 - `ANIMESCHEDULE_API_KEY` re-registration if you want real future-dub
   data instead of the synthetic 8-week lag.
 - Production logging (Fly's built-in is fine to start; Sentry free tier
