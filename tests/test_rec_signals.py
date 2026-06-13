@@ -378,3 +378,76 @@ class TestGetSignalProfile:
         fresh = get_signal_profile(u.id)
         assert fresh["schema_version"] >= 1
         assert fresh["top_genres"] == []
+
+
+def test_score_candidates_hard_blocks_hentai_even_with_include_nsfw(app):
+    """include_nsfw=True reveals soft-blocked (Ecchi) but the hard block
+    (Hentai) must still apply — it must never be recommended."""
+    from models import db, User, Anime, Genre
+    from routes.rec_signals import build_signal_profile, score_candidates
+
+    with app.app_context():
+        u = User(email="nsfwsc@x.com", username="nsfwsc", password_hash="x")
+        db.session.add(u)
+        safe = Anime(title="Safe Pick", anilist_id=31001, api_score=8.0)
+        hentai = Anime(title="Hard Blocked", anilist_id=31002, api_score=9.0)
+        g = Genre(name="Hentai", category="standard")
+        hentai.official_genres.append(g)
+        db.session.add_all([safe, hentai])
+        db.session.commit()
+        hentai_id = hentai.id
+
+        profile = build_signal_profile(u.id)
+        results = score_candidates(u.id, profile, limit=50, include_nsfw=True)
+        ids = {c["id"] for c in results}
+        assert hentai_id not in ids
+
+
+def _count_select_queries(app, fn):
+    """Count SELECT statements issued while running fn() within an app ctx."""
+    from sqlalchemy import event
+    from models import db
+    engine = db.engine
+    n = {"c": 0}
+
+    def _before(conn, cursor, statement, params, context, executemany):
+        if statement.lstrip().upper().startswith("SELECT"):
+            n["c"] += 1
+
+    event.listen(engine, "before_cursor_execute", _before)
+    try:
+        fn()
+    finally:
+        event.remove(engine, "before_cursor_execute", _before)
+    return n["c"]
+
+
+def test_score_candidates_does_not_n_plus_one_over_catalog(app):
+    """Query count must not scale with the number of candidate anime —
+    genres and fan-genres must be batched, not fetched per-anime."""
+    from models import db, User, Anime, Genre, FanGenreVote
+    from routes.rec_signals import build_signal_profile, score_candidates
+
+    with app.app_context():
+        u = User(email="nplus@x.com", username="nplus", password_hash="x")
+        db.session.add(u)
+        voter = User(email="voter@x.com", username="voter", password_hash="x")
+        db.session.add(voter)
+        db.session.commit()
+        g = Genre(name="Action", category="standard")
+        db.session.add(g)
+        for i in range(12):
+            a = Anime(title=f"A{i}", anilist_id=32000 + i, api_score=7.0 + i * 0.1)
+            a.official_genres.append(g)
+            db.session.add(a)
+            db.session.flush()
+            db.session.add(FanGenreVote(user_id=voter.id, anime_id=a.id, genre_tag="Action"))
+        db.session.commit()
+        profile = build_signal_profile(u.id)
+
+        q = _count_select_queries(
+            app, lambda: score_candidates(u.id, profile, limit=50, include_nsfw=False)
+        )
+        # Batched: a small constant number of queries regardless of 12 candidates.
+        # (Pre-fix this was ~3 per anime = 36+.)
+        assert q <= 12, f"expected batched queries, got {q}"

@@ -371,3 +371,73 @@ def test_patch_reject_does_not_touch_episode(app, client):
         episode = db.session.get(Episode, ep_id)
         assert episode.air_date_dub is None
         assert episode.dub_source is None
+
+
+def test_patch_reject_reverts_previously_accepted_override(app, client):
+    """Rejecting a report that was already accepted must undo the episode
+    dub override it wrote — otherwise rejected data lingers on the episode."""
+    admin_id = _make_user(app, "admin", "admin@example.com")
+    submitter_id = _make_user(app, "u2", "u2@example.com")
+    _, ep_id = _make_anime_and_episode(app)
+    sub_token = _token_for(app, submitter_id)
+    admin_token = _token_for(app, admin_id)
+    create_resp = client.post(
+        "/api/dub-reports",
+        json={"episode_id": ep_id, "air_date": "2026-06-01T12:00:00Z"},
+        headers=_headers(sub_token),
+    )
+    report_id = create_resp.get_json()["report"]["id"]
+
+    client.patch(
+        f"/api/dub-reports/{report_id}",
+        json={"status": "accepted"},
+        headers=_headers(admin_token),
+    )
+    # Now reject the same (accepted) report.
+    resp = client.patch(
+        f"/api/dub-reports/{report_id}",
+        json={"status": "rejected"},
+        headers=_headers(admin_token),
+    )
+    assert resp.status_code == 200
+
+    with app.app_context():
+        episode = db.session.get(Episode, ep_id)
+        assert episode.air_date_dub is None
+        assert episode.dub_source is None
+
+
+def test_patch_reject_does_not_clobber_other_source(app, client):
+    """If a sync feed (not this report) currently owns the episode's dub
+    date, rejecting the report must not wipe that feed's data."""
+    admin_id = _make_user(app, "admin", "admin@example.com")
+    submitter_id = _make_user(app, "u2", "u2@example.com")
+    _, ep_id = _make_anime_and_episode(app)
+    sub_token = _token_for(app, submitter_id)
+    admin_token = _token_for(app, admin_id)
+    create_resp = client.post(
+        "/api/dub-reports",
+        json={"episode_id": ep_id, "air_date": "2026-06-01T12:00:00Z"},
+        headers=_headers(sub_token),
+    )
+    report_id = create_resp.get_json()["report"]["id"]
+    client.patch(
+        f"/api/dub-reports/{report_id}",
+        json={"status": "accepted"},
+        headers=_headers(admin_token),
+    )
+    # A sync feed overwrites the dub source after acceptance.
+    with app.app_context():
+        ep = db.session.get(Episode, ep_id)
+        ep.dub_source = "crunchyroll_rss"
+        db.session.commit()
+
+    client.patch(
+        f"/api/dub-reports/{report_id}",
+        json={"status": "rejected"},
+        headers=_headers(admin_token),
+    )
+    with app.app_context():
+        episode = db.session.get(Episode, ep_id)
+        assert episode.dub_source == "crunchyroll_rss"
+        assert episode.air_date_dub is not None
