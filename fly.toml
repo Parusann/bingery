@@ -45,9 +45,13 @@ primary_region = "yyz"     # Toronto — closest Fly region to the home PC in To
 [http_service]
   internal_port = 5000
   force_https = true
-  auto_stop_machines = "stop"
+  # Keep one machine always warm — eliminates the ~4s free-tier cold start
+  # that made the site feel laggy on the first request after idle. One
+  # shared-cpu-1x 256MB VM running 24/7 is within Fly's free allowance.
+  # auto_stop=suspend so any extra machines (under burst) resume fast too.
+  auto_stop_machines = "suspend"
   auto_start_machines = true
-  min_machines_running = 0
+  min_machines_running = 1
   processes = ["app"]
 
   [http_service.concurrency]
