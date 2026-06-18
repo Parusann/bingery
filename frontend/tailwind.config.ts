@@ -55,6 +55,21 @@ export default {
       backgroundImage: {
         grain: "url('/grain.svg')",
       },
+      // backdrop-filter blur is one of the most expensive things a browser
+      // can composite, and Bingery uses it on ~25 surfaces (incl. every
+      // grid/list card). Tailwind's defaults go up to 40–64px; cap the whole
+      // scale well below that so the frosted-glass look survives at a
+      // fraction of the GPU cost (blur cost scales with radius).
+      backdropBlur: {
+        none: "0",
+        sm: "3px",
+        DEFAULT: "5px",
+        md: "6px",
+        lg: "8px",
+        xl: "10px",
+        "2xl": "12px",
+        "3xl": "16px",
+      },
     },
   },
   plugins: [],
