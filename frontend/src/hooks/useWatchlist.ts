@@ -3,11 +3,12 @@ import { api } from "@/lib/api";
 import { useAuth } from "@/stores/auth";
 import type { WatchStatus } from "@/types/models";
 
-export function useWatchlist(status?: WatchStatus) {
+export function useWatchlist() {
   const user = useAuth((s) => s.user);
   return useQuery({
-    queryKey: ["watchlist", status ?? "all"],
-    queryFn: () => api.getWatchlist(status ? `?status=${status}` : ""),
+    queryKey: ["watchlist", "all"],
+    // Load the entire list once; all filtering/sorting happens client-side.
+    queryFn: () => api.getWatchlist("?all=1"),
     // Signed-out visitors have no watchlist — don't fire guaranteed 401s.
     enabled: !!user,
   });
