@@ -174,20 +174,20 @@ def test_list_watchlist_does_not_n_plus_one(client, app, auth_headers):
 def test_all_param_returns_full_list_with_created_at(client, app, auth_headers):
     headers, user = auth_headers
     with app.app_context():
-        for i in range(3):
+        for i in range(60):
             a = _anime(f"All Param Show {i}", anilist_id=51000 + i)
             db.session.add(
                 WatchlistEntry(user_id=user.id, anime_id=a.id, status="watching")
             )
         db.session.commit()
 
-    # Paginated mode still caps results.
-    paged = client.get("/api/watchlist?per_page=2", headers=headers).get_json()
-    assert len(paged["entries"]) == 2
-    assert paged["total"] == 3
+    # Default request is paginated: caps at per_page=50 even though 60 exist.
+    paged = client.get("/api/watchlist", headers=headers).get_json()
+    assert len(paged["entries"]) == 50
+    assert paged["total"] == 60
 
-    # all=1 returns every entry, unpaginated, each carrying created_at.
+    # all=1 returns EVERY entry, unpaginated, each carrying created_at.
     full = client.get("/api/watchlist?all=1", headers=headers).get_json()
-    assert len(full["entries"]) == 3
-    assert full["total"] == 3
+    assert len(full["entries"]) == 60
+    assert full["total"] == 60
     assert all("created_at" in e for e in full["entries"])
