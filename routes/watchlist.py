@@ -14,6 +14,14 @@ def _parse_episodes(value):
     except (TypeError, ValueError):
         return None
 
+
+def _chunks(seq, size=500):
+    """Yield successive `size`-length chunks (keeps IN(...) under SQLite's
+    ~999 variable limit when returning an unpaginated list)."""
+    for i in range(0, len(seq), size):
+        yield seq[i : i + size]
+
+
 watchlist_bp = Blueprint("watchlist", __name__, url_prefix="/api/watchlist")
 
 
@@ -22,11 +30,13 @@ watchlist_bp = Blueprint("watchlist", __name__, url_prefix="/api/watchlist")
 def get_watchlist():
     """
     GET /api/watchlist?status=watching&sort=updated&page=1&per_page=50
-    Get the user's full watchlist, optionally filtered by status.
+    GET /api/watchlist?all=1   -> every entry, unpaginated (for client-side filtering)
+    Get the user's watchlist, optionally filtered by status.
     """
     user_id = int(get_jwt_identity())
     status_filter = request.args.get("status", "").strip()
     sort = request.args.get("sort", "updated")
+    return_all = request.args.get("all", "").strip().lower() in ("1", "true", "yes")
     page = request.args.get("page", 1, type=int)
     per_page = min(request.args.get("per_page", 50, type=int), 100)
 
@@ -50,25 +60,34 @@ def get_watchlist():
         selectinload(WatchlistEntry.anime).selectinload(Anime.official_genres)
     )
 
-    paginated = query.paginate(page=page, per_page=per_page, error_out=False)
-    items = paginated.items
+    if return_all:
+        items = query.all()
+        total = len(items)
+        out_page, out_pages = 1, 1
+    else:
+        paginated = query.paginate(page=page, per_page=per_page, error_out=False)
+        items = paginated.items
+        total = paginated.total
+        out_page, out_pages = paginated.page, paginated.pages
 
     # Batch the per-entry rating + fan-genre lookups that to_dict(include_anime)
-    # would otherwise issue one-by-one (the N+1). Page anime_ids are bounded by
-    # per_page (<=100), safe for SQLite's IN(...) variable limit.
+    # would otherwise issue one-by-one (the N+1). Chunk the IN(...) so an
+    # unpaginated list stays under SQLite's variable limit.
     anime_ids = [e.anime_id for e in items]
     score_by_anime = {}
     votes_by_anime = {}
-    if anime_ids:
-        score_by_anime = dict(
-            db.session.query(Rating.anime_id, Rating.score).filter(
-                Rating.user_id == user_id, Rating.anime_id.in_(anime_ids)
+    for chunk in _chunks(anime_ids):
+        score_by_anime.update(
+            dict(
+                db.session.query(Rating.anime_id, Rating.score).filter(
+                    Rating.user_id == user_id, Rating.anime_id.in_(chunk)
+                )
             )
         )
         for aid, tag in db.session.query(
             FanGenreVote.anime_id, FanGenreVote.genre_tag
         ).filter(
-            FanGenreVote.user_id == user_id, FanGenreVote.anime_id.in_(anime_ids)
+            FanGenreVote.user_id == user_id, FanGenreVote.anime_id.in_(chunk)
         ):
             votes_by_anime.setdefault(aid, []).append(tag)
 
@@ -82,9 +101,9 @@ def get_watchlist():
 
     return jsonify({
         "entries": entries,
-        "total": paginated.total,
-        "page": paginated.page,
-        "pages": paginated.pages,
+        "total": total,
+        "page": out_page,
+        "pages": out_pages,
     }), 200
 
 
