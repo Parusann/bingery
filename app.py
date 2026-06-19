@@ -57,6 +57,7 @@ def create_app(config_class=Config):
     from routes.chatbot import chatbot_bp
     from routes.recommend import recommend_bp
     from routes.watchlist import watchlist_bp
+    from routes.waitlist import waitlist_bp
     from routes.search import search_bp
     from routes.collections import collections_bp
     from routes.stats import stats_bp
@@ -75,6 +76,7 @@ def create_app(config_class=Config):
     app.register_blueprint(chatbot_bp)
     app.register_blueprint(recommend_bp)
     app.register_blueprint(watchlist_bp)
+    app.register_blueprint(waitlist_bp, url_prefix="/api/waitlist")
     app.register_blueprint(search_bp)
     app.register_blueprint(collections_bp, url_prefix="/api/collections")
     app.register_blueprint(stats_bp, url_prefix="/api/stats")
