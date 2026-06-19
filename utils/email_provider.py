@@ -31,9 +31,11 @@ class EmailSendError(RuntimeError):
 
 @runtime_checkable
 class EmailProvider(Protocol):
-    """What the auth routes need from a provider (mirrors AIProvider)."""
+    """What the auth + waitlist routes need from a provider."""
 
     def send_verification_code(self, to_email: str, code: str) -> None: ...
+
+    def send_waitlist_confirmation(self, to_email: str) -> None: ...
 
 
 class ConsoleEmailProvider:
@@ -42,32 +44,24 @@ class ConsoleEmailProvider:
     def send_verification_code(self, to_email: str, code: str) -> None:
         logger.info("Verification code for %s: %s", to_email, code)
 
+    def send_waitlist_confirmation(self, to_email: str) -> None:
+        logger.info("Waitlist confirmation for %s", to_email)
+
 
 class BrevoEmailProvider:
     def __init__(self) -> None:
         self.api_key = os.environ.get("BREVO_API_KEY", "")
         self.from_email = os.environ.get("EMAIL_FROM", "")
 
-    def send_verification_code(self, to_email: str, code: str) -> None:
+    def _send(
+        self, to_email: str, subject: str, text_content: str, html_content: str
+    ) -> None:
         payload = {
             "sender": {"name": "Bingery", "email": self.from_email},
             "to": [{"email": to_email}],
-            "subject": "Your Bingery verification code",
-            "textContent": (
-                f"Your Bingery verification code is {code}.\n\n"
-                f"This code expires in {CODE_TTL_MINUTES} minutes. If you "
-                "didn't create a Bingery account, you can ignore this email."
-            ),
-            "htmlContent": (
-                "<div style=\"font-family:Arial,sans-serif;max-width:420px;"
-                "margin:0 auto;padding:24px\">"
-                "<h2 style=\"margin:0 0 12px\">Your Bingery verification code</h2>"
-                f"<p style=\"font-size:32px;font-weight:bold;font-family:monospace;"
-                f"letter-spacing:6px;margin:16px 0\">{code}</p>"
-                f"<p style=\"color:#555\">This code expires in {CODE_TTL_MINUTES} "
-                "minutes. If you didn't create a Bingery account, you can "
-                "ignore this email.</p></div>"
-            ),
+            "subject": subject,
+            "textContent": text_content,
+            "htmlContent": html_content,
         }
         try:
             resp = requests.post(
@@ -85,6 +79,44 @@ class BrevoEmailProvider:
                 "Brevo send failed: %s %s", resp.status_code, resp.text[:500]
             )
             raise EmailSendError(f"Brevo returned {resp.status_code}")
+
+    def send_verification_code(self, to_email: str, code: str) -> None:
+        self._send(
+            to_email,
+            "Your Bingery verification code",
+            (
+                f"Your Bingery verification code is {code}.\n\n"
+                f"This code expires in {CODE_TTL_MINUTES} minutes. If you "
+                "didn't create a Bingery account, you can ignore this email."
+            ),
+            (
+                "<div style=\"font-family:Arial,sans-serif;max-width:420px;"
+                "margin:0 auto;padding:24px\">"
+                "<h2 style=\"margin:0 0 12px\">Your Bingery verification code</h2>"
+                f"<p style=\"font-size:32px;font-weight:bold;font-family:monospace;"
+                f"letter-spacing:6px;margin:16px 0\">{code}</p>"
+                f"<p style=\"color:#555\">This code expires in {CODE_TTL_MINUTES} "
+                "minutes. If you didn't create a Bingery account, you can "
+                "ignore this email.</p></div>"
+            ),
+        )
+
+    def send_waitlist_confirmation(self, to_email: str) -> None:
+        self._send(
+            to_email,
+            "You're on the Bingery waitlist",
+            (
+                "Thanks for your interest in Bingery! You're on the waitlist — "
+                "we'll email you the moment a spot opens up."
+            ),
+            (
+                "<div style=\"font-family:Arial,sans-serif;max-width:420px;"
+                "margin:0 auto;padding:24px\">"
+                "<h2 style=\"margin:0 0 12px\">You're on the Bingery waitlist</h2>"
+                "<p style=\"color:#555\">Thanks for your interest in Bingery! "
+                "We'll email you the moment a spot opens up.</p></div>"
+            ),
+        )
 
 
 def get_email_provider() -> EmailProvider:
