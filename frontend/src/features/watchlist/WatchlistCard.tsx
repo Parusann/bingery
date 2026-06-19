@@ -6,11 +6,19 @@ import { genreColor } from "@/lib/genres";
 /**
  * Watchlist tile: the anime poster plus the two things you personally gave it —
  * your rating (score out of 10) and the fan-genres you assigned. Links through
- * to the detail page.
+ * to the detail page. `compact` shrinks padding and hides the genre row for a
+ * denser grid.
  */
-export function WatchlistCard({ entry }: { entry: WatchEntry }) {
+export function WatchlistCard({
+  entry,
+  variant = "large",
+}: {
+  entry: WatchEntry;
+  variant?: "large" | "compact";
+}) {
   const a = entry.anime;
   const genres = entry.genres ?? [];
+  const compact = variant === "compact";
   return (
     <Link
       to={`/anime/${a.id}`}
@@ -39,26 +47,34 @@ export function WatchlistCard({ entry }: { entry: WatchEntry }) {
           </span>
         )}
       </div>
-      <div className="p-3">
-        <h3 className="mb-1.5 line-clamp-2 text-sm font-semibold">
+      <div className={compact ? "p-2" : "p-3"}>
+        <h3
+          className={
+            compact
+              ? "line-clamp-2 text-xs font-semibold"
+              : "mb-1.5 line-clamp-2 text-sm font-semibold"
+          }
+        >
           {a.title_english ?? a.title}
         </h3>
-        {genres.length > 0 ? (
-          <div className="flex flex-wrap gap-1">
-            {genres.slice(0, 6).map((g) => (
-              <Badge key={g} color={genreColor(g)}>
-                {g}
-              </Badge>
-            ))}
-            {genres.length > 6 ? (
-              <span className="self-center text-[10px] text-text-dim">
-                +{genres.length - 6}
-              </span>
-            ) : null}
-          </div>
-        ) : (
-          <p className="text-[11px] text-text-dim">No genres assigned yet</p>
-        )}
+        {!compact ? (
+          genres.length > 0 ? (
+            <div className="flex flex-wrap gap-1">
+              {genres.slice(0, 6).map((g) => (
+                <Badge key={g} color={genreColor(g)}>
+                  {g}
+                </Badge>
+              ))}
+              {genres.length > 6 ? (
+                <span className="self-center text-[10px] text-text-dim">
+                  +{genres.length - 6}
+                </span>
+              ) : null}
+            </div>
+          ) : (
+            <p className="text-[11px] text-text-dim">No genres assigned yet</p>
+          )
+        ) : null}
       </div>
     </Link>
   );
