@@ -57,6 +57,10 @@ export type WatchStatus =
   | "on_hold"
   | "dropped";
 
+export type ViewMode = "large" | "compact" | "list";
+export type GenreMatchMode = "any" | "all";
+export type WatchlistSort = "updated" | "created" | "title" | "score";
+
 export interface WatchEntry {
   id: number;
   anime: AnimeSummary;
@@ -64,6 +68,7 @@ export interface WatchEntry {
   episodes_watched: number;
   is_favorite: boolean;
   updated_at: string;
+  created_at: string;
   /** The score (1-10) this user gave the anime, or null if unrated. */
   score?: number | null;
   /** Fan-genre tags this user assigned to the anime. */
