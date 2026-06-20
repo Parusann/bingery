@@ -36,19 +36,22 @@ export function ActivityHeatmap({ data }: { data: StatsHeatmap }) {
           {data.cells.reduce((n, c) => n + c.count, 0)} events
         </span>
       </div>
-      <div className="flex gap-0.5 overflow-x-auto">
-        {weeks.map((week, wi) => (
-          <div key={wi} className="flex flex-col gap-0.5">
-            {week.map((cell) => (
-              <div
-                key={cell.date}
-                className="w-2.5 h-2.5 rounded-[2px]"
-                style={{ background: intensity(cell.count, data.max) }}
-                title={`${cell.date} — ${cell.count}`}
-              />
-            ))}
-          </div>
-        ))}
+      <div className="relative">
+        <div className="flex gap-0.5 overflow-x-auto snap-x pb-1">
+          {weeks.map((week, wi) => (
+            <div key={wi} className="flex flex-col gap-0.5 snap-start">
+              {week.map((cell) => (
+                <div
+                  key={cell.date}
+                  className="w-2.5 h-2.5 rounded-[2px]"
+                  style={{ background: intensity(cell.count, data.max) }}
+                  title={`${cell.date} — ${cell.count}`}
+                />
+              ))}
+            </div>
+          ))}
+        </div>
+        <div className="pointer-events-none absolute inset-y-0 right-0 w-8 bg-gradient-to-l from-bg to-transparent sm:hidden" />
       </div>
     </GlassCard>
   );
