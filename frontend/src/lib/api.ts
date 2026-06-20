@@ -136,7 +136,7 @@ export const api = {
       method: "POST",
       body: JSON.stringify(body),
     }),
-  register: (body: { email: string; password: string; username: string; display_name?: string }) =>
+  register: (body: { email: string; password: string; username: string; display_name?: string; invite_code?: string }) =>
     request<RegisterPendingResponse>("/auth/register", {
       method: "POST",
       body: JSON.stringify(body),
