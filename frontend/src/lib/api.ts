@@ -270,12 +270,14 @@ export const api = {
     week: string,
     lang: "sub" | "dub" | "both" = "both",
     mine = false,
+    tz?: string,
   ) => {
     const params = new URLSearchParams({
       week,
       lang,
       mine: mine ? "1" : "0",
     });
+    if (tz) params.set("tz", tz);
     return request<import("@/types/api").ScheduleWeekResp>(
       `/schedule/week?${params}`
     );
