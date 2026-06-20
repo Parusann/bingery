@@ -58,7 +58,7 @@ export function RatingPanel({ anime }: { anime: AnimeDetail }) {
         <label className="text-sm text-text-muted block mb-2">
           Fan-genre votes <span className="text-text-dim">({fgs.length}/15)</span>
         </label>
-        <div className="flex flex-wrap gap-1.5">
+        <div className="flex flex-wrap gap-2">
           {FAN_GENRES.map((g) => {
             const active = fgs.includes(g);
             return (
@@ -66,7 +66,7 @@ export function RatingPanel({ anime }: { anime: AnimeDetail }) {
                 key={g}
                 onClick={() => toggle(g)}
                 className={cn(
-                  "px-3 py-1 rounded-full text-xs border transition-colors",
+                  "px-3.5 py-2 rounded-full text-sm border transition-colors min-h-[44px] inline-flex items-center",
                   active
                     ? "border-transparent text-bg"
                     : "border-border text-text-muted hover:border-border-strong"
