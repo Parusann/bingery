@@ -402,6 +402,73 @@ def run_format_sync(
     }
 
 
+def run_airing_sync(
+    client,
+    *,
+    max_pages: Optional[int] = None,
+    dry_run: bool = False,
+    sleep_seconds: float = PAGE_SLEEP_SECONDS,
+    log: callable = print,
+) -> dict:
+    """Page through currently-RELEASING anime and upsert each.
+
+    Keeps airing / next-episode data fresh for the schedule without a full
+    catalog walk. Idempotent (upserts by anilist_id). Honors --max-pages.
+    """
+    pages_processed = 0
+    media_processed = 0
+    episodes_processed = 0
+    last_page_info: Optional[dict] = None
+    started = time.time()
+
+    page = 1
+    while True:
+        if max_pages is not None and pages_processed >= max_pages:
+            log(f"Reached --max-pages={max_pages}, stopping.")
+            break
+        if page > MAX_PAGES_PER_FORMAT:
+            log(
+                f"Reached AniList deep-page cap (page {MAX_PAGES_PER_FORMAT}). "
+                "Stopping to avoid 5000-offset error."
+            )
+            break
+
+        if pages_processed > 0:
+            time.sleep(sleep_seconds)
+
+        result = client.fetch_airing_page(page=page)
+        page_info = result["page_info"]
+        last_page_info = page_info
+
+        for media in result["media"]:
+            summary = process_media_entry(media, dry_run=dry_run)
+            media_processed += 1
+            episodes_processed += summary["episodes_upserted"]
+
+        pages_processed += 1
+
+        if pages_processed % 10 == 0:
+            elapsed = time.time() - started
+            rate = media_processed / elapsed if elapsed > 0 else 0
+            log(
+                f"airing page {page}, ~{media_processed} anime, "
+                f"~{episodes_processed} episodes, rate {rate:.1f}/s"
+            )
+
+        if not page_info.get("hasNextPage", False):
+            break
+        page += 1
+
+    return {
+        "ok": True,
+        "pages_processed": pages_processed,
+        "media_processed": media_processed,
+        "episodes_processed": episodes_processed,
+        "page_info": last_page_info,
+        "dry_run": dry_run,
+    }
+
+
 def main(argv: Optional[list] = None) -> int:
     parser = argparse.ArgumentParser(
         description="Full-catalog AniList sync for Bingery."
@@ -466,6 +533,15 @@ def main(argv: Optional[list] = None) -> int:
         ),
     )
 
+    parser.add_argument(
+        "--airing",
+        action="store_true",
+        help=(
+            "Refresh currently-RELEASING anime (airing / next-episode data) for "
+            "the schedule. Cheap and bounded; intended to run daily."
+        ),
+    )
+
     args = parser.parse_args(argv)
 
     # Default behavior with no mode flag: resume.
@@ -496,6 +572,18 @@ def main(argv: Optional[list] = None) -> int:
     ctx.push()
 
     try:
+        # ── Airing-refresh branch: --airing ─────────────────────────────────
+        if args.airing:
+            from utils.anilist import AniListClient as _AniListClient
+            summary = run_airing_sync(
+                _AniListClient(), max_pages=args.max_pages or 10, dry_run=args.dry_run
+            )
+            print(
+                f"--airing done: pages={summary['pages_processed']} "
+                f"anime={summary['media_processed']} dry_run={args.dry_run}"
+            )
+            return 0
+
         # ── Orphan-catcher branch: --format / --all-orphan-formats ──────────
         if args.media_format or args.all_orphan_formats:
             if args.media_format and args.all_orphan_formats:
