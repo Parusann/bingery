@@ -11,7 +11,7 @@ interface AuthState {
   error: string | null;
   signIn: (body: { email: string; password: string }) => Promise<void>;
   /** Starts sign-up: sends the verification code. Does NOT authenticate. */
-  signUp: (body: { email: string; password: string; username: string; display_name?: string }) => Promise<void>;
+  signUp: (body: { email: string; password: string; username: string; display_name?: string; invite_code?: string }) => Promise<void>;
   /** Completes sign-up: exchanges email+code for a token and signs in. */
   verifyEmail: (body: { email: string; code: string }) => Promise<void>;
   resendCode: (body: { email: string }) => Promise<void>;
