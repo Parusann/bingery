@@ -11,6 +11,7 @@ registered at `url_prefix="/api"` so the schedule feature stays self-contained.
 from __future__ import annotations
 
 from datetime import datetime, timedelta, timezone
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from flask import Blueprint, jsonify, request
 from flask_jwt_extended import get_jwt_identity, jwt_required
@@ -284,9 +285,17 @@ def schedule_week():
     user_id = get_jwt_identity()
     watchlist_ids = _watchlisted_anime_ids(user_id)
 
+    tz_name = (request.args.get("tz") or "").strip()
+    try:
+        view_tz = ZoneInfo(tz_name) if tz_name else timezone.utc
+    except (ZoneInfoNotFoundError, ValueError):
+        view_tz = timezone.utc
+
     week_end = week_start + timedelta(days=7)
-    start_naive = week_start.replace(tzinfo=None)
-    end_naive = week_end.replace(tzinfo=None)
+    # Query a ±1 day margin so episodes that shift days under tz conversion
+    # aren't dropped by the UTC window; precise bucketing is by local date below.
+    start_naive = (week_start - timedelta(days=1)).replace(tzinfo=None)
+    end_naive = (week_end + timedelta(days=1)).replace(tzinfo=None)
 
     # Bucket builder seeded with empty days so the response is always 7 long.
     buckets: dict[str, list[dict]] = {}
@@ -311,7 +320,7 @@ def schedule_week():
             air_at = _episode_air_date(raw)
             if air_at is None:
                 continue
-            bucket_key = _iso_date(air_at)
+            bucket_key = air_at.astimezone(view_tz).date().isoformat()
             if bucket_key not in buckets:
                 continue
             buckets[bucket_key].append({
