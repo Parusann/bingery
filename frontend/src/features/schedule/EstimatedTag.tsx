@@ -1,7 +1,7 @@
 import { Info } from "lucide-react";
 
 const TOOLTIP =
-  "Dub date is estimated based on previous release cadence.";
+  "Dub date is an approximate placeholder (~8 weeks after the sub release), not a confirmed schedule.";
 
 export function EstimatedTag() {
   return (
