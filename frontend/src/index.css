@@ -52,4 +52,12 @@
   .ring-amber {
     box-shadow: 0 0 0 1px rgba(230, 166, 128, 0.35);
   }
+  .text-display {
+    font-size: clamp(1.6rem, 5.5vw, 2.25rem);
+    line-height: 1.1;
+  }
+  .text-display-hero {
+    font-size: clamp(1.9rem, 7vw, 3rem);
+    line-height: 1.05;
+  }
 }
