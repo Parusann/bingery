@@ -23,7 +23,7 @@ export function DetailHero({ anime, actions }: HeroProps) {
         />
       ) : null}
       <div className="absolute inset-0 bg-gradient-to-t from-bg via-bg/80 to-transparent" />
-      <LiquidGLSurface className="relative z-10 p-6 md:p-10 flex flex-col md:flex-row gap-6">
+      <LiquidGLSurface className="relative z-10 p-4 sm:p-6 md:p-10 flex flex-col md:flex-row gap-6">
         {anime.image_url ? (
           <img
             src={anime.image_url}
