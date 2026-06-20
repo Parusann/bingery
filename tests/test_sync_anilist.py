@@ -630,3 +630,13 @@ def test_sync_ids_dry_run_writes_nothing(app):
         summary = sync_ids(client, [7], dry_run=True)
         assert summary["synced"] == 1
         assert Anime.query.filter_by(anilist_id=7).count() == 0
+
+
+def test_orphan_catcher_reaches_seasonyear_null_ona():
+    """Guard the coverage fix: the orphan-catcher must keep covering ONA, and
+    its query must NOT filter by seasonYear (that's what hides donghua)."""
+    from sync_anilist import ORPHAN_FORMATS
+    from utils.anilist import CATALOG_QUERY_BY_FORMAT
+
+    assert "ONA" in ORPHAN_FORMATS
+    assert "seasonYear" not in CATALOG_QUERY_BY_FORMAT
