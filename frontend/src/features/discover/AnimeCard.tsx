@@ -66,15 +66,18 @@ export function AnimeCard({ anime, index = 0, compact }: Props) {
             </span>
           ) : null}
         </div>
-        <div className="p-3">
-          <h3 className="text-sm font-semibold line-clamp-2 mb-1.5">
+        <div className="p-2 sm:p-3">
+          <h3 className="text-xs sm:text-sm font-semibold line-clamp-2 mb-1.5">
             {anime.title_english ?? anime.title}
           </h3>
           <div className="flex flex-wrap gap-1">
-            {genres.map((g) => (
-              <Badge key={g} color={genreColor(g)}>
-                {g}
-              </Badge>
+            {genres.map((g, i) => (
+              <span
+                key={g}
+                className={i >= 2 ? "hidden sm:inline-flex" : "inline-flex"}
+              >
+                <Badge color={genreColor(g)}>{g}</Badge>
+              </span>
             ))}
           </div>
         </div>
