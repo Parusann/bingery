@@ -1,3 +1,4 @@
+import os
 import secrets
 from datetime import datetime, timedelta, timezone
 
@@ -39,6 +40,19 @@ def _generate_code() -> str:
 @auth_bp.route("/register", methods=["POST"])
 def register():
     data = request.get_json(silent=True) or {}
+
+    # Invite-only gate. Read live from the env (not Config) so tests can toggle
+    # it per-case and prod can rotate it without a code change. Inactive when unset.
+    required_code = (os.environ.get("SIGNUP_INVITE_CODE") or "").strip()
+    if required_code:
+        provided = data.get("invite_code")
+        if not isinstance(provided, str) or provided.strip() != required_code:
+            return jsonify(
+                {
+                    "error": "Sign-ups are invite-only right now. "
+                    "Join the waitlist to request access."
+                }
+            ), 403
 
     # ── Validate (types first: non-string JSON values must 400, not 500;
     #    length caps match the column sizes so Postgres can't 500) ────────
