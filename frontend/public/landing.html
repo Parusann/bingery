@@ -2711,14 +2711,33 @@ ReactDOM.createRoot(document.getElementById("recRoot")).render(<RecCard/>);
   const success = document.getElementById("waitlistSuccess");
   const input = document.getElementById("waitlistEmail");
   if (!form || !success || !input) return;
-  form.addEventListener("submit", (e) => {
+  form.addEventListener("submit", async (e) => {
     e.preventDefault();
-    if (!input.value || !input.value.includes("@")) {
+    const email = (input.value || "").trim();
+    if (!email || !email.includes("@")) {
       input.focus();
       return;
     }
+    try {
+      const resp = await fetch("/api/waitlist", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ email }),
+      });
+      const data = await resp.json().catch(() => ({}));
+      if (resp.ok && data.status === "already") {
+        success.textContent = "You’re already on the waitlist.";
+      } else if (resp.ok) {
+        success.textContent = "✓ You’re on the list. Watch your inbox.";
+        input.value = "";
+      } else {
+        success.textContent =
+          (data && data.error) || "Something went wrong. Please try again.";
+      }
+    } catch (err) {
+      success.textContent = "Network error. Please try again.";
+    }
     success.classList.add("show");
-    input.value = "";
     if (window.__bingerySfx) window.__bingerySfx("swoosh");
     setTimeout(() => success.classList.remove("show"), 4000);
   });
