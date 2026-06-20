@@ -32,7 +32,7 @@ export function DetailHero({ anime, actions }: HeroProps) {
           />
         ) : null}
         <div className="flex-1 min-w-0">
-          <h1 className="font-display text-4xl md:text-5xl mb-2">
+          <h1 className="font-display text-display-hero mb-2">
             {anime.title_english ?? anime.title}
           </h1>
           {anime.title_english && anime.title !== anime.title_english ? (

@@ -29,7 +29,7 @@ export function WatchlistPage() {
 
   return (
     <div>
-      <h1 className="font-display text-4xl text-amber mb-5">Your watchlist</h1>
+      <h1 className="font-display text-display text-amber mb-5">Your watchlist</h1>
       <StatusTabs stats={stats.data?.stats} value={status} onChange={setStatus} />
       {wl.isLoading ? (
         <div className={gridCls}>
