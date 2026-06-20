@@ -8,9 +8,9 @@ describe("EstimatedTag", () => {
     expect(screen.getByText(/estimated/i)).toBeInTheDocument();
   });
 
-  it("exposes the tooltip text via title attribute", () => {
+  it("exposes a placeholder tooltip via title attribute", () => {
     render(<EstimatedTag />);
     const el = screen.getByText(/estimated/i).closest("span");
-    expect(el?.getAttribute("title") ?? "").toMatch(/estimated/i);
+    expect(el?.getAttribute("title") ?? "").toMatch(/placeholder/i);
   });
 });
