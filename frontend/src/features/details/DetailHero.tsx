@@ -23,7 +23,7 @@ export function DetailHero({ anime, actions }: HeroProps) {
         />
       ) : null}
       <div className="absolute inset-0 bg-gradient-to-t from-bg via-bg/80 to-transparent" />
-      <LiquidGLSurface className="relative z-10 p-6 md:p-10 flex flex-col md:flex-row gap-6">
+      <LiquidGLSurface className="relative z-10 p-4 sm:p-6 md:p-10 flex flex-col md:flex-row gap-6">
         {anime.image_url ? (
           <img
             src={anime.image_url}
@@ -32,7 +32,7 @@ export function DetailHero({ anime, actions }: HeroProps) {
           />
         ) : null}
         <div className="flex-1 min-w-0">
-          <h1 className="font-display text-4xl md:text-5xl mb-2">
+          <h1 className="font-display text-display-hero mb-2">
             {anime.title_english ?? anime.title}
           </h1>
           {anime.title_english && anime.title !== anime.title_english ? (

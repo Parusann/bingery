@@ -53,7 +53,7 @@ export function AnimeDetailPage() {
       <div className="grid md:grid-cols-[1fr_420px] gap-8">
         <section>
           <h2 className="font-display text-2xl mb-4">Community fan genres</h2>
-          <GlassCard className="p-6">
+          <GlassCard className="p-4 sm:p-6">
             {anime.fan_genres && anime.fan_genres.length ? (
               <FanGenreBars fanGenres={anime.fan_genres} />
             ) : (
@@ -66,7 +66,7 @@ export function AnimeDetailPage() {
         </section>
         <aside>
           <h2 className="font-display text-2xl mb-4">Your rating</h2>
-          <GlassCard tone="warm" className="p-6">
+          <GlassCard tone="warm" className="p-4 sm:p-6">
             <RatingPanel anime={anime} />
           </GlassCard>
         </aside>
