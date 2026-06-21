@@ -41,9 +41,10 @@ def _generate_code() -> str:
 def register():
     data = request.get_json(silent=True) or {}
 
-    # Invite-only gate. Read live from the env (not Config) so tests can toggle
-    # it per-case and prod can rotate it without a code change. Inactive when unset.
-    required_code = (os.environ.get("SIGNUP_INVITE_CODE") or "").strip()
+    # Invite-only gate. Defaults to 782414 so production is gated without a
+    # platform secret; set the SIGNUP_INVITE_CODE env var to rotate the code,
+    # or to an empty string to open signup. Read live so tests can toggle it.
+    required_code = os.environ.get("SIGNUP_INVITE_CODE", "782414").strip()
     if required_code:
         provided = data.get("invite_code")
         if not isinstance(provided, str) or provided.strip() != required_code:

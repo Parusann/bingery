@@ -1,8 +1,8 @@
 """Invite-code gating on POST /api/auth/register (SIGNUP_INVITE_CODE)."""
 
 
-def test_register_open_when_code_unset(client, sent_codes, monkeypatch):
-    monkeypatch.delenv("SIGNUP_INVITE_CODE", raising=False)
+def test_register_open_when_code_blank(client, sent_codes, monkeypatch):
+    monkeypatch.setenv("SIGNUP_INVITE_CODE", "")
     r = client.post(
         "/api/auth/register",
         json={
