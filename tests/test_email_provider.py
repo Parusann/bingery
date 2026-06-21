@@ -144,3 +144,31 @@ def test_brevo_network_error_raises(monkeypatch):
     )
     with pytest.raises(EmailSendError):
         BrevoEmailProvider().send_verification_code("someone@example.com", "654321")
+
+
+def test_console_provider_logs_waitlist_confirmation(caplog):
+    provider = ConsoleEmailProvider()
+    with caplog.at_level(logging.INFO):
+        provider.send_waitlist_confirmation("fan@example.com")
+    assert "fan@example.com" in caplog.text
+
+
+@responses.activate
+def test_brevo_sends_waitlist_confirmation(monkeypatch):
+    monkeypatch.setenv("BREVO_API_KEY", "test-key")
+    monkeypatch.setenv("EMAIL_FROM", "hello@example.com")
+    responses.add(
+        responses.POST,
+        "https://api.brevo.com/v3/smtp/email",
+        json={"messageId": "x"},
+        status=201,
+    )
+    BrevoEmailProvider().send_waitlist_confirmation("fan@example.com")
+
+    assert len(responses.calls) == 1
+    req = responses.calls[0].request
+    assert req.headers["api-key"] == "test-key"
+    body = req.body.decode() if isinstance(req.body, bytes) else req.body
+    assert "fan@example.com" in body
+    assert "hello@example.com" in body
+    assert "waitlist" in body.lower()

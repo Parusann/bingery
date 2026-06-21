@@ -60,6 +60,10 @@ class Config:
     BREVO_API_KEY = os.environ.get("BREVO_API_KEY", "")
     EMAIL_FROM = os.environ.get("EMAIL_FROM", "")
 
+    # Invite-only signup gate. When set, /api/auth/register requires a matching
+    # `invite_code`. Empty = open signup (dev/test default).
+    SIGNUP_INVITE_CODE = os.environ.get("SIGNUP_INVITE_CODE", "")
+
     # Frontend origins allowed to call /api/*. Comma-separated. Default '*'
     # is fine for local dev; production MUST set this to the Pages origin.
     CORS_ORIGINS = _split_origins(os.environ.get("CORS_ORIGINS"))
@@ -88,6 +92,11 @@ class Config:
         elif not BREVO_API_KEY or not EMAIL_FROM:
             problems.append(
                 "BREVO_API_KEY and EMAIL_FROM must be set when EMAIL_PROVIDER=brevo"
+            )
+        if not os.environ.get("SIGNUP_INVITE_CODE"):
+            problems.append(
+                "SIGNUP_INVITE_CODE must be set — signups are invite-gated in "
+                "production (leave it unset only for an intentionally open launch)"
             )
         if problems:
             sys.stderr.write(

@@ -12,6 +12,8 @@ os.environ.setdefault("JWT_SECRET_KEY", "test-jwt-secret")
 # create_app() time) — so without this, db.drop_all() in the teardown
 # could wipe a real database.
 os.environ["DATABASE_URL"] = "sqlite:///:memory:"
+# Signups are open in tests unless a test explicitly sets this.
+os.environ.pop("SIGNUP_INVITE_CODE", None)
 
 
 @pytest.fixture
