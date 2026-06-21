@@ -31,7 +31,7 @@ export function DiscoverPage() {
   return (
     <div>
       <div className="flex flex-col md:flex-row gap-4 mb-6 items-start md:items-center">
-        <h1 className="font-display text-4xl text-amber">Discover</h1>
+        <h1 className="font-display text-display text-amber">Discover</h1>
         <div className="flex-1 md:ml-auto md:max-w-xl">
           <SearchAutocomplete
             onSubmit={(q) => update("q", q)}

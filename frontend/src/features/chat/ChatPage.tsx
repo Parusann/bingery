@@ -99,7 +99,7 @@ export function ChatPage() {
       <GlassCard tone="warm" elevated className="overflow-hidden">
         <div
           ref={scroller}
-          className="h-[60vh] md:h-[68vh] overflow-y-auto px-5 md:px-7 py-6 space-y-5"
+          className="h-[55dvh] md:h-[68vh] overflow-y-auto px-5 md:px-7 py-6 space-y-5"
         >
           <AnimatePresence initial={false}>
             {turns.map((t, i) => {

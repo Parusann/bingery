@@ -96,7 +96,7 @@ export function WatchlistPage() {
 
   return (
     <div>
-      <h1 className="font-display text-4xl text-amber mb-5">Your watchlist</h1>
+      <h1 className="font-display text-display text-amber mb-5">Your watchlist</h1>
       <WatchlistToolbar
         q={q}
         sort={sort}

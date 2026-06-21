@@ -22,7 +22,7 @@ export function FilterBar({ genre, onGenre, sort, onSort }: Props) {
         <button
           onClick={() => onGenre("")}
           className={cn(
-            "shrink-0 px-3 py-1.5 rounded-full text-xs border",
+            "shrink-0 inline-flex items-center min-h-[44px] px-3.5 py-2 rounded-full text-sm border",
             genre === ""
               ? "bg-amber text-bg border-amber"
               : "border-border text-text-muted hover:text-text hover:border-border-strong"
@@ -37,7 +37,7 @@ export function FilterBar({ genre, onGenre, sort, onSort }: Props) {
               key={g}
               onClick={() => onGenre(g)}
               className={cn(
-                "shrink-0 px-3 py-1.5 rounded-full text-xs border transition-colors",
+                "shrink-0 inline-flex items-center min-h-[44px] px-3.5 py-2 rounded-full text-sm border transition-colors",
                 active
                   ? "border-transparent text-bg"
                   : "border-border text-text-muted hover:text-text hover:border-border-strong"
@@ -56,7 +56,7 @@ export function FilterBar({ genre, onGenre, sort, onSort }: Props) {
             key={s.key}
             onClick={() => onSort(s.key)}
             className={cn(
-              "px-2 py-1 rounded-md",
+              "inline-flex items-center min-h-[44px] px-3 py-2 rounded-md",
               sort === s.key
                 ? "text-text bg-white/[0.06]"
                 : "text-text-muted hover:text-text"
