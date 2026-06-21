@@ -32,6 +32,13 @@ DEFAULT_RECENT_WINDOW_DAYS = 90
 _REAL_DUB_SOURCES = {"crunchyroll_rss", "animeschedule"}
 
 
+def _learned_lag_days(deltas: list[int]) -> int | None:
+    """Median sub->dub gap (days) from a show's real dub data points, or None."""
+    from statistics import median
+
+    return int(median(deltas)) if deltas else None
+
+
 def main(argv: list | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--dry-run", action="store_true",
@@ -117,10 +124,13 @@ def main(argv: list | None = None) -> int:
             Episode.dub_source.in_(tuple(_REAL_DUB_SOURCES)),
             Episode.dub_source.like("user:%"),
         )
+        # Projectable = no dub yet (NULL) or an existing synthetic projection.
+        # NULL-safe: `~preserve_clause` would evaluate to NULL (→ excluded) for
+        # the sub-only episodes we most need to fill.
         eligible_clauses = [
             Episode.anime_id.in_(anime_ids),
             Episode.air_date_sub.isnot(None),
-            ~preserve_clause,
+            or_(Episode.dub_source.is_(None), Episode.dub_source == SYNTHETIC_TAG),
         ]
         if not args.overwrite:
             eligible_clauses.append(Episode.air_date_dub.is_(None))
@@ -151,21 +161,66 @@ def main(argv: list | None = None) -> int:
             )
             return 0
 
-        stmt = (
-            update(Episode)
-            .where(*eligible_clauses)
-            .values(
-                air_date_dub=sa_func.datetime(Episode.air_date_sub, f"+{LAG_DAYS} days"),
-                dub_source=SYNTHETIC_TAG,
+        # Learn each show's real sub->dub gap (sparse query — only episodes that
+        # already carry a real dub date are hydrated, so this stays well under
+        # the memory budget the bulk path was protecting).
+        from collections import defaultdict
+        real_rows = (
+            db.session.query(
+                Episode.anime_id, Episode.air_date_sub, Episode.air_date_dub
             )
-            .execution_options(synchronize_session=False)
+            .filter(
+                Episode.anime_id.in_(anime_ids),
+                Episode.air_date_sub.isnot(None),
+                Episode.air_date_dub.isnot(None),
+                preserve_clause,
+            )
+            .all()
         )
-        result = db.session.execute(stmt)
+        gaps = defaultdict(list)
+        for aid, sub, dub in real_rows:
+            gaps[aid].append((dub - sub).days)
+        learned = {
+            aid: lag
+            for aid, ds in gaps.items()
+            if (lag := _learned_lag_days(ds)) is not None
+        }
+
+        n_set = 0
+        # Shows with real dub data: project at their own observed lag.
+        for aid, lag in learned.items():
+            res = db.session.execute(
+                update(Episode)
+                .where(*eligible_clauses, Episode.anime_id == aid)
+                .values(
+                    air_date_dub=sa_func.datetime(
+                        Episode.air_date_sub, f"+{lag} days"
+                    ),
+                    dub_source=SYNTHETIC_TAG,
+                )
+                .execution_options(synchronize_session=False)
+            )
+            n_set += res.rowcount or 0
+        # Everyone else: the flat default lag.
+        default_ids = [aid for aid in anime_ids if aid not in learned]
+        if default_ids:
+            res = db.session.execute(
+                update(Episode)
+                .where(*eligible_clauses, Episode.anime_id.in_(default_ids))
+                .values(
+                    air_date_dub=sa_func.datetime(
+                        Episode.air_date_sub, f"+{LAG_DAYS} days"
+                    ),
+                    dub_source=SYNTHETIC_TAG,
+                )
+                .execution_options(synchronize_session=False)
+            )
+            n_set += res.rowcount or 0
         db.session.commit()
-        n_set = result.rowcount if result.rowcount is not None else 0
         print(
-            f"wrote air_date_dub on {n_set} episodes (lag={LAG_DAYS}d, tag={SYNTHETIC_TAG!r}); "
-            f"preserved {preserved_count} real dub-source rows"
+            f"wrote air_date_dub on {n_set} episodes "
+            f"({len(learned)} shows at learned lag, rest at {LAG_DAYS}d default, "
+            f"tag={SYNTHETIC_TAG!r}); preserved {preserved_count} real rows"
         )
 
         # ── Verification ────────────────────────────────────────────
