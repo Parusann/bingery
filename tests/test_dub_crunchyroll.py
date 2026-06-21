@@ -100,6 +100,18 @@ def _seed_anime(app):
                 source="MANGA",
                 status="RELEASING",
             ),
+            Anime(
+                anilist_id=1004,
+                title="Boku no Hero Academia 7",
+                title_english="My Hero Academia Season 7",
+                synopsis="",
+                year=2026,
+                episodes=12,
+                studio="Bones",
+                image_url="",
+                source="MANGA",
+                status="RELEASING",
+            ),
         ]
         db.session.add_all(rows)
         db.session.commit()
@@ -201,14 +213,12 @@ def test_best_match_matches_english_title(app):
         assert score >= 80.0
 
 
-def test_best_match_strips_season_suffix(app):
-    _seed_anime(app)
-    with app.app_context():
-        candidates = Anime.query.all()
-        anime, score = best_match("My Hero Academia Season 7", candidates)
-        assert anime is not None
-        assert anime.title_english == "My Hero Academia"
-        assert score >= 80.0
+def test_best_match_demotes_unknown_later_season():
+    """A later-season feed with only the base row present scores below the
+    accept threshold (safe failure: no wrong-season dub written)."""
+    base = _Cand("Boku no Hero Academia", "My Hero Academia")
+    _, score = best_match("My Hero Academia Season 7", [base])
+    assert score < 80.0
 
 
 def test_best_match_returns_low_score_for_unknown(app):
@@ -249,6 +259,15 @@ def test_ingest_feed_writes_episodes_with_dub_source(app):
         assert aot_ep.air_date_dub.year == 2026
         assert aot_ep.air_date_dub.month == 5
         assert aot_ep.air_date_dub.day == 11
+        # Season-aware: the "My Hero Academia Season 7" entry attaches to the
+        # Season-7 row, NOT the base row.
+        mha_s7_ep = (
+            Episode.query
+            .filter_by(anime_id=ids[1004], episode_number=3)
+            .first()
+        )
+        assert mha_s7_ep is not None
+        assert Episode.query.filter_by(anime_id=ids[1002]).first() is None
     assert summary["written"] >= 3
 
 
@@ -321,3 +340,47 @@ def test_fetch_feed_raises_on_5xx():
     responses.add(responses.GET, CR_RSS_URL, status=503)
     with pytest.raises(Exception):
         fetch_feed()
+
+
+# ─── Season-aware matching ───────────────────────────────────────────────────
+
+
+class _Cand:
+    """Lightweight candidate with the fields best_match reads."""
+
+    def __init__(self, title, title_english=None):
+        self.title = title
+        self.title_english = title_english
+
+
+def test_parse_season_variants():
+    from utils.dub_sources.crunchyroll import _parse_season
+
+    assert _parse_season("My Hero Academia") == 1
+    assert _parse_season("My Hero Academia Season 7") == 7
+    assert _parse_season("My Hero Academia 3rd Season") == 3
+    assert _parse_season("Show Part 2") == 2
+    assert _parse_season("Show Cour 2") == 2
+    assert _parse_season("Show S2") == 2
+    assert _parse_season("Mob Psycho 100") == 1  # a bare number is not a season
+
+
+def test_best_match_picks_correct_season_not_base():
+    base = _Cand("My Hero Academia")
+    s7 = _Cand("My Hero Academia Season 7")
+    anime, _ = best_match("My Hero Academia Season 7", [base, s7])
+    assert anime is s7
+
+
+def test_best_match_no_season_picks_base():
+    base = _Cand("My Hero Academia")
+    s7 = _Cand("My Hero Academia Season 7")
+    anime, _ = best_match("My Hero Academia", [base, s7])
+    assert anime is base
+
+
+def test_best_match_part_distinguishes_seasons():
+    p1 = _Cand("Attack on Titan")
+    p2 = _Cand("Attack on Titan Part 2")
+    anime, _ = best_match("Attack on Titan Part 2", [p1, p2])
+    assert anime is p2

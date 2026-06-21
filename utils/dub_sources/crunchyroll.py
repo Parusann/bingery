@@ -36,6 +36,30 @@ SEASON_SUFFIX_RE = re.compile(
     re.IGNORECASE,
 )
 
+# Parse a season number from a title (default 1 when none present). Used by
+# best_match to keep a later-season feed from collapsing onto the base/S1 row.
+SEASON_NUM_RE = re.compile(
+    r"\b(?:season|part|cour)\s*(\d+)\b"
+    r"|\b(\d+)(?:st|nd|rd|th)\s+season\b"
+    r"|\bs(\d+)\b",
+    re.IGNORECASE,
+)
+# How much to demote a candidate whose season differs from the feed's.
+SEASON_MISMATCH_PENALTY = 35.0
+
+
+def _parse_season(title: str) -> int:
+    if not title:
+        return 1
+    m = SEASON_NUM_RE.search(title)
+    if not m:
+        return 1
+    num = m.group(1) or m.group(2) or m.group(3)
+    try:
+        return int(num)
+    except (TypeError, ValueError):
+        return 1
+
 
 @dataclass(frozen=True)
 class CrunchyrollEntry:
@@ -178,32 +202,49 @@ def best_match(show_title: str, candidates: Iterable) -> tuple[Optional[object],
     from rapidfuzz import fuzz as _rf_fuzz
     from rapidfuzz import process as _rf_process
 
-    norm_query = _strip_season(show_title)
-    if not norm_query:
+    query = (show_title or "").strip()
+    if not query:
         return None, 0.0
+    query_season = _parse_season(query)
 
-    # Flatten (anime, field) -> normalized title string. We materialize
-    # candidates into a list so we can index by position in the result.
+    # Flatten (anime, field) -> full title string (NOT season-stripped, so a
+    # later-season feed can match the correct season's row). Materialize so we
+    # can index by position into the rapidfuzz result.
     candidates = list(candidates)
     titles: list[str] = []
     owners: list[object] = []
+    seasons: list[int] = []
     for anime in candidates:
         for cand in (anime.title, getattr(anime, "title_english", None)):
             if not cand:
                 continue
-            titles.append(_strip_season(cand))
+            titles.append(cand)
             owners.append(anime)
+            seasons.append(_parse_season(cand))
 
     if not titles:
         return None, 0.0
 
-    result = _rf_process.extractOne(
-        norm_query, titles, scorer=_rf_fuzz.token_set_ratio
+    # Score every candidate in C (fast), keep the top matches, then re-rank the
+    # short list with a season penalty so e.g. "... Season 7" can't land on the
+    # base/Season-1 row. The penalty is applied to the returned score, so a
+    # season-only mismatch falls below the caller's accept threshold (no dub).
+    top = _rf_process.extract(
+        query, titles, scorer=_rf_fuzz.token_set_ratio, limit=25
     )
-    if result is None:
+    best_owner = None
+    best_adj = -1.0
+    for _matched_title, score, idx in top:
+        adj = score
+        if seasons[idx] != query_season:
+            adj -= SEASON_MISMATCH_PENALTY
+        if adj > best_adj:
+            best_adj = adj
+            best_owner = owners[idx]
+
+    if best_owner is None:
         return None, 0.0
-    _matched_title, score, idx = result
-    return owners[idx], float(score)
+    return best_owner, max(0.0, best_adj)
 
 
 # ─── Top-level ingest ────────────────────────────────────────────────────────
