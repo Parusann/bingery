@@ -6,9 +6,10 @@ export function useScheduleWeek(
   lang: "sub" | "dub" | "both" = "both",
   mine = false,
 ) {
+  const tz = Intl.DateTimeFormat().resolvedOptions().timeZone;
   return useQuery({
-    queryKey: ["schedule-week", week, lang, mine],
-    queryFn: () => api.getScheduleWeek(week, lang, mine),
+    queryKey: ["schedule-week", week, lang, mine, tz],
+    queryFn: () => api.getScheduleWeek(week, lang, mine, tz),
     staleTime: 60_000,
     enabled: Boolean(week),
   });

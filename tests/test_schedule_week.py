@@ -293,3 +293,43 @@ def test_nsfw_hentai_excluded(client, app, user):
     body = res.get_json()
     titles = {e["anime"]["title"] for d in body["days"] for e in d["episodes"]}
     assert "NsfwShow" not in titles
+
+
+def test_week_buckets_by_viewer_timezone(client, app, user):
+    """An episode at 02:30 UTC belongs to the previous local day in Toronto (UTC-4)."""
+    with app.app_context():
+        a = Anime(title="TZShow", image_url="t.jpg")
+        db.session.add(a)
+        db.session.flush()
+        db.session.add(Episode(
+            anime_id=a.id, episode_number=1,
+            air_date_sub=datetime(2026, 6, 17, 2, 30), sub_source="anilist",
+        ))
+        db.session.commit()
+
+    res = client.get(
+        "/api/schedule/week?week=2026-06-14&lang=sub&tz=America/Toronto",
+        headers=_auth(app, user["id"]),
+    )
+    days = {d["date"]: d["episodes"] for d in res.get_json()["days"]}
+    assert len(days["2026-06-16"]) == 1
+    assert sum(len(v) for k, v in days.items() if k != "2026-06-16") == 0
+
+
+def test_week_invalid_tz_falls_back_to_utc(client, app, user):
+    with app.app_context():
+        a = Anime(title="TZShow2", image_url="t.jpg")
+        db.session.add(a)
+        db.session.flush()
+        db.session.add(Episode(
+            anime_id=a.id, episode_number=1,
+            air_date_sub=datetime(2026, 6, 17, 2, 30), sub_source="anilist",
+        ))
+        db.session.commit()
+
+    res = client.get(
+        "/api/schedule/week?week=2026-06-14&lang=sub&tz=Not/AZone",
+        headers=_auth(app, user["id"]),
+    )
+    days = {d["date"]: d["episodes"] for d in res.get_json()["days"]}
+    assert len(days["2026-06-17"]) == 1

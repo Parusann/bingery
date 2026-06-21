@@ -640,3 +640,31 @@ def test_orphan_catcher_reaches_seasonyear_null_ona():
 
     assert "ONA" in ORPHAN_FORMATS
     assert "seasonYear" not in CATALOG_QUERY_BY_FORMAT
+class _AiringClient:
+    """Stand-in for AniListClient exposing fetch_airing_page(page)."""
+
+    def __init__(self, pages):
+        self.pages = pages  # list of {"media": [...], "page_info": {...}}
+        self.calls = []
+
+    def fetch_airing_page(self, page=1, per_page=50):
+        self.calls.append(page)
+        if page <= len(self.pages):
+            return self.pages[page - 1]
+        return {"media": [], "page_info": {"hasNextPage": False}}
+
+
+def test_run_airing_sync_upserts_releasing(app):
+    from sync_anilist import run_airing_sync
+    from models import Anime
+
+    with app.app_context():
+        page = {
+            "media": [_media(anilist_id=70001, title="Airing Show", year=2026)],
+            "page_info": {"hasNextPage": False},
+        }
+        client = _AiringClient([page])
+        summary = run_airing_sync(client, max_pages=5, dry_run=False)
+        assert summary["media_processed"] == 1
+        assert client.calls == [1]
+        assert Anime.query.filter_by(anilist_id=70001).count() == 1
