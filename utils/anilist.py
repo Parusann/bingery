@@ -115,6 +115,29 @@ FORMAT_LABELS = {
     "MUSIC": "Music",
 }
 
+AIRING_QUERY = """
+query ($page: Int, $perPage: Int) {
+  Page(page: $page, perPage: $perPage) {
+    pageInfo { hasNextPage currentPage lastPage perPage }
+    media(type: ANIME, sort: POPULARITY_DESC, status: RELEASING) {
+      ...AnimeFields
+      nextAiringEpisode {
+        airingAt
+        episode
+        timeUntilAiring
+      }
+      airingSchedule {
+        nodes {
+          episode
+          airingAt
+        }
+      }
+    }
+  }
+}
+"""
+
+
 ANIME_FRAGMENT = """
 fragment AnimeFields on Media {
   id
@@ -475,6 +498,27 @@ class AniListClient:
             page, per_page, sort="POPULARITY_DESC",
             season=season.upper(), season_year=year,
         )
+
+    def fetch_airing_page(self, page: int = 1, per_page: int = 50) -> dict:
+        """Fetch one page of currently-RELEASING anime (popularity-sorted).
+
+        Used by sync_anilist.py's --airing mode to keep airing / next-episode
+        data fresh for the schedule. Returns the same shape as
+        fetch_catalog_page.
+        """
+        data = self._request(AIRING_QUERY, {"page": page, "perPage": per_page})
+        page_data = data["Page"]
+
+        media_list = []
+        for raw in page_data["media"]:
+            normalized = self._normalize_anime(raw)
+            normalized["next_airing_episode"] = raw.get("nextAiringEpisode") or None
+            normalized["airing_schedule"] = (
+                (raw.get("airingSchedule") or {}).get("nodes") or []
+            )
+            media_list.append(normalized)
+
+        return {"media": media_list, "page_info": page_data["pageInfo"]}
 
     def fetch_catalog_page(
         self, season_year: int, page: int = 1, per_page: int = 50
