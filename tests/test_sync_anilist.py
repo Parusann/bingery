@@ -576,3 +576,67 @@ def test_normalize_null_average_score_stays_none():
     client = AniListClient()
     out = client._normalize_anime({"id": 1, "idMal": None, "title": {"romaji": "X"}})
     assert out["api_score"] is None
+
+
+class _IdClient:
+    """Stand-in for AniListClient exposing get_anime(id) from a dict."""
+
+    def __init__(self, by_id):
+        self.by_id = by_id
+        self.calls = []
+
+    def get_anime(self, anilist_id):
+        self.calls.append(anilist_id)
+        return self.by_id.get(anilist_id)
+
+
+def test_sync_ids_backfills_specific_titles(app):
+    from sync_anilist import sync_ids
+    from models import Anime
+
+    with app.app_context():
+        client = _IdClient(
+            {137667: _media(anilist_id=137667, title="Lord of Mysteries", year=2025)}
+        )
+        summary = sync_ids(client, [137667])
+        assert summary["synced"] == 1
+        assert summary["failed"] == 0
+        assert Anime.query.filter_by(anilist_id=137667).count() == 1
+        assert client.calls == [137667]
+
+        summary2 = sync_ids(client, [137667])
+        assert summary2["synced"] == 1
+        assert Anime.query.filter_by(anilist_id=137667).count() == 1
+
+
+def test_sync_ids_skips_unknown_without_crashing(app):
+    from sync_anilist import sync_ids
+    from models import Anime
+
+    with app.app_context():
+        client = _IdClient({})
+        summary = sync_ids(client, [999999])
+        assert summary["synced"] == 0
+        assert summary["failed"] == 1
+        assert Anime.query.filter_by(anilist_id=999999).count() == 0
+
+
+def test_sync_ids_dry_run_writes_nothing(app):
+    from sync_anilist import sync_ids
+    from models import Anime
+
+    with app.app_context():
+        client = _IdClient({7: _media(anilist_id=7, title="Dry Run Show", year=2024)})
+        summary = sync_ids(client, [7], dry_run=True)
+        assert summary["synced"] == 1
+        assert Anime.query.filter_by(anilist_id=7).count() == 0
+
+
+def test_orphan_catcher_reaches_seasonyear_null_ona():
+    """Guard the coverage fix: the orphan-catcher must keep covering ONA, and
+    its query must NOT filter by seasonYear (that's what hides donghua)."""
+    from sync_anilist import ORPHAN_FORMATS
+    from utils.anilist import CATALOG_QUERY_BY_FORMAT
+
+    assert "ONA" in ORPHAN_FORMATS
+    assert "seasonYear" not in CATALOG_QUERY_BY_FORMAT

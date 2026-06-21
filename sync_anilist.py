@@ -402,6 +402,43 @@ def run_format_sync(
     }
 
 
+def sync_ids(client, ids, dry_run=False) -> dict:
+    """Backfill specific AniList media IDs.
+
+    Fetches each id via client.get_anime() and upserts it through the same
+    process_media_entry path the page-sync uses. Idempotent (upsert by
+    anilist_id). Returns {"requested", "synced", "failed"}. A not-found or
+    failed id is logged and skipped, not fatal.
+    """
+    from models import db
+
+    requested = len(ids)
+    synced = 0
+    failed = 0
+    for anilist_id in ids:
+        try:
+            media = client.get_anime(anilist_id)
+        except Exception as exc:
+            print(f"  id={anilist_id}: fetch failed: {type(exc).__name__}: {exc}")
+            failed += 1
+            continue
+        if not media:
+            print(f"  id={anilist_id}: not found on AniList")
+            failed += 1
+            continue
+        process_media_entry(media, dry_run=dry_run)
+        if not dry_run:
+            db.session.commit()
+        title = media.get("title") or media.get("title_romaji") or anilist_id
+        print(f"  id={anilist_id}: {'(dry-run) ' if dry_run else ''}synced {title}")
+        synced += 1
+    print(
+        f"--ids done: requested={requested} synced={synced} failed={failed} "
+        f"dry_run={dry_run}"
+    )
+    return {"requested": requested, "synced": synced, "failed": failed}
+
+
 def main(argv: Optional[list] = None) -> int:
     parser = argparse.ArgumentParser(
         description="Full-catalog AniList sync for Bingery."
@@ -466,6 +503,17 @@ def main(argv: Optional[list] = None) -> int:
         ),
     )
 
+    parser.add_argument(
+        "--ids",
+        type=int,
+        nargs="+",
+        metavar="ANILIST_ID",
+        help=(
+            "Backfill specific AniList media IDs (space-separated), e.g. "
+            "--ids 137667 156092. Fetches each by id and upserts it."
+        ),
+    )
+
     args = parser.parse_args(argv)
 
     # Default behavior with no mode flag: resume.
@@ -496,6 +544,13 @@ def main(argv: Optional[list] = None) -> int:
     ctx.push()
 
     try:
+        # ── Targeted backfill branch: --ids ─────────────────────────────────
+        if args.ids:
+            from utils.anilist import AniListClient as _AniListClient
+            client = _AniListClient()
+            summary = sync_ids(client, args.ids, dry_run=args.dry_run)
+            return 0 if summary["failed"] < summary["requested"] else 1
+
         # ── Orphan-catcher branch: --format / --all-orphan-formats ──────────
         if args.media_format or args.all_orphan_formats:
             if args.media_format and args.all_orphan_formats:
