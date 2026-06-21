@@ -15,6 +15,7 @@ export function AuthForm({ onSuccess }: { onSuccess?: () => void }) {
   const [password, setPassword] = useState("");
   const [username, setUsername] = useState("");
   const [displayName, setDisplayName] = useState("");
+  const [inviteCode, setInviteCode] = useState("");
   const [code, setCode] = useState("");
   const [resendIn, setResendIn] = useState(RESEND_SECONDS);
   const [resending, setResending] = useState(false);
@@ -47,6 +48,7 @@ export function AuthForm({ onSuccess }: { onSuccess?: () => void }) {
           password,
           username,
           display_name: displayName.trim() || undefined,
+          invite_code: inviteCode.trim() || undefined,
         });
         setEmail(normEmail);
         setCode("");
@@ -191,6 +193,19 @@ export function AuthForm({ onSuccess }: { onSuccess?: () => void }) {
             onChange={(e) => setDisplayName(e.target.value)}
             autoComplete="nickname"
           />
+          <Input
+            label="Invite code"
+            value={inviteCode}
+            onChange={(e) => setInviteCode(e.target.value)}
+            autoComplete="off"
+          />
+          <p className="text-xs text-text-muted">
+            No invite code?{" "}
+            <a href="/" className="text-amber hover:underline">
+              Join the waitlist
+            </a>
+            .
+          </p>
         </>
       ) : null}
       <Input
