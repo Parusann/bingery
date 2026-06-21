@@ -93,11 +93,8 @@ class Config:
             problems.append(
                 "BREVO_API_KEY and EMAIL_FROM must be set when EMAIL_PROVIDER=brevo"
             )
-        if not os.environ.get("SIGNUP_INVITE_CODE"):
-            problems.append(
-                "SIGNUP_INVITE_CODE must be set — signups are invite-gated in "
-                "production (leave it unset only for an intentionally open launch)"
-            )
+        # (SIGNUP_INVITE_CODE is NOT a required prod secret — routes/auth.py
+        #  defaults the invite code to 782414; set the env var to rotate it.)
         if problems:
             sys.stderr.write(
                 "FATAL: production safety checks failed:\n"
