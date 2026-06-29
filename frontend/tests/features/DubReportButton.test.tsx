@@ -2,12 +2,10 @@ import { describe, expect, it, beforeEach, vi } from "vitest";
 import { render, screen, fireEvent } from "@testing-library/react";
 
 const useAnimeEpisodesMock = vi.hoisted(() => vi.fn());
-const useScheduleMock = vi.hoisted(() => vi.fn());
 const createDubReportMock = vi.hoisted(() => vi.fn());
 const useCreateDubReportMock = vi.hoisted(() => vi.fn());
 
 vi.mock("@/hooks/useSchedule", () => ({
-  useSchedule: useScheduleMock,
   useAnimeEpisodes: useAnimeEpisodesMock,
 }));
 

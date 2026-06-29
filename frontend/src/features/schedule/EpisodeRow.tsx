@@ -50,11 +50,21 @@ export function EpisodeRow({ episode }: { episode: ScheduleWeekEpisode }) {
         </div>
         <div className="mt-1 flex items-center gap-2 text-[12px] text-ink-2">
           <Clock className="h-3 w-3" />
-          <span>{formatLocalTime(episode.air_time_utc)}</span>
-          <span className="font-mono text-[10px] tracking-[0.08em] rounded px-[5px] py-[1px] bg-white/5 text-mute">
-            {formatLocalTzAbbr()}
-          </span>
-          {episode.estimated && <EstimatedTag />}
+          {episode.estimated ? (
+            <>
+              {/* Synthetic dub: the projected clock time is meaningless, so we
+                  show "time TBD" rather than a fake-precise minute. */}
+              <span className="text-mute">time TBD</span>
+              <EstimatedTag />
+            </>
+          ) : (
+            <>
+              <span>{formatLocalTime(episode.air_time_utc)}</span>
+              <span className="font-mono text-[10px] tracking-[0.08em] rounded px-[5px] py-[1px] bg-white/5 text-mute">
+                {formatLocalTzAbbr()}
+              </span>
+            </>
+          )}
         </div>
       </div>
 

@@ -1,11 +1,9 @@
 import { describe, expect, it, beforeEach, afterEach, vi } from "vitest";
 import { render, screen } from "@testing-library/react";
 
-const useScheduleMock = vi.hoisted(() => vi.fn());
 const useAnimeEpisodesMock = vi.hoisted(() => vi.fn());
 
 vi.mock("@/hooks/useSchedule", () => ({
-  useSchedule: useScheduleMock,
   useAnimeEpisodes: useAnimeEpisodesMock,
 }));
 
@@ -120,5 +118,42 @@ describe("NextEpisodeWidget", () => {
     expect(
       screen.getByText(/Episode 1 \(sub\) airs in now/)
     ).toBeInTheDocument();
+  });
+
+  it("flags an estimated dub date with the estimated tag", () => {
+    useAnimeEpisodesMock.mockReturnValue({
+      data: {
+        next_sub: null,
+        next_dub: {
+          ...baseEpisode,
+          episode_number: 5,
+          air_date_dub: "2026-05-16T03:00:00Z",
+          dub_source: "synthetic_lag_8w",
+          dub_estimated: true,
+        },
+      },
+    });
+    render(<NextEpisodeWidget animeId={42} />);
+    expect(
+      screen.getByText(/Episode 5 \(dub\) expected ~/)
+    ).toBeInTheDocument();
+    expect(screen.getByText(/estimated/i)).toBeInTheDocument();
+  });
+
+  it("does not show the estimated tag for a real-source dub date", () => {
+    useAnimeEpisodesMock.mockReturnValue({
+      data: {
+        next_sub: null,
+        next_dub: {
+          ...baseEpisode,
+          episode_number: 6,
+          air_date_dub: "2026-05-16T03:00:00Z",
+          dub_source: "crunchyroll_rss",
+          dub_estimated: false,
+        },
+      },
+    });
+    render(<NextEpisodeWidget animeId={42} />);
+    expect(screen.queryByText(/estimated/i)).toBeNull();
   });
 });

@@ -28,8 +28,9 @@ DEFAULT_RECENT_WINDOW_DAYS = 90
 
 # Real dub sources we never overwrite from the synthetic projector, even
 # when --overwrite is passed. The synthetic seed exists to fill gaps, not
-# to clobber authoritative data from RSS, AnimeSchedule, or user reports.
-_REAL_DUB_SOURCES = {"crunchyroll_rss", "animeschedule"}
+# to clobber authoritative data from RSS, AnimeSchedule, the research
+# fallback, or user reports. Real sources also seed each show's learned lag.
+_REAL_DUB_SOURCES = {"crunchyroll_rss", "animeschedule", "research"}
 
 
 def _learned_lag_days(deltas: list[int]) -> int | None:

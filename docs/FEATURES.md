@@ -401,26 +401,31 @@ Route: `/schedule`, lazy-loaded in `frontend/src/routes.tsx` (line 78). Componen
 Data layer:
 
 - `frontend/src/hooks/useScheduleWeek.ts` — React Query, key `["schedule-week", week, lang, mine]`, `staleTime: 60_000`, disabled until `week` exists.
-- `frontend/src/hooks/useSchedule.ts` — `useSchedule` (legacy `/schedule/upcoming`, currently has **no UI consumer**) and `useAnimeEpisodes` (key `["anime-episodes", animeId]`), used by `frontend/src/features/details/NextEpisodeWidget.tsx` and `frontend/src/features/details/DubReportButton.tsx`.
-- `frontend/src/lib/api.ts` — `getScheduleWeek`, `getSchedule`, `getAnimeEpisodes`. `/schedule` and `/anime` are in `NSFW_AWARE_PREFIXES`, so when the global NSFW toggle (zustand store `frontend/src/stores/nsfw`) is on, requests get `?include_nsfw=true` appended automatically.
-- Types in `frontend/src/types/models.ts`: `ScheduleWeekEpisode`, `ScheduleWeekDay`, `ScheduleWeekResponse`, plus legacy `ScheduleEpisode`/`ScheduleDay`/`ScheduleResponse` and `Episode`/`AnimeEpisodesResponse`.
+- `frontend/src/hooks/useSchedule.ts` — `useAnimeEpisodes` (key `["anime-episodes", animeId]`), used by `frontend/src/features/details/NextEpisodeWidget.tsx` and `frontend/src/features/details/DubReportButton.tsx`. (The legacy `useSchedule`/`/schedule/upcoming` hook was removed 2026-06-28.)
+- `frontend/src/lib/api.ts` — `getScheduleWeek`, `getAnimeEpisodes`. `/schedule` and `/anime` are in `NSFW_AWARE_PREFIXES`, so when the global NSFW toggle (zustand store `frontend/src/stores/nsfw`) is on, requests get `?include_nsfw=true` appended automatically.
+- Types in `frontend/src/types/models.ts`: `ScheduleWeekEpisode`, `ScheduleWeekDay`, `ScheduleWeekResponse`, and `Episode`/`AnimeEpisodesResponse` (the latter now carry `dub_source` + `dub_estimated`). The legacy `ScheduleEpisode`/`ScheduleDay`/`ScheduleResponse` types were removed with `/upcoming`.
 
 ### Backend
 
-All three endpoints live in `routes/schedule.py` (`schedule_bp`), registered at `url_prefix="/api"` in `app.py`.
+Two endpoints live in `routes/schedule.py` (`schedule_bp`), registered at `url_prefix="/api"` in `app.py`.
 
 | Method | Path | Auth | Purpose |
 |--------|------|------|---------|
 | GET | `/api/schedule/week` | JWT | One Sunday-anchored 7-day window of episodes, grouped by UTC date; supports `week` (required, `YYYY-MM-DD`), `lang` (`sub`/`dub`/`both`, default `both`), `mine` (`0`/`1`, default `0`). Powers the `/schedule` page. |
-| GET | `/api/schedule/upcoming` | JWT | Legacy rolling window from today UTC midnight; `days` (1–30, default 7, clamped), `kind` (`sub`/`dub`/`both`, default `sub`). Still served, but no current UI consumer. |
-| GET | `/api/anime/<int:anime_id>/episodes` | JWT | Full episode list for one anime plus `next_sub`/`next_dub` (earliest strictly-upcoming episode per kind). Powers `NextEpisodeWidget` and `DubReportButton`. |
+| GET | `/api/anime/<int:anime_id>/episodes` | JWT | Full episode list for one anime plus `next_sub`/`next_dub` (earliest strictly-upcoming episode per kind). Each episode carries `dub_source` + `dub_estimated`. Powers `NextEpisodeWidget` and `DubReportButton`. |
+
+The legacy `/api/schedule/upcoming` endpoint (and its unused `useSchedule` hook) was **removed** in the 2026-06-28 schedule-consistency pass; `/week` is the sole timeline. Dub ingestion also exposes an admin endpoint (`routes/admin.py`, `url_prefix="/api/admin"`):
+
+| Method | Path | Auth | Purpose |
+|--------|------|------|---------|
+| POST | `/api/admin/ingest-dub-dates` | `X-Admin-Secret` | Batch-ingest corroborated real dub dates (`dub_source="research"` default) by `anilist_id`/`title` match; fills NULL/synthetic, preserves authoritative sources unless `overwrite`. The monthly `bingery-dub-research` task posts here. |
 
 Server-side logic worth knowing:
 
-- **Windowing**: `/week` parses `week` as UTC midnight and selects `[week, week+7d)`. It does **not** validate that the date is a Sunday — any anchor date yields a 7-day window starting there. `/upcoming` windows `[today 00:00 UTC, +days)`.
-- **Bucketing & shape**: episodes are bucketed by the UTC date of their air timestamp. The response always contains exactly 7 (or `days`) day objects, including empty ones, sorted ascending. Within a day: ascending air time, tie-broken by title (lowercased romaji `title` on `/week`; display title on `/upcoming`).
+- **Windowing**: `/week` parses `week` as UTC midnight and selects `[week, week+7d)`. It does **not** validate that the date is a Sunday — any anchor date yields a 7-day window starting there.
+- **Bucketing & shape**: episodes are bucketed by the UTC date of their air timestamp. The response always contains exactly 7 (or `days`) day objects, including empty ones, sorted ascending. Within a day: ascending air time, tie-broken by lowercased romaji `title`.
 - **Dual rows for `both`**: sub and dub are collected as separate passes over `Episode.air_date_sub` and `Episode.air_date_dub`, so one episode with both dates in-window produces two entries (`type: "sub"` and `type: "dub"`). The frontend keys rows by `id` + `type` accordingly.
-- **`estimated` flag**: `true` exactly when `type == "dub"` and `Episode.dub_source == "synthetic_lag_8w"` (`SYNTHETIC_TAG` imported from `seed_dub_schedule.py`). `/upcoming` does not expose this flag.
+- **`estimated` flag**: `true` exactly when `type == "dub"` and `Episode.dub_source == "synthetic_lag_8w"` (`SYNTHETIC_TAG` from `seed_dub_schedule.py`). `/api/anime/<id>/episodes` exposes the same signal per episode as `dub_estimated` (alongside the raw `dub_source`), so the detail page labels an estimated dub exactly like the timeline.
 - **Watchlist annotation**: `_watchlisted_anime_ids` queries `WatchlistEntry.anime_id` for the JWT user (string identity cast to `int` — documented in-code as necessary to avoid a silently empty result). `mine=1` filters to those ids; every `/week` row carries `on_watchlist`.
 - **NSFW filtering**: every query passes through `maybe_exclude_nsfw` (`utils/nsfw.py`) — anime tagged Hentai are always excluded; Ecchi is excluded unless `?include_nsfw=true`.
 - **Datetime convention**: `Episode` air dates are stored as naive UTC. Query bounds strip tzinfo before binding; outputs are normalized to ISO-8601 with a trailing `Z` (`_as_iso_z`, naive values assumed UTC).
@@ -429,7 +434,7 @@ Server-side logic worth knowing:
   - `utils/dub_sources/crunchyroll.py` (Tier 1) — parses Crunchyroll's public RSS feed (`CR_RSS_URL`), fuzzy-matches titles, writes `dub_source="crunchyroll_rss"`.
   - `utils/dub_sources/animeschedule.py` (Tier 2) — AnimeSchedule.net API; only fills NULL dub dates (Tier 1 wins).
   - `routes/dub_reports.py` (Tier 3) — an accepted user dub report **unconditionally** overwrites `air_date_dub` and sets `dub_source="user:<username>"` (highest precedence).
-  - `seed_dub_schedule.py` — synthetic filler: projects `air_date_sub + 56 days` (8-week simulcast lag) onto the top-N airing anime, tagging `dub_source="synthetic_lag_8w"`. It never overwrites rows from real sources (`crunchyroll_rss`, `animeschedule`, `user:%`), even with `--overwrite`; supports `--dry-run`, `--reset` (wipe synthetic rows), `--top N`, `--recent-window-days N`. Implemented as a bulk SQL `UPDATE` (the ORM version was OOM-killed on Fly's 256MB machines).
+  - `seed_dub_schedule.py` — synthetic filler: projects `air_date_sub + lag` (each show's learned median sub→dub gap when it has real dub data, else the 56-day default) onto the top-N airing anime, tagging `dub_source="synthetic_lag_8w"`. It never overwrites rows from real sources (`crunchyroll_rss`, `animeschedule`, `research`, `user:%`), even with `--overwrite`; supports `--dry-run`, `--reset` (wipe synthetic rows), `--top N`, `--recent-window-days N`. Implemented as a bulk SQL `UPDATE` (the ORM version was OOM-killed on Fly's 256MB machines).
 
 ### Data model
 
@@ -443,7 +448,7 @@ Owned table — `Episode` (`models.py`):
 | `air_date_sub` | DateTime (naive UTC) | nullable, indexed |
 | `air_date_dub` | DateTime (naive UTC) | nullable, indexed |
 | `sub_source` | String(40) | default `"anilist"` |
-| `dub_source` | String(40) | nullable; one of `crunchyroll_rss`, `animeschedule`, `user:<username>`, `synthetic_lag_8w` |
+| `dub_source` | String(40) | nullable; one of `crunchyroll_rss`, `animeschedule`, `research`, `user:<username>`, `synthetic_lag_8w` |
 | `created_at` / `updated_at` | DateTime | auto-managed |
 
 Dependencies: `Anime` (display title prefers `title_english` over `title`; `image_url` for posters; `api_score`/`status` drive the synthetic-seed cohort), `WatchlistEntry` (`on_watchlist`/`mine`), `Genre` + `anime_genres` (NSFW filtering), and `DubReport` (writes back into `Episode` on acceptance).
@@ -452,9 +457,8 @@ Client state: URL search params (`week`, `lang`, `mine`) are the source of truth
 
 ### Configuration
 
-- `days` query param on `/upcoming`: default 7, clamped to [1, 30]; invalid input falls back to 7 rather than erroring.
-- `kind` default `"sub"` (`/upcoming`); `lang` default `"both"` (`/week`); `mine` default `"0"`.
-- React Query `staleTime`: 60 000 ms for both `useScheduleWeek` and `useSchedule`.
+- `lang` default `"both"` (`/week`); `mine` default `"0"`.
+- React Query `staleTime`: 60 000 ms for `useScheduleWeek`.
 - `seed_dub_schedule.py`: `SYNTHETIC_TAG = "synthetic_lag_8w"`, `LAG_DAYS = 56`, `--top` default 400, `DEFAULT_RECENT_WINDOW_DAYS = 90`.
 - `ANIMESCHEDULE_API_KEY` env var — AnimeSchedule.net API token (`utils/dub_sources/animeschedule.py`; can also be passed explicitly).
 - `CR_RSS_URL = "https://feeds.feedburner.com/crunchyroll/rss"`, `FETCH_TIMEOUT = 30` s in both dub ingesters.
@@ -468,14 +472,14 @@ Client state: URL search params (`week`, `lang`, `mine`) are the source of truth
 - **Unknown anime** on `/api/anime/<id>/episodes` → 404 `{"error": "anime not found"}`.
 - **Duplicate appearances**: with `lang=both`, a show can legitimately appear twice in one week (sub row and dub row), each with its own badge.
 - **`next_sub`/`next_dub`** exclude anything strictly in the past (`air < now`); an episode airing exactly "now" still counts as upcoming. `NextEpisodeWidget` renders nothing when there is no upcoming episode of either kind, and its relative countdown ("2d 5h") is computed at render time, not live-ticking.
-- **Synthetic dub dates** dominate dub coverage: real sources cover few titles (and the AnimeSchedule key was 401-ing per the seed script's docstring), so most dub rows are 8-week projections flagged `estimated`. Accepted user dub reports replace them and the tag disappears, since `dub_source` is no longer the synthetic tag.
+- **Synthetic dub dates** fill the gaps: real dub coverage depends on a valid `ANIMESCHEDULE_API_KEY` (when unset, AnimeSchedule 401s and most dub rows fall back to projections flagged `estimated`). Restoring the token, the monthly `research` ingest, or an accepted user report replaces them and the tag disappears, since `dub_source` is no longer the synthetic tag. See `docs/runbooks/dub-schedule.md`.
 - **NSFW**: Hentai never appears in the schedule under any setting; Ecchi appears only with the global toggle on.
 - **`mine=1` belt-and-braces**: the backend filters to watchlisted anime, and `DaySection` additionally drops non-watchlist rows client-side, so a stale cache can't leak others' rows into "My shows" view.
 - **Empty days still render** — `DayBanner` shows a shorter "No releases" banner; the strip chip simply omits its count badge.
 - **Banner collage** uses at most the first 3 episodes of the day (sorted order), with mask variants for 1/2/3 images; days with one or two episodes get a sparser collage (a known-gap note in the spec).
 - **No pagination or row caps** on either endpoint — a heavy day returns every row.
 - **No request-time caching** beyond the 60 s client `staleTime`; every navigation past that refetches.
-- **`/api/schedule/upcoming` is effectively legacy**: kept for API compatibility and tests, fully functional, but the only frontend hook that calls it (`useSchedule`) is unused.
+- **Estimated dubs avoid false precision**: synthetic dub rows render "time TBD" in the timeline and "expected ~<date>" in the detail widget (never a fake clock time or live countdown); the `estimated` tag's tooltip explains the date itself is approximate.
 
 ---
 
