@@ -269,23 +269,10 @@ export interface Episode {
   episode_number: number;
   air_date_sub: string | null;
   air_date_dub: string | null;
-}
-
-export interface ScheduleEpisode {
-  id: number;
-  episode_number: number;
-  air_at: string;
-  anime: AnimeSummary;
-  kind: "sub" | "dub";
-}
-
-export interface ScheduleDay {
-  date: string;
-  episodes: ScheduleEpisode[];
-}
-
-export interface ScheduleResponse {
-  days: ScheduleDay[];
+  /** Raw dub provenance, e.g. "crunchyroll_rss" | "animeschedule" | "user:<name>" | "synthetic_lag_8w" | null. */
+  dub_source?: string | null;
+  /** True only when the dub date is the synthetic (sub + lag) projection. */
+  dub_estimated?: boolean;
 }
 
 export interface AnimeEpisodesResponse {

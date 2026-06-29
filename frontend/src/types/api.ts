@@ -128,8 +128,7 @@ export interface ActivityResp extends ActivityResponse {}
 import type { AnimeCompareResponse } from "./models";
 export interface CompareResp extends AnimeCompareResponse {}
 
-import type { ScheduleResponse, AnimeEpisodesResponse } from "./models";
-export interface ScheduleResp extends ScheduleResponse {}
+import type { AnimeEpisodesResponse } from "./models";
 export interface AnimeEpisodesResp extends AnimeEpisodesResponse {}
 
 import type { DubReport } from "./models";

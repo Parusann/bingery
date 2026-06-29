@@ -47,6 +47,8 @@ describe("EpisodeRow", () => {
       </MemoryRouter>,
     );
     expect(screen.getByText(/estimated/i)).toBeInTheDocument();
+    // Estimated rows hide the fake-precise time in favor of "time TBD".
+    expect(screen.getByText(/time TBD/i)).toBeInTheDocument();
   });
 
   it("applies highlighted styling when on_watchlist=true", () => {

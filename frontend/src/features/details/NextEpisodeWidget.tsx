@@ -1,4 +1,5 @@
 import { useAnimeEpisodes } from "@/hooks/useSchedule";
+import { EstimatedTag } from "@/features/schedule/EstimatedTag";
 import type { Episode } from "@/types/models";
 
 function formatRelative(iso: string): string {
@@ -16,26 +17,40 @@ function formatRelative(iso: string): string {
   return `${days}d ${remHours}h`;
 }
 
+function formatApproxDate(iso: string): string {
+  return new Date(iso).toLocaleDateString(undefined, {
+    month: "short",
+    day: "numeric",
+  });
+}
+
 function Pill({
   episode,
   kind,
   airAt,
+  estimated = false,
 }: {
   episode: Episode;
   kind: "sub" | "dub";
   airAt: string;
+  estimated?: boolean;
 }) {
   const tone =
     kind === "dub"
       ? "bg-violet-400/15 text-violet-300 border-violet-400/30"
       : "bg-amber/15 text-amber border-amber/30";
+  // Estimated dub: avoid a fake live countdown off a projected time — show an
+  // approximate date instead so the precision matches what we actually know.
+  const label = estimated
+    ? `Episode ${episode.episode_number} (${kind}) expected ~${formatApproxDate(airAt)}`
+    : `Episode ${episode.episode_number} (${kind}) airs in ${formatRelative(airAt)}`;
   return (
     <span
       className={`inline-flex items-center gap-2 px-3 py-1.5 rounded-full border text-sm ${tone}`}
       title={airAt}
     >
       <span aria-hidden>📺</span>
-      Episode {episode.episode_number} ({kind}) airs in {formatRelative(airAt)}
+      {label}
     </span>
   );
 }
@@ -47,12 +62,20 @@ export function NextEpisodeWidget({ animeId }: { animeId: number }) {
   const dubEp = q.data.next_dub;
   if (!subEp && !dubEp) return null;
   return (
-    <div className="flex flex-wrap gap-2 mt-4">
+    <div className="flex flex-wrap items-center gap-2 mt-4">
       {subEp && subEp.air_date_sub ? (
         <Pill episode={subEp} kind="sub" airAt={subEp.air_date_sub} />
       ) : null}
       {dubEp && dubEp.air_date_dub ? (
-        <Pill episode={dubEp} kind="dub" airAt={dubEp.air_date_dub} />
+        <span className="inline-flex items-center gap-2">
+          <Pill
+            episode={dubEp}
+            kind="dub"
+            airAt={dubEp.air_date_dub}
+            estimated={Boolean(dubEp.dub_estimated)}
+          />
+          {dubEp.dub_estimated ? <EstimatedTag /> : null}
+        </span>
       ) : null}
     </div>
   );

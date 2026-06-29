@@ -261,11 +261,6 @@ export const api = {
       `/compare?a=${aId}&b=${bId}`
     ),
 
-  getSchedule: (days = 7, kind: "sub" | "dub" | "both" = "sub") =>
-    request<import("@/types/api").ScheduleResp>(
-      `/schedule/upcoming?days=${days}&kind=${kind}`
-    ),
-
   getScheduleWeek: (
     week: string,
     lang: "sub" | "dub" | "both" = "both",

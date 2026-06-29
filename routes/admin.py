@@ -121,3 +121,31 @@ def sync_dub_sources():
         results["snapshot"] = {"error": f"{type(exc).__name__}: {exc}"}
 
     return jsonify(results), 200
+
+
+@admin_bp.route("/ingest-dub-dates", methods=["POST"])
+def ingest_dub_dates():
+    """Ingest real dub air dates from a JSON batch (the "research" fallback).
+
+    Body: {"rows": [...], "dub_source"?: str, "overwrite"?: bool}
+    Each row: {anilist_id?|title?, episode_number, air_date(ISO-8601)}.
+
+    Default dub_source="research": these dates upgrade NULL/synthetic rows and
+    are preserved by the synthetic seeder, but won't clobber crunchyroll_rss /
+    animeschedule / user:* unless overwrite=true. Powers the monthly research
+    task that fills dub dates AnimeSchedule.net still misses.
+    """
+    _check_secret()
+
+    body = request.get_json(silent=True) or {}
+    rows = body.get("rows")
+    if not isinstance(rows, list):
+        return jsonify({"error": "body must include a 'rows' array"}), 400
+
+    dub_source = (body.get("dub_source") or "research").strip() or "research"
+    overwrite = bool(body.get("overwrite", False))
+
+    from utils.dub_sources.manual_ingest import ingest_dub_rows
+
+    summary = ingest_dub_rows(rows, dub_source=dub_source, overwrite=overwrite)
+    return jsonify(summary), 200
