@@ -2,8 +2,9 @@ import { useEffect, useState } from "react";
 import { Input } from "@/design/Input";
 import { Button } from "@/design/Button";
 import { useAuth } from "@/stores/auth";
+import { api } from "@/lib/api";
 
-type Mode = "login" | "register";
+type Mode = "login" | "register" | "waitlist";
 type Step = "form" | "verify";
 
 const RESEND_SECONDS = 60;
@@ -22,6 +23,9 @@ export function AuthForm({ onSuccess }: { onSuccess?: () => void }) {
   const [resent, setResent] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
+  const [waitlistStatus, setWaitlistStatus] = useState<
+    "added" | "already" | null
+  >(null);
   const signIn = useAuth((s) => s.signIn);
   const signUp = useAuth((s) => s.signUp);
   const verifyEmail = useAuth((s) => s.verifyEmail);
@@ -38,7 +42,12 @@ export function AuthForm({ onSuccess }: { onSuccess?: () => void }) {
     setError(null);
     setLoading(true);
     try {
-      if (mode === "login") {
+      if (mode === "waitlist") {
+        const res = await api.joinWaitlist({
+          email: email.trim().toLowerCase(),
+        });
+        setWaitlistStatus(res.status);
+      } else if (mode === "login") {
         await signIn({ email, password });
         onSuccess?.();
       } else if (step === "form") {
@@ -143,6 +152,59 @@ export function AuthForm({ onSuccess }: { onSuccess?: () => void }) {
     );
   }
 
+  if (mode === "waitlist") {
+    return (
+      <form
+        onSubmit={(e) => {
+          e.preventDefault();
+          submit();
+        }}
+        className="flex flex-col gap-4"
+      >
+        <div>
+          <h2 className="font-display text-2xl mb-1">Join the waitlist</h2>
+          <p className="text-sm text-text-muted">
+            Leave your email and we'll let you know the moment a spot opens
+            up.
+          </p>
+        </div>
+        {waitlistStatus ? (
+          <p className="text-sm text-text">
+            {waitlistStatus === "added"
+              ? "You're on the list! We'll email you when a spot opens up."
+              : "You're already on the list — we'll be in touch."}
+          </p>
+        ) : (
+          <>
+            <Input
+              label="Email"
+              type="email"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              autoComplete="email"
+              required
+            />
+            {error ? <p className="text-sm text-danger">{error}</p> : null}
+            <Button type="submit" loading={loading}>
+              Join waitlist
+            </Button>
+          </>
+        )}
+        <button
+          type="button"
+          disabled={loading}
+          onClick={() => {
+            setMode("register");
+            setError(null);
+          }}
+          className="text-sm text-text-muted hover:text-text text-left disabled:opacity-50"
+        >
+          ← Back to sign up
+        </button>
+      </form>
+    );
+  }
+
   return (
     <form
       onSubmit={(e) => {
@@ -201,9 +263,18 @@ export function AuthForm({ onSuccess }: { onSuccess?: () => void }) {
           />
           <p className="text-xs text-text-muted">
             No invite code?{" "}
-            <a href="/" className="text-amber hover:underline">
+            <button
+              type="button"
+              disabled={loading}
+              onClick={() => {
+                setMode("waitlist");
+                setWaitlistStatus(null);
+                setError(null);
+              }}
+              className="text-amber hover:underline disabled:opacity-50"
+            >
               Join the waitlist
-            </a>
+            </button>
             .
           </p>
         </>

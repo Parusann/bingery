@@ -156,6 +156,12 @@ export const api = {
     setToken(null);
   },
 
+  joinWaitlist: (body: { email: string }) =>
+    request<{ status: "added" | "already" }>("/waitlist", {
+      method: "POST",
+      body: JSON.stringify(body),
+    }),
+
   getAnime: (q = "") => request<AnimeListResponse>("/anime" + q),
   getAnimeDetail: (id: number) => request<AnimeDetailResponse>(`/anime/${id}`),
   getSimilar: (id: number) => request<SimilarResponse>(`/anime/${id}/similar`),
