@@ -182,8 +182,23 @@ def _fan_genre_index() -> dict[int, set[str]]:
     return idx
 
 
-def _feature_for(anime, tag_index, fan_index) -> dict:
-    quality_10 = max(anime.api_score or 0.0, anime.get_community_score() or 0.0)
+def _community_score_index() -> dict[int, float]:
+    """{anime_id: avg rating} in one grouped query — calling
+    get_community_score() per candidate is an N+1 over the whole catalog."""
+    from sqlalchemy import func
+
+    from models import Rating, db
+
+    return {
+        anime_id: float(avg)
+        for anime_id, avg in db.session.query(
+            Rating.anime_id, func.avg(Rating.score)
+        ).group_by(Rating.anime_id)
+    }
+
+
+def _feature_for(anime, tag_index, fan_index, score_index) -> dict:
+    quality_10 = max(anime.api_score or 0.0, score_index.get(anime.id, 0.0))
     return build_feature_from_parts(
         tags={n: r / 100 for n, r in tag_index.get(anime.id, {}).items()},
         genres={g.name for g in anime.official_genres},
@@ -211,7 +226,8 @@ def similar_to(seed, limit=12, user_id=None, include_nsfw=False) -> dict:
 
     tag_index = get_tag_index()
     fan_index = _fan_genre_index()
-    seed_feat = _feature_for(seed, tag_index, fan_index)
+    score_index = _community_score_index()
+    seed_feat = _feature_for(seed, tag_index, fan_index, score_index)
     fam_anilist = franchise_anilist_ids(seed)
     seed_root = title_root(seed.title)
 
@@ -260,7 +276,9 @@ def similar_to(seed, limit=12, user_id=None, include_nsfw=False) -> dict:
             continue
         if c.id in excluded_user_ids:
             continue
-        s = similarity_score(seed_feat, _feature_for(c, tag_index, fan_index))
+        s = similarity_score(
+            seed_feat, _feature_for(c, tag_index, fan_index, score_index)
+        )
         if profile is not None:
             personal = score_candidate(
                 {
@@ -283,16 +301,25 @@ def similar_to(seed, limit=12, user_id=None, include_nsfw=False) -> dict:
         )[:4]
         scored.append((s, c, shared))
 
+    def _card(c):
+        # include_community fires 3 queries per card (score, count, fan
+        # genres) — fill the score from the batch index instead.
+        d = c.to_dict(include_community=False)
+        d["community_score"] = (
+            round(score_index[c.id], 2) if c.id in score_index else None
+        )
+        return d
+
     scored.sort(key=lambda t: (-t[0], t[1].id))
     return {
         "similar": [
             {
-                **c.to_dict(),
+                **_card(c),
                 "match_score": round(s, 1),
                 "shared_tags": shared,
                 "in_plan_to_watch": c.id in plan_ids,
             }
             for s, c, shared in scored[:limit]
         ],
-        "franchise": [c.to_dict() for c in franchise[:6]],
+        "franchise": [_card(c) for c in franchise[:6]],
     }
