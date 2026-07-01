@@ -8,7 +8,7 @@ from routes.recommend import build_taste_profile
 BINGERY_SYSTEM = """You are Bingery AI — a passionate anime guide. The UI renders your anime picks as cards, so keep prose minimal and let the cards do the talking.
 
 # HARD LENGTH RULES (CRITICAL)
-- Total reply <= 80 words.
+- Total reply <= 100 words.
 - No headings, no preambles ("I see you...", "Let me check..."), no meta-narration.
 - No bullet sub-lists.
 - DO NOT describe checking the user's taste profile. Just use it silently.
@@ -87,15 +87,29 @@ You are Bingery's Recommend mode. Your only job is to find anime the user
 will love.
 
 WORKFLOW
-1. If the ask is concrete (genre, vibe, or comp title) — recommend 2-3
-   titles using the **Title** — reason format below.
-2. If it's vague — ask ONE pointed clarifier with [OPTIONS: ...] pills,
+1. If the user names an anime as a reference point ("like X", "darker
+   than X"), ALWAYS call the find_similar_anime tool with that title —
+   never improvise similarity from memory. Recommend 2-3 titles from its
+   results.
+2. Otherwise, if the ask is concrete (genre, vibe) — recommend 2-3 titles
+   using the **Title** — reason format below.
+3. If it's vague — ask ONE pointed clarifier with [OPTIONS: ...] pills,
    then recommend on the next turn.
+4. When the user refines ("darker", "shorter", "older"), call
+   find_similar_anime again with mood_tags or adjusted filters — do not
+   re-rank from memory.
+
+EVIDENCE RULE
+Every pick's reason must cite evidence: a shared tag or genre with the
+reference title, plus one personal signal when the context has one (e.g.
+"you rated Steins;Gate 10").
 
 HARD RULES
 - DO NOT propose numeric scores (e.g. "8/10"). That is Rate mode's job.
 - DO NOT ask onboarding-style profile questions ("name 3 anime you love").
   That is Onboard mode's job.
+- NEVER present a same-franchise entry (sequel, movie, OVA) as a similar
+  pick; if the user hasn't seen those, mention them in plain prose instead.
 - Stay on the recommendation task.
 """,
     "rate": """
@@ -167,8 +181,104 @@ def build_system_prompt(mode: str | None) -> str:
     return MODE_PROMPTS[key] + "\n\n" + BINGERY_SYSTEM
 
 
+def _resolve_seed_anime(title):
+    """Seed resolution: exact -> fuzzy local -> AniList (mapped back by
+    anilist_id). Returns an Anime or None."""
+    seed = Anime.query.filter(
+        db.or_(Anime.title.ilike(title), Anime.title_english.ilike(title))
+    ).first()
+    if not seed:
+        seed = (
+            Anime.query.filter(
+                db.or_(
+                    Anime.title.ilike(f"%{title}%"),
+                    Anime.title_english.ilike(f"%{title}%"),
+                )
+            )
+            .order_by(Anime.popularity.desc().nullslast())
+            .first()
+        )
+    if not seed:
+        try:
+            from utils.anilist import AniListClient
+
+            res = AniListClient().search_anime(title, per_page=5) or {}
+            entries = res.get("anime") or res.get("results") or []
+            for e in entries:
+                aid = e.get("anilist_id") or e.get("id")
+                if aid:
+                    seed = Anime.query.filter_by(anilist_id=aid).first()
+                    if seed:
+                        break
+        except Exception:
+            seed = None
+    return seed
+
+
 def execute_tool(tool_name, tool_input, user_id=None):
     """Execute a tool call and return the result as a string."""
+
+    if tool_name == "find_similar_anime":
+        from utils.similarity import get_tag_index, similar_to
+
+        title = (tool_input.get("title") or "").strip()
+        if not title:
+            return json.dumps({"error": "title is required"})
+        seed = _resolve_seed_anime(title)
+        if not seed:
+            return json.dumps(
+                {"error": f"Could not find '{title}' in the catalog."}
+            )
+
+        limit = min(int(tool_input.get("limit") or 8), 12)
+        exclude = {int(i) for i in (tool_input.get("exclude_ids") or [])}
+        mood = [m.strip().lower() for m in (tool_input.get("mood_tags") or []) if m]
+
+        # Over-fetch so exclusions can't starve the result list.
+        out = similar_to(seed, limit=limit + len(exclude) + 8, user_id=user_id)
+        items = [c for c in out["similar"] if c["id"] not in exclude]
+
+        if mood:
+            idx = get_tag_index()
+
+            def _boosted(c):
+                cand_tags = {n.lower() for n in idx.get(c["id"], {})}
+                hits = sum(1 for m in mood if m in cand_tags)
+                return c["match_score"] + 10.0 * hits / len(mood)
+
+            items.sort(key=_boosted, reverse=True)
+
+        profile_genres: list[str] = []
+        if user_id is not None:
+            from routes.rec_signals import get_signal_profile
+
+            profile = get_signal_profile(user_id)
+            profile_genres = [g[0] for g in (profile.get("top_genres") or [])[:5]]
+
+        results = []
+        for c in items[:limit]:
+            genre_names = [g["name"] for g in (c.get("official_genres") or [])][:3]
+            fit = []
+            hit = next((g for g in genre_names if g in profile_genres), None)
+            if hit:
+                fit.append(f"matches your top genre {hit}")
+            if c.get("in_plan_to_watch"):
+                fit.append("already in your plan-to-watch")
+            results.append({
+                "id": c["id"],
+                "title": c["title"],
+                "year": c.get("year"),
+                "genres": genre_names,
+                "shared_tags": c.get("shared_tags", []),
+                "match_score": c.get("match_score"),
+                "personal_fit": fit,
+            })
+
+        return json.dumps({
+            "seed": {"id": seed.id, "title": seed.title},
+            "results": results,
+            "franchise_note": [f["title"] for f in out.get("franchise", [])[:3]],
+        })
 
     if tool_name == "search_anime_database":
         query = Anime.query

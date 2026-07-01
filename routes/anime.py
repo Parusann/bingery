@@ -153,6 +153,37 @@ def get_related(anime_id):
     return jsonify({"related": [payload for _, payload in items]}), 200
 
 
+@anime_bp.route("/<int:anime_id>/similar", methods=["GET"])
+def get_similar(anime_id):
+    """Catalog anime most similar to this one (tag/genre/format/era DNA),
+    personalized when a JWT is present. Franchise entries are returned
+    separately — they are siblings, not 'similar' picks."""
+    from utils.similarity import similar_to
+
+    a = db.session.get(Anime, anime_id)
+    if not a:
+        return jsonify({"error": "Anime not found"}), 404
+
+    try:
+        limit = int(request.args.get("limit", 12))
+    except ValueError:
+        limit = 12
+    limit = min(max(limit, 1), 24)
+    include_nsfw = request.args.get("include_nsfw", "").lower() == "true"
+
+    user_id = None
+    try:
+        verify_jwt_in_request(optional=True)
+        uid = get_jwt_identity()
+        if uid:
+            user_id = int(uid)
+    except Exception:
+        user_id = None
+
+    out = similar_to(a, limit=limit, user_id=user_id, include_nsfw=include_nsfw)
+    return jsonify({"seed": a.to_dict(), **out})
+
+
 @anime_bp.route("/<int:anime_id>/ratings", methods=["GET"])
 def get_anime_ratings(anime_id):
     """All ratings for an anime, with pagination."""

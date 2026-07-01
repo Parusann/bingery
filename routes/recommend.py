@@ -190,11 +190,36 @@ def get_recommendations():
             "relevance_score": c["signals"]["total_score"] / 100.0,
         })
 
-    return jsonify({
+    payload = {
         "recommendations": recs,
         "taste_profile": _serialize_taste_profile(profile),
         "source": "personalized",
-    }), 200
+    }
+
+    # "Because you loved X": one similarity-seeded row from the user's
+    # highest-rated tagged title. Additive — absent when no seed qualifies
+    # (no rating >= 8, or the loved titles have no tags yet).
+    from models import Rating
+    from utils.similarity import get_tag_index, similar_to
+
+    tag_index = get_tag_index()
+    loved = (
+        db.session.query(Anime)
+        .join(Rating, Rating.anime_id == Anime.id)
+        .filter(Rating.user_id == user_id, Rating.score >= 8)
+        .order_by(Rating.score.desc(), Rating.updated_at.desc())
+        .all()
+    )
+    seed = next((a for a in loved if tag_index.get(a.id)), None)
+    if seed is not None:
+        sim = similar_to(seed, limit=6, user_id=user_id)
+        if sim["similar"]:
+            payload["because_you_loved"] = {
+                "seed": seed.to_dict(),
+                "items": sim["similar"],
+            }
+
+    return jsonify(payload), 200
 
 
 def _serialize_taste_profile(profile: dict) -> dict:
