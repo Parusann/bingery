@@ -153,17 +153,37 @@ def get_tag_index(force_refresh: bool = False) -> dict[int, dict[str, int]]:
     return idx
 
 
-def franchise_anilist_ids(seed) -> set[int]:
-    """AniList ids in the seed's franchise via the cached relations BFS.
-    Empty set on any failure — callers also apply the title_root guard,
-    which never needs the network."""
+def _cache_only_relations(anilist_id):
+    """Read a relations entry from the AniList client's in-process cache
+    (warmed by /related). Raises on miss so assemble_franchise skips the
+    node instead of fetching."""
+    from utils import anilist as al
+
+    hit = al._RELATIONS_CACHE.get(anilist_id)
+    if hit is None:
+        raise LookupError("relations not cached")
+    return hit[1]
+
+
+def franchise_anilist_ids(seed, allow_network: bool = True) -> set[int]:
+    """AniList ids in the seed's franchise via the relations BFS.
+
+    allow_network=False walks only the already-cached relations graph —
+    page surfaces (/similar, For You) must never block on AniList; the
+    /related call on the same detail page warms this cache. The chat tool
+    uses allow_network=True where a few seconds of accuracy is worth it.
+    Empty set on any failure — callers also apply the title_root guard.
+    """
     if not getattr(seed, "anilist_id", None):
         return set()
     try:
         from utils.anilist import AniListClient, assemble_franchise
 
-        client = AniListClient()
-        nodes = assemble_franchise(seed.anilist_id, client.get_anime_relations)
+        if allow_network:
+            fetch = AniListClient().get_anime_relations
+        else:
+            fetch = _cache_only_relations
+        nodes = assemble_franchise(seed.anilist_id, fetch)
         return set(nodes.keys())
     except Exception:
         return set()
@@ -210,7 +230,9 @@ def _feature_for(anime, tag_index, fan_index, score_index) -> dict:
     )
 
 
-def similar_to(seed, limit=12, user_id=None, include_nsfw=False) -> dict:
+def similar_to(
+    seed, limit=12, user_id=None, include_nsfw=False, franchise_network=False
+) -> dict:
     """Rank the catalog against `seed`.
 
     Returns {"similar": [card + match_score/shared_tags/in_plan_to_watch],
@@ -218,6 +240,8 @@ def similar_to(seed, limit=12, user_id=None, include_nsfw=False) -> dict:
     Personalized (user_id set): final = 0.7*similarity + 0.3*personal
     (rec_signals score), minus anything the user rated or has on the
     watchlist in any status except plan_to_watch.
+    franchise_network: pass True only where blocking on AniList is
+    acceptable (the chat tool); page surfaces stay cache-only.
     """
     from sqlalchemy.orm import selectinload
 
@@ -228,7 +252,7 @@ def similar_to(seed, limit=12, user_id=None, include_nsfw=False) -> dict:
     fan_index = _fan_genre_index()
     score_index = _community_score_index()
     seed_feat = _feature_for(seed, tag_index, fan_index, score_index)
-    fam_anilist = franchise_anilist_ids(seed)
+    fam_anilist = franchise_anilist_ids(seed, allow_network=franchise_network)
     seed_root = title_root(seed.title)
 
     query = db.session.query(Anime)

@@ -193,7 +193,7 @@ def test_similar_to_ranks_and_excludes(app, monkeypatch):
     _mk(app, "Far Show", {"Mecha": 90}, ["Sci-Fi"],
         source="Original", episodes=100, year=1998)
     _mk(app, "Re:Alpha Season 2", {"Isekai": 90, "Time Loop": 85}, ["Fantasy"])
-    monkeypatch.setattr("utils.similarity.franchise_anilist_ids", lambda s: set())
+    monkeypatch.setattr("utils.similarity.franchise_anilist_ids", lambda *a, **k: set())
 
     with app.app_context():
         out = similar_to(Anime.query.get(seed_id), limit=10)
@@ -208,6 +208,49 @@ def test_similar_to_ranks_and_excludes(app, monkeypatch):
         assert fam_titles == ["Re:Alpha Season 2"]
 
 
+def test_franchise_lookup_cache_only_never_constructs_client(monkeypatch):
+    import time as _time
+
+    from utils import anilist as al
+    from utils import similarity as sim
+
+    constructed = []
+
+    class Spy:
+        def __init__(self):
+            constructed.append(1)
+
+        def get_anime_relations(self, anilist_id):
+            return {"self": {"anilist_id": anilist_id}, "edges": []}
+
+    monkeypatch.setattr("utils.anilist.AniListClient", Spy)
+
+    class Seed:
+        anilist_id = 21355
+
+    # Nothing cached: cache-only mode returns empty and never touches the client.
+    monkeypatch.setattr(al, "_RELATIONS_CACHE", {})
+    assert sim.franchise_anilist_ids(Seed(), allow_network=False) == set()
+    assert not constructed
+
+    # Cached relations (e.g. warmed by /related) are used without network.
+    al._RELATIONS_CACHE[21355] = (
+        _time.time(),
+        {
+            "self": {"anilist_id": 21355},
+            "edges": [
+                {
+                    "relation_type": "SEQUEL",
+                    "node": {"anilist_id": 108632, "type": "ANIME"},
+                }
+            ],
+        },
+    )
+    ids = sim.franchise_anilist_ids(Seed(), allow_network=False)
+    assert {21355, 108632} <= ids
+    assert not constructed
+
+
 def test_similar_to_query_count_is_bounded(app, monkeypatch):
     """similar_to must not fire per-candidate queries (community score,
     fan genres) — on the real 4-6k catalog that N+1 was a prod 502."""
@@ -219,7 +262,7 @@ def test_similar_to_query_count_is_bounded(app, monkeypatch):
     seed_id = _mk(app, "Perf Seed", {"Isekai": 90}, ["Fantasy"])
     for i in range(30):
         _mk(app, f"Perf Cand {i}", {"Isekai": 50 + i}, ["Fantasy"])
-    monkeypatch.setattr("utils.similarity.franchise_anilist_ids", lambda s: set())
+    monkeypatch.setattr("utils.similarity.franchise_anilist_ids", lambda *a, **k: set())
 
     with app.app_context():
         seed = Anime.query.get(seed_id)
@@ -244,7 +287,7 @@ def test_similar_to_personalized_excludes_watched_and_flags_plan(app, monkeypatc
     seed_id = _mk(app, "Re:Beta", {"Isekai": 90, "Time Loop": 85}, ["Fantasy"])
     close_id = _mk(app, "Close Beta", {"Isekai": 80, "Time Loop": 70}, ["Fantasy"])
     plan_id = _mk(app, "Planned Beta", {"Isekai": 70}, ["Fantasy"])
-    monkeypatch.setattr("utils.similarity.franchise_anilist_ids", lambda s: set())
+    monkeypatch.setattr("utils.similarity.franchise_anilist_ids", lambda *a, **k: set())
 
     with app.app_context():
         u = User(username="simfan", email="simfan@example.com", password_hash="x")

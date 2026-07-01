@@ -15,7 +15,7 @@ def _fresh_tag_index():
 
 @pytest.fixture(autouse=True)
 def _no_network(monkeypatch):
-    monkeypatch.setattr("utils.similarity.franchise_anilist_ids", lambda s: set())
+    monkeypatch.setattr("utils.similarity.franchise_anilist_ids", lambda *a, **k: set())
 
 
 def _mk(app, title, tags, genres, **kw):

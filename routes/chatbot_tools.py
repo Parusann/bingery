@@ -234,8 +234,14 @@ def execute_tool(tool_name, tool_input, user_id=None):
         exclude = {int(i) for i in (tool_input.get("exclude_ids") or [])}
         mood = [m.strip().lower() for m in (tool_input.get("mood_tags") or []) if m]
 
-        # Over-fetch so exclusions can't starve the result list.
-        out = similar_to(seed, limit=limit + len(exclude) + 8, user_id=user_id)
+        # Over-fetch so exclusions can't starve the result list. Chat can
+        # afford the network franchise BFS for accurate sibling exclusion.
+        out = similar_to(
+            seed,
+            limit=limit + len(exclude) + 8,
+            user_id=user_id,
+            franchise_network=True,
+        )
         items = [c for c in out["similar"] if c["id"] not in exclude]
 
         if mood:
