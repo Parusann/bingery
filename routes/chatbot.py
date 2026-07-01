@@ -225,15 +225,38 @@ def chat_message():
     if user_id:
         system += f"\n\n[authenticated user id: {user_id}]"
 
+    # Titles this conversation already suggested (assistant turns only —
+    # a title the USER mentioned is fair game). Excluded from candidates,
+    # from find_similar_anime results, and from the final card list so
+    # "something else" actually produces something else.
+    already_suggested: set[int] = set()
+    for m in history:
+        if m.get("role") == "assistant":
+            for match in _BOLD_TITLE_RE.finditer(m.get("content") or ""):
+                resolved = _resolve_title(match.group(1).strip())
+                if resolved:
+                    already_suggested.add(resolved.id)
+
     # Ground recommendations against the scored candidate set so the LLM
     # can't surface anime the user has already engaged with or the rec
-    # engine has filtered out. Only attached for authenticated recommend
-    # mode — rate/onboard modes don't include candidates.
+    # engine has filtered out. Candidates are attached for authenticated
+    # recommend mode; rate mode gets the full-signal user context without
+    # candidates so scoring help is personally informed.
     candidate_ids: set[int] | None = None
-    if user_id and mode == "recommend":
+    if user_id and mode in ("recommend", "rate"):
         context = build_llm_context(user_id, user_msg, mode, include_nsfw=False)
-        candidate_ids = {c["id"] for c in context.get("candidates", [])}
+        if mode == "recommend":
+            context["candidates"] = [
+                c for c in context.get("candidates", [])
+                if c["id"] not in already_suggested
+            ]
+            candidate_ids = {c["id"] for c in context["candidates"]}
         system += "\n\n# CONTEXT JSON\n" + json.dumps(context, ensure_ascii=False)
+    if already_suggested:
+        system += (
+            "\n\nNever re-suggest a title you already recommended in this "
+            "conversation unless the user asks about it by name."
+        )
 
     provider = get_provider()
 
@@ -250,8 +273,14 @@ def chat_message():
                     tool_calls=resp.tool_calls,
                 ))
                 for call in resp.tool_calls:
+                    arguments = call.arguments or {}
+                    if call.name == "find_similar_anime" and already_suggested:
+                        arguments = dict(arguments)
+                        arguments["exclude_ids"] = sorted(
+                            set(arguments.get("exclude_ids") or []) | already_suggested
+                        )
                     # execute_tool already returns a JSON string.
-                    result = execute_tool(call.name, call.arguments, user_id)
+                    result = execute_tool(call.name, arguments, user_id)
                     messages.append(Message(
                         role="tool",
                         tool_call_id=call.id,
@@ -266,6 +295,14 @@ def chat_message():
             # to only PICK from `candidates`, but smaller local models drift).
             if candidate_ids is not None:
                 refs = [r for r in refs if r["id"] in candidate_ids]
+            # No-repeat guard: drop cards already suggested earlier in this
+            # conversation, unless the user just asked about that title.
+            if already_suggested:
+                refs = [
+                    r for r in refs
+                    if r["id"] not in already_suggested
+                    or r["title"].lower() in user_msg.lower()
+                ]
             options, cleaned = _extract_options(cleaned)
             return jsonify({
                 "response": cleaned,
