@@ -35,8 +35,16 @@ export interface AnimeDetailResponse {
   anime: AnimeDetail;
 }
 
+export interface SimilarAnime extends AnimeSummary {
+  match_score: number;
+  shared_tags: string[];
+  in_plan_to_watch: boolean;
+}
+
 export interface SimilarResponse {
-  similar: AnimeSummary[];
+  seed?: AnimeSummary;
+  similar: SimilarAnime[];
+  franchise?: AnimeSummary[];
 }
 
 export interface RelatedEntry {
