@@ -32,10 +32,24 @@ def join_waitlist():
     db.session.add(Waitlist(email=email))
     db.session.commit()
 
-    # Best-effort: a send failure must not lose the recorded signup.
+    # Best-effort sends: neither a failing email nor a misconfigured
+    # provider must lose the recorded signup, and one email failing must
+    # not block the other.
+    provider = None
     try:
-        get_email_provider().send_waitlist_confirmation(email)
+        provider = get_email_provider()
     except Exception:
-        logger.exception("waitlist confirmation email failed for %s", email)
+        logger.exception(
+            "email provider unavailable; skipping waitlist emails for %s", email
+        )
+    if provider is not None:
+        try:
+            provider.send_waitlist_confirmation(email)
+        except Exception:
+            logger.exception("waitlist confirmation email failed for %s", email)
+        try:
+            provider.send_waitlist_owner_alert(email)
+        except Exception:
+            logger.exception("waitlist owner alert failed for %s", email)
 
     return jsonify({"status": "added"}), 200

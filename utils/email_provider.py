@@ -6,6 +6,7 @@ Brevo is called over plain HTTP via `requests` — no extra dependency.
 """
 from __future__ import annotations
 
+import html
 import logging
 import os
 from typing import Protocol, runtime_checkable
@@ -37,6 +38,8 @@ class EmailProvider(Protocol):
 
     def send_waitlist_confirmation(self, to_email: str) -> None: ...
 
+    def send_waitlist_owner_alert(self, signup_email: str) -> None: ...
+
 
 class ConsoleEmailProvider:
     """Dev/test provider: the 'email' is a log line."""
@@ -46,6 +49,9 @@ class ConsoleEmailProvider:
 
     def send_waitlist_confirmation(self, to_email: str) -> None:
         logger.info("Waitlist confirmation for %s", to_email)
+
+    def send_waitlist_owner_alert(self, signup_email: str) -> None:
+        logger.info("Waitlist owner alert: %s joined the waitlist", signup_email)
 
 
 class BrevoEmailProvider:
@@ -115,6 +121,31 @@ class BrevoEmailProvider:
                 "<h2 style=\"margin:0 0 12px\">You're on the Bingery waitlist</h2>"
                 "<p style=\"color:#555\">Thanks for your interest in Bingery! "
                 "We'll email you the moment a spot opens up.</p></div>"
+            ),
+        )
+
+    def send_waitlist_owner_alert(self, signup_email: str) -> None:
+        # Read at call time (not __init__) so the alert can be turned on/off
+        # without touching code; unset simply means "don't alert".
+        owner = os.environ.get("WAITLIST_ALERT_EMAIL", "").strip()
+        if not owner:
+            logger.info(
+                "WAITLIST_ALERT_EMAIL not set; skipping waitlist owner alert"
+            )
+            return
+        # The signup email is attacker-controlled (the route regex allows
+        # < and >), so it must not land in the HTML body unescaped.
+        safe_email = html.escape(signup_email)
+        self._send(
+            owner,
+            "New Bingery waitlist signup",
+            f"{signup_email} just joined the Bingery waitlist.",
+            (
+                "<div style=\"font-family:Arial,sans-serif;max-width:420px;"
+                "margin:0 auto;padding:24px\">"
+                "<h2 style=\"margin:0 0 12px\">New waitlist signup</h2>"
+                f"<p style=\"color:#555\"><strong>{safe_email}</strong> "
+                "just joined the Bingery waitlist.</p></div>"
             ),
         )
 
