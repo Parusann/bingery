@@ -208,6 +208,35 @@ def test_similar_to_ranks_and_excludes(app, monkeypatch):
         assert fam_titles == ["Re:Alpha Season 2"]
 
 
+def test_similar_to_query_count_is_bounded(app, monkeypatch):
+    """similar_to must not fire per-candidate queries (community score,
+    fan genres) — on the real 4-6k catalog that N+1 was a prod 502."""
+    from sqlalchemy import event
+
+    from models import db, Anime
+    from utils.similarity import similar_to
+
+    seed_id = _mk(app, "Perf Seed", {"Isekai": 90}, ["Fantasy"])
+    for i in range(30):
+        _mk(app, f"Perf Cand {i}", {"Isekai": 50 + i}, ["Fantasy"])
+    monkeypatch.setattr("utils.similarity.franchise_anilist_ids", lambda s: set())
+
+    with app.app_context():
+        seed = Anime.query.get(seed_id)
+        queries: list[str] = []
+
+        def _count(conn, cursor, statement, parameters, context, executemany):
+            queries.append(statement)
+
+        engine = db.session.get_bind()
+        event.listen(engine, "before_cursor_execute", _count)
+        try:
+            similar_to(seed, limit=10)
+        finally:
+            event.remove(engine, "before_cursor_execute", _count)
+        assert len(queries) < 15, f"{len(queries)} queries — N+1 regression"
+
+
 def test_similar_to_personalized_excludes_watched_and_flags_plan(app, monkeypatch):
     from models import db, Anime, Rating, User, WatchlistEntry
     from utils.similarity import similar_to
