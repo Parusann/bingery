@@ -88,6 +88,40 @@ def test_similarity_tagless_seed_redistributes():
     assert abs(scored - 79.2727) < 0.01
 
 
+def test_tag_index_maps_ranks(app):
+    from models import db, Anime, Tag, AnimeTag
+    from utils import similarity as sim
+
+    with app.app_context():
+        a = Anime(title="Idx Show")
+        t = Tag(name="Tragedy", category="Theme")
+        db.session.add_all([a, t])
+        db.session.flush()
+        db.session.add(AnimeTag(anime_id=a.id, tag_id=t.id, rank=75))
+        db.session.commit()
+        idx = sim.get_tag_index(force_refresh=True)
+        assert idx[a.id] == {"Tragedy": 75}
+
+
+def test_title_root_strips_sequels():
+    from utils.similarity import title_root
+
+    assert title_root("Re:Zero Season 2") == title_root("Re:Zero")
+    assert title_root("Mushoku Tensei Part 2") == title_root("Mushoku Tensei")
+    assert title_root("K-On! Movie") == title_root("K-On!")
+    assert title_root("Overlord II") == title_root("Overlord")
+    assert title_root("Attack on Titan") != title_root("Death Note")
+
+
+def test_title_root_never_empty():
+    from utils.similarity import title_root
+
+    # 'Final' is a noise word but must not reduce a title to nothing,
+    # or every 'Final ...' title would franchise-match every other.
+    assert title_root("Final Fantasy") != ""
+    assert title_root("Final Fantasy") != title_root("Final Approach")
+
+
 def test_similarity_disjoint_low():
     from utils.similarity import similarity_score
 

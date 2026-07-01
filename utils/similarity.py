@@ -7,6 +7,8 @@ docs/superpowers/specs/2026-07-01-chat-similarity-revamp-design.md.
 from __future__ import annotations
 
 import math
+import re
+import time
 
 ERA_SIGMA_YEARS = 8.0
 
@@ -103,3 +105,65 @@ def similarity_score(seed: dict, cand: dict) -> float:
         weights = {k: w + spread * (w / total) for k, w in weights.items()}
         weights["tags"] = 0
     return sum(weights[k] * comps[k] for k in comps)
+
+
+# ─── Catalog-backed helpers (need an app context) ───────────────────────────
+
+_TAG_INDEX: dict[int, dict[str, int]] | None = None
+_TAG_INDEX_AT: float = 0.0
+TAG_INDEX_TTL = 6 * 3600  # catalog syncs are weekly; 6h is generous
+
+_ROOT_NOISE = re.compile(
+    r"\b(season|part|cour|movie|film|ova|ona|special|final)\b.*$"
+    r"|\b(2nd|3rd|\dth|s\d+|ii|iii|iv)\b.*$"
+    r"|[:\-–]\s.*$"
+    r"|\s+\d+\s*$",
+    re.IGNORECASE,
+)
+
+
+def title_root(title: str) -> str:
+    """Franchise fallback key: 'Re:Zero Season 2' -> 're:zero'. Never empty —
+    a stripped-to-nothing root would franchise-match unrelated titles."""
+    lowered = (title or "").lower()
+    root = _ROOT_NOISE.sub("", lowered).strip()
+    return root or lowered.strip()
+
+
+def get_tag_index(force_refresh: bool = False) -> dict[int, dict[str, int]]:
+    """{anime_id: {tag_name: rank}} for the whole catalog, cached in-process."""
+    global _TAG_INDEX, _TAG_INDEX_AT
+    if (
+        not force_refresh
+        and _TAG_INDEX is not None
+        and time.time() - _TAG_INDEX_AT < TAG_INDEX_TTL
+    ):
+        return _TAG_INDEX
+    from models import db, AnimeTag, Tag
+
+    rows = (
+        db.session.query(AnimeTag.anime_id, Tag.name, AnimeTag.rank)
+        .join(Tag, Tag.id == AnimeTag.tag_id)
+        .all()
+    )
+    idx: dict[int, dict[str, int]] = {}
+    for anime_id, name, rank in rows:
+        idx.setdefault(anime_id, {})[name] = rank
+    _TAG_INDEX, _TAG_INDEX_AT = idx, time.time()
+    return idx
+
+
+def franchise_anilist_ids(seed) -> set[int]:
+    """AniList ids in the seed's franchise via the cached relations BFS.
+    Empty set on any failure — callers also apply the title_root guard,
+    which never needs the network."""
+    if not getattr(seed, "anilist_id", None):
+        return set()
+    try:
+        from utils.anilist import AniListClient, assemble_franchise
+
+        client = AniListClient()
+        nodes = assemble_franchise(seed.anilist_id, client.get_anime_relations)
+        return set(nodes.keys())
+    except Exception:
+        return set()
