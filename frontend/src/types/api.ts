@@ -96,6 +96,10 @@ export interface RatingsResponse {
 export interface RecommendationsResponse {
   recommendations: Recommendation[];
   taste_profile: TasteProfile | null;
+  because_you_loved?: {
+    seed: AnimeSummary;
+    items: SimilarAnime[];
+  };
 }
 
 export interface ChatRequest {

@@ -2,6 +2,7 @@ import { AnimeGrid } from "@/features/discover/AnimeGrid";
 import { GlassCard } from "@/design/GlassCard";
 import { useAuth } from "@/stores/auth";
 import { useRecommendations } from "@/hooks/useRecommendations";
+import { BecauseYouLovedRow } from "./BecauseYouLovedRow";
 import { TasteProfile } from "./TasteProfile";
 
 export function ForYouPage() {
@@ -47,6 +48,7 @@ export function ForYouPage() {
           empty="Rate a few anime to get personalized picks."
         />
       )}
+      <BecauseYouLovedRow data={recs.data?.because_you_loved} />
     </div>
   );
 }
