@@ -1,0 +1,108 @@
+"""No-repeat memory + rate-mode context injection for /api/chat/message."""
+from unittest.mock import patch
+
+from utils.ai_provider import AIResponse, ToolCall
+
+
+@patch("routes.chatbot.get_provider")
+def test_no_repeat_drops_already_suggested_cards(get_provider_mock, client, app):
+    from models import db, Anime
+
+    with app.app_context():
+        db.session.add(Anime(title="Repeat Show", api_score=8.0))
+        db.session.commit()
+    get_provider_mock.return_value.chat.return_value = AIResponse(
+        text="Try **Repeat Show** again!"
+    )
+    r = client.post(
+        "/api/chat/message",
+        json={
+            "message": "something else please",
+            "conversation": [
+                {"role": "user", "content": "recommend me something"},
+                {"role": "assistant", "content": "You should watch **Repeat Show**."},
+            ],
+        },
+    )
+    assert r.status_code == 200
+    body = r.get_json()
+    assert all(c["title"] != "Repeat Show" for c in body["suggested_anime"])
+
+
+@patch("routes.chatbot.get_provider")
+def test_repeat_allowed_when_user_asks_by_name(get_provider_mock, client, app):
+    from models import db, Anime
+
+    with app.app_context():
+        db.session.add(Anime(title="Named Show", api_score=8.0))
+        db.session.commit()
+    get_provider_mock.return_value.chat.return_value = AIResponse(
+        text="**Named Show** is a great pick."
+    )
+    r = client.post(
+        "/api/chat/message",
+        json={
+            "message": "tell me more about Named Show",
+            "conversation": [
+                {"role": "assistant", "content": "Watch **Named Show**."},
+            ],
+        },
+    )
+    titles = [c["title"] for c in r.get_json()["suggested_anime"]]
+    assert "Named Show" in titles
+
+
+@patch("routes.chatbot.execute_tool")
+@patch("routes.chatbot.get_provider")
+def test_no_repeat_feeds_exclude_ids_to_find_similar(
+    get_provider_mock, execute_tool_mock, client, app
+):
+    from models import db, Anime
+
+    with app.app_context():
+        a = Anime(title="Repeat Show Two", api_score=8.0)
+        db.session.add(a)
+        db.session.commit()
+        repeat_id = a.id
+
+    execute_tool_mock.return_value = "{}"
+    get_provider_mock.return_value.chat.side_effect = [
+        AIResponse(
+            tool_calls=[
+                ToolCall(id="t1", name="find_similar_anime", arguments={"title": "X"})
+            ]
+        ),
+        AIResponse(text="Here you go."),
+    ]
+    r = client.post(
+        "/api/chat/message",
+        json={
+            "message": "more like X",
+            "conversation": [
+                {"role": "assistant", "content": "Watch **Repeat Show Two**."},
+            ],
+        },
+    )
+    assert r.status_code == 200
+    call = execute_tool_mock.call_args
+    passed_input = call.args[1] if len(call.args) > 1 else call.kwargs["tool_input"]
+    assert repeat_id in passed_input.get("exclude_ids", [])
+
+
+@patch("routes.chatbot.get_provider")
+def test_rate_mode_injects_context_for_authed_user(
+    get_provider_mock, client, auth_headers
+):
+    headers, _user = auth_headers
+    get_provider_mock.return_value.chat.return_value = AIResponse(
+        text="I'd say **8/10**."
+    )
+    r = client.post(
+        "/api/chat/message",
+        json={"message": "help me rate this", "mode": "rate"},
+        headers=headers,
+    )
+    assert r.status_code == 200
+    system_arg = get_provider_mock.return_value.chat.call_args.kwargs.get("system") or ""
+    assert "CONTEXT JSON" in system_arg
+    assert '"candidates"' not in system_arg  # rate mode carries no candidates

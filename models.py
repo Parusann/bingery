@@ -25,6 +25,31 @@ class Genre(db.Model):
         return {"id": self.id, "name": self.name, "category": self.category}
 
 
+# ─── Tag (AniList content tags: Isekai, Time Loop, Tragedy, ...) ─────────────
+
+class Tag(db.Model):
+    __tablename__ = "tags"
+    id = db.Column(db.Integer, primary_key=True)
+    name = db.Column(db.String(80), unique=True, nullable=False, index=True)
+    category = db.Column(db.String(60), nullable=False, default="")
+
+    def to_dict(self):
+        return {"id": self.id, "name": self.name, "category": self.category}
+
+
+class AnimeTag(db.Model):
+    """Association object: tag relevance rank (0-100) rides on the link."""
+    __tablename__ = "anime_tags"
+    anime_id = db.Column(db.Integer, db.ForeignKey("anime.id"), primary_key=True)
+    tag_id = db.Column(db.Integer, db.ForeignKey("tags.id"), primary_key=True)
+    rank = db.Column(db.Integer, nullable=False)
+
+    tag = db.relationship("Tag")
+    anime = db.relationship(
+        "Anime", backref=db.backref("tag_links", cascade="all, delete-orphan")
+    )
+
+
 # ─── User ────────────────────────────────────────────────────────────────────
 
 class User(db.Model):
