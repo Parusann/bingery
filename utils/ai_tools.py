@@ -72,12 +72,48 @@ SEARCH_ANILIST = ToolSchema(
     },
 )
 
+FIND_SIMILAR_ANIME = ToolSchema(
+    name="find_similar_anime",
+    description=(
+        "Rank catalog anime most similar to a named seed anime (shared tags, "
+        "genres, format, era), personalized to the current user. Use whenever "
+        "the user references an anime as a point of comparison ('like "
+        "Re:Zero', 'darker than X'). Same-franchise entries are never in the "
+        "results — mention those separately."
+    ),
+    parameters={
+        "type": "object",
+        "properties": {
+            "title": {
+                "type": "string",
+                "description": "Seed anime title exactly as the user said it.",
+            },
+            "mood_tags": {
+                "type": "array",
+                "items": {"type": "string"},
+                "description": (
+                    "Optional tags to boost when the user asks for a mood "
+                    "shift, e.g. Tragedy, Psychological, Comedy."
+                ),
+            },
+            "exclude_ids": {
+                "type": "array",
+                "items": {"type": "integer"},
+                "description": "Anime ids to leave out (already suggested or rejected).",
+            },
+            "limit": {"type": "integer", "minimum": 1, "maximum": 12, "default": 8},
+        },
+        "required": ["title"],
+    },
+)
+
 ALL_TOOLS: list[ToolSchema] = [
     SEARCH_ANIME_DATABASE,
     GET_USER_TASTE_PROFILE,
     GET_USER_WATCHLIST,
     GET_ANIME_DETAILS,
     SEARCH_ANILIST,
+    FIND_SIMILAR_ANIME,
 ]
 
 TOOL_NAMES: list[str] = [t.name for t in ALL_TOOLS]
