@@ -1,11 +1,11 @@
 """Seed synthetic dub release dates for the /schedule page.
 
-Why: the real dub data sources (Crunchyroll RSS, AnimeSchedule.net) cover
-only a sliver of titles and the AnimeSchedule key is currently 401-ing,
-so the /schedule "dub" tab shows nothing. For the demo we synthesize a
-realistic dub schedule by projecting every sub episode of a top-rated
-currently-airing anime forward by 56 days (8 weeks — the typical
-Crunchyroll/Funi simulcast lag).
+Why: real dub sources (Crunchyroll RSS, AnimeSchedule.net) don't always
+list *future* episodes of a show that's already dubbed. For those shows we
+extend the schedule by projecting each remaining sub episode forward by the
+show's own learned sub->dub lag (the median of its real dub data points).
+Shows with no real dub evidence are left untouched — we don't invent a dub
+date for a title that may have no English dub at all.
 
 The script is idempotent: episodes that already have an air_date_dub
 are left alone unless --overwrite is passed.
@@ -136,35 +136,17 @@ def main(argv: list | None = None) -> int:
         if not args.overwrite:
             eligible_clauses.append(Episode.air_date_dub.is_(None))
 
-        candidate_count = (
-            db.session.query(sa_func.count(Episode.id))
-            .filter(*eligible_clauses)
-            .scalar()
-        )
-        preserved_count = (
-            db.session.query(sa_func.count(Episode.id))
-            .filter(
-                Episode.anime_id.in_(anime_ids),
-                Episode.air_date_sub.isnot(None),
-                preserve_clause,
-            )
-            .scalar()
-        )
-        print(
-            f"candidate episodes: {candidate_count} "
-            f"(real-source rows preserved: {preserved_count})"
-        )
-
-        if args.dry_run:
-            print(
-                f"dry-run: would set air_date_dub on {candidate_count} episodes "
-                f"(preserved {preserved_count} real-source rows)"
-            )
-            return 0
-
-        # Learn each show's real sub->dub gap (sparse query — only episodes that
-        # already carry a real dub date are hydrated, so this stays well under
-        # the memory budget the bulk path was protecting).
+        # Learn each show's real sub->dub gap (sparse query — only episodes
+        # that already carry a real dub date are hydrated, so this stays well
+        # under the memory budget the bulk path was protecting). A show earns a
+        # synthetic projection ONLY if it has real dub evidence: we no longer
+        # invent dub dates for shows with no dub at all. That over-projection
+        # produced bogus dubs for never-dubbed long-runners (Sazae-san,
+        # Doraemon), a far-behind "dub" for shows like One Piece, and a
+        # duplicate estimate on every current-season catalog entry whose real
+        # date matched a sibling record. Real dub dates come from
+        # AnimeSchedule/Crunchyroll; the synthetic seed only *extends* an
+        # already-dubbed show's future episodes at its own observed lag.
         from collections import defaultdict
         real_rows = (
             db.session.query(
@@ -186,9 +168,38 @@ def main(argv: list | None = None) -> int:
             for aid, ds in gaps.items()
             if (lag := _learned_lag_days(ds)) is not None
         }
+        dubbed_ids = list(learned.keys())
+
+        candidate_count = (
+            db.session.query(sa_func.count(Episode.id))
+            .filter(*eligible_clauses, Episode.anime_id.in_(dubbed_ids))
+            .scalar()
+        ) if dubbed_ids else 0
+        preserved_count = (
+            db.session.query(sa_func.count(Episode.id))
+            .filter(
+                Episode.anime_id.in_(anime_ids),
+                Episode.air_date_sub.isnot(None),
+                preserve_clause,
+            )
+            .scalar()
+        )
+        print(
+            f"candidate episodes: {candidate_count} across {len(dubbed_ids)} "
+            f"dubbed shows (real-source rows preserved: {preserved_count})"
+        )
+
+        if args.dry_run:
+            print(
+                f"dry-run: would set air_date_dub on {candidate_count} episodes "
+                f"across {len(dubbed_ids)} dubbed shows "
+                f"(preserved {preserved_count} real-source rows)"
+            )
+            return 0
 
         n_set = 0
-        # Shows with real dub data: project at their own observed lag.
+        # Shows with real dub data: project their remaining episodes at the
+        # show's own observed lag. Shows with no dub evidence are skipped.
         for aid, lag in learned.items():
             res = db.session.execute(
                 update(Episode)
@@ -202,25 +213,10 @@ def main(argv: list | None = None) -> int:
                 .execution_options(synchronize_session=False)
             )
             n_set += res.rowcount or 0
-        # Everyone else: the flat default lag.
-        default_ids = [aid for aid in anime_ids if aid not in learned]
-        if default_ids:
-            res = db.session.execute(
-                update(Episode)
-                .where(*eligible_clauses, Episode.anime_id.in_(default_ids))
-                .values(
-                    air_date_dub=sa_func.datetime(
-                        Episode.air_date_sub, f"+{LAG_DAYS} days"
-                    ),
-                    dub_source=SYNTHETIC_TAG,
-                )
-                .execution_options(synchronize_session=False)
-            )
-            n_set += res.rowcount or 0
         db.session.commit()
         print(
             f"wrote air_date_dub on {n_set} episodes "
-            f"({len(learned)} shows at learned lag, rest at {LAG_DAYS}d default, "
+            f"({len(learned)} dubbed shows at learned lag, "
             f"tag={SYNTHETIC_TAG!r}); preserved {preserved_count} real rows"
         )
 

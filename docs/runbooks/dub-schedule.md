@@ -10,10 +10,12 @@ How an episode's dub air date is determined, best source first:
    — corroborated dates for gaps AnimeSchedule misses; the monthly
    `bingery-dub-research` scheduled task fills these.
 4. **User dub reports** (`routes/dub_reports.py`) — `dub_source = user:<name>`.
-5. **Synthetic fallback** (`seed_dub_schedule.py`) — projects `air_date_sub + lag`
-   (each show's learned median, else 56 days). Tagged `synthetic_lag_8w` and shown
-   as **estimated** everywhere: schedule rows show "time TBD" (not a fake clock
-   time) and the detail widget shows "expected ~<date>".
+5. **Synthetic fallback** (`seed_dub_schedule.py`) — for a show that already has
+   real dub evidence, projects its remaining episodes at that show's learned
+   median sub→dub lag. Shows with **no** dub evidence are left untouched (we don't
+   invent a dub for a title that may have no English dub). Tagged
+   `synthetic_lag_8w` and shown as **estimated** everywhere: schedule rows show
+   "time TBD" (not a fake clock time) and the detail widget shows "expected ~<date>".
 
 Precedence: real sources (1, 2) and user reports are never overwritten by the
 research fallback or the synthetic seeder unless forced. `research` upgrades
