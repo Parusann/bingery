@@ -61,3 +61,45 @@ def era_proximity(year_a: int | None, year_b: int | None) -> float:
     if year_a is None or year_b is None:
         return 0.5
     return math.exp(-((year_a - year_b) ** 2) / (2 * ERA_SIGMA_YEARS**2))
+
+
+def build_feature_from_parts(
+    *, tags, genres, fan_genres, source, episodes, year, quality
+) -> dict:
+    """Normalize raw fields into the vector `similarity_score` consumes.
+
+    tags: {name: rank/100}; quality: max(api, community)/10, clamped [0, 1].
+    """
+    return {
+        "tags": dict(tags or {}),
+        "genres": set(genres or ()),
+        "fan_genres": set(fan_genres or ()),
+        "source_bucket": source_bucket(source),
+        "episode_bucket": episode_bucket(episodes),
+        "year": year,
+        "quality": max(0.0, min(1.0, quality or 0.0)),
+    }
+
+
+def similarity_score(seed: dict, cand: dict) -> float:
+    """0-100. A tagless seed (not yet backfilled) redistributes the tag
+    weight proportionally across the other components instead of zeroing
+    45 points for every candidate."""
+    comps = {
+        "tags": weighted_jaccard(seed["tags"], cand["tags"]),
+        "genres": jaccard(seed["genres"], cand["genres"]),
+        "fan_genres": jaccard(seed["fan_genres"], cand["fan_genres"]),
+        "format": (
+            (seed["source_bucket"] == cand["source_bucket"])
+            + (seed["episode_bucket"] == cand["episode_bucket"])
+        ) / 2,
+        "quality": cand["quality"],
+        "era": era_proximity(seed["year"], cand["year"]),
+    }
+    weights = dict(WEIGHTS)
+    if not seed["tags"]:
+        spread = weights.pop("tags")
+        total = sum(weights.values())
+        weights = {k: w + spread * (w / total) for k, w in weights.items()}
+        weights["tags"] = 0
+    return sum(weights[k] * comps[k] for k in comps)
