@@ -402,10 +402,13 @@ class AniListClient:
         description = description.replace("<i>", "").replace("</i>", "")
         description = description.replace("<b>", "").replace("</b>", "")
 
-        # Extract high-ranked tags (rank > 60%) as supplementary genre info
+        # Tags power the similarity engine: keep breadth (rank >= 40),
+        # skip AniList adult tags outright.
         tags = []
         for tag in media.get("tags", []):
-            if tag.get("rank", 0) >= 60:
+            if tag.get("isAdult"):
+                continue
+            if tag.get("rank", 0) >= 40:
                 tags.append({
                     "name": tag["name"],
                     "rank": tag["rank"],
@@ -704,6 +707,18 @@ def sync_anime_to_db(anime_data: dict) -> "Anime":
             db.session.add(genre)
             db.session.flush()
         anime.official_genres.append(genre)
+
+    # Sync tags (mirrors the genre upsert: replace links wholesale)
+    from models import Tag, AnimeTag
+
+    anime.tag_links.clear()
+    for t in anime_data.get("tags", []):
+        tag = Tag.query.filter_by(name=t["name"]).first()
+        if not tag:
+            tag = Tag(name=t["name"], category=t.get("category", ""))
+            db.session.add(tag)
+            db.session.flush()
+        anime.tag_links.append(AnimeTag(tag_id=tag.id, rank=t["rank"]))
 
     return anime
 
