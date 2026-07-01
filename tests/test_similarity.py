@@ -1,4 +1,6 @@
 """Unit tests for the seed-based similarity engine (pure functions)."""
+import pytest
+
 from utils.similarity import (
     weighted_jaccard,
     jaccard,
@@ -88,6 +90,17 @@ def test_similarity_tagless_seed_redistributes():
     assert abs(scored - 79.2727) < 0.01
 
 
+@pytest.fixture(autouse=True)
+def _fresh_tag_index():
+    """The tag index caches in-process; reset between tests so one test's
+    catalog never leaks into another's."""
+    from utils import similarity
+
+    similarity._TAG_INDEX = None
+    similarity._TAG_INDEX_AT = 0.0
+    yield
+
+
 def test_tag_index_maps_ranks(app):
     from models import db, Anime, Tag, AnimeTag
     from utils import similarity as sim
@@ -135,3 +148,87 @@ def test_similarity_disjoint_low():
         quality=0.5,
     )
     assert similarity_score(a, b) < 20
+
+
+def _mk(app, title, tags, genres, **kw):
+    """Create a catalog anime with tags/genres for similar_to tests."""
+    from models import db, Anime, Genre, Tag, AnimeTag
+
+    with app.app_context():
+        a = Anime(
+            title=title,
+            source=kw.get("source", "Light Novel"),
+            episodes=kw.get("episodes", 25),
+            year=kw.get("year", 2016),
+            api_score=kw.get("api_score", 8.0),
+            anilist_id=kw.get("anilist_id"),
+        )
+        db.session.add(a)
+        db.session.flush()
+        for gname in genres:
+            g = Genre.query.filter_by(name=gname).first()
+            if not g:
+                g = Genre(name=gname)
+                db.session.add(g)
+                db.session.flush()
+            a.official_genres.append(g)
+        for name, rank in tags.items():
+            t = Tag.query.filter_by(name=name).first()
+            if not t:
+                t = Tag(name=name)
+                db.session.add(t)
+                db.session.flush()
+            db.session.add(AnimeTag(anime_id=a.id, tag_id=t.id, rank=rank))
+        db.session.commit()
+        return a.id
+
+
+def test_similar_to_ranks_and_excludes(app, monkeypatch):
+    from models import Anime
+    from utils.similarity import similar_to
+
+    seed_id = _mk(app, "Re:Alpha", {"Isekai": 90, "Time Loop": 85}, ["Fantasy"])
+    _mk(app, "Close Show", {"Isekai": 80, "Time Loop": 70}, ["Fantasy"])
+    _mk(app, "Mid Show", {"Isekai": 60}, ["Fantasy"])
+    _mk(app, "Far Show", {"Mecha": 90}, ["Sci-Fi"],
+        source="Original", episodes=100, year=1998)
+    _mk(app, "Re:Alpha Season 2", {"Isekai": 90, "Time Loop": 85}, ["Fantasy"])
+    monkeypatch.setattr("utils.similarity.franchise_anilist_ids", lambda s: set())
+
+    with app.app_context():
+        out = similar_to(Anime.query.get(seed_id), limit=10)
+        titles = [c["title"] for c in out["similar"]]
+        assert titles.index("Close Show") < titles.index("Mid Show")
+        assert "Re:Alpha" not in titles  # seed excluded
+        assert "Re:Alpha Season 2" not in titles  # title-root franchise guard
+        assert titles[-1] == "Far Show"
+        assert out["similar"][0]["shared_tags"][0] == "Isekai"  # rank 80 > 70
+        assert out["similar"][0]["match_score"] > out["similar"][-1]["match_score"]
+        fam_titles = [c["title"] for c in out["franchise"]]
+        assert fam_titles == ["Re:Alpha Season 2"]
+
+
+def test_similar_to_personalized_excludes_watched_and_flags_plan(app, monkeypatch):
+    from models import db, Anime, Rating, User, WatchlistEntry
+    from utils.similarity import similar_to
+
+    seed_id = _mk(app, "Re:Beta", {"Isekai": 90, "Time Loop": 85}, ["Fantasy"])
+    close_id = _mk(app, "Close Beta", {"Isekai": 80, "Time Loop": 70}, ["Fantasy"])
+    plan_id = _mk(app, "Planned Beta", {"Isekai": 70}, ["Fantasy"])
+    monkeypatch.setattr("utils.similarity.franchise_anilist_ids", lambda s: set())
+
+    with app.app_context():
+        u = User(username="simfan", email="simfan@example.com", password_hash="x")
+        db.session.add(u)
+        db.session.flush()
+        db.session.add(Rating(user_id=u.id, anime_id=close_id, score=9))
+        db.session.add(
+            WatchlistEntry(user_id=u.id, anime_id=plan_id, status="plan_to_watch")
+        )
+        db.session.commit()
+
+        out = similar_to(Anime.query.get(seed_id), limit=10, user_id=u.id)
+        titles = [c["title"] for c in out["similar"]]
+        assert "Close Beta" not in titles  # rated => excluded
+        planned = next(c for c in out["similar"] if c["title"] == "Planned Beta")
+        assert planned["in_plan_to_watch"] is True
