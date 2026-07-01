@@ -216,9 +216,10 @@ export function AuthForm({ onSuccess }: { onSuccess?: () => void }) {
       <div className="flex gap-2 text-sm">
         <button
           type="button"
+          disabled={loading}
           onClick={() => setMode("login")}
           className={
-            "px-3 py-1.5 rounded-md " +
+            "px-3 py-1.5 rounded-md disabled:opacity-50 " +
             (mode === "login"
               ? "bg-white/[0.08] text-text"
               : "text-text-muted hover:text-text")
@@ -228,9 +229,10 @@ export function AuthForm({ onSuccess }: { onSuccess?: () => void }) {
         </button>
         <button
           type="button"
+          disabled={loading}
           onClick={() => setMode("register")}
           className={
-            "px-3 py-1.5 rounded-md " +
+            "px-3 py-1.5 rounded-md disabled:opacity-50 " +
             (mode === "register"
               ? "bg-white/[0.08] text-text"
               : "text-text-muted hover:text-text")
