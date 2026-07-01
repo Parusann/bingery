@@ -205,11 +205,13 @@ def ingest_payload(
     # instead of full Anime ORM instances. Drops candidate-list memory
     # ~30x on a 25k-anime catalog, which is what was OOMing the script
     # on Fly's 256MB shared machine once the API key worked.
-    _AnimeCand = namedtuple("_AnimeCand", ["id", "title", "title_english"])
+    _AnimeCand = namedtuple(
+        "_AnimeCand", ["id", "title", "title_english", "status", "year"]
+    )
     candidates = [
-        _AnimeCand(row.id, row.title, row.title_english)
+        _AnimeCand(row.id, row.title, row.title_english, row.status, row.year)
         for row in db.session.query(
-            Anime.id, Anime.title, Anime.title_english
+            Anime.id, Anime.title, Anime.title_english, Anime.status, Anime.year
         ).all()
     ]
     for entry in entries:
