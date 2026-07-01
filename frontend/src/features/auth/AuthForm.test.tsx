@@ -87,6 +87,26 @@ describe("AuthForm waitlist", () => {
     ).toHaveProperty("disabled", true);
   });
 
+  it("locks the mode tabs while a request is in flight", async () => {
+    register.mockImplementation(() => new Promise(() => {}));
+    render(<AuthForm />);
+    await userEvent.click(screen.getByRole("button", { name: "Sign up" }));
+    await userEvent.type(screen.getByLabelText("Username"), "fan");
+    await userEvent.type(screen.getByLabelText("Email"), "fan@example.com");
+    await userEvent.type(screen.getByLabelText("Password"), "hunter22");
+    await userEvent.click(
+      screen.getByRole("button", { name: "Create account" })
+    );
+    expect(screen.getByRole("button", { name: "Sign in" })).toHaveProperty(
+      "disabled",
+      true
+    );
+    expect(screen.getByRole("button", { name: "Sign up" })).toHaveProperty(
+      "disabled",
+      true
+    );
+  });
+
   it("returns to the sign-up form from the waitlist view", async () => {
     render(<AuthForm />);
     await userEvent.click(screen.getByRole("button", { name: "Sign up" }));
