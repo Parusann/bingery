@@ -384,3 +384,33 @@ def test_best_match_part_distinguishes_seasons():
     p2 = _Cand("Attack on Titan Part 2")
     anime, _ = best_match("Attack on Titan Part 2", [p1, p2])
     assert anime is p2
+
+
+def _cand(title, title_english=None, *, status="Finished Airing", year=None):
+    c = _Cand(title, title_english)
+    c.status = status
+    c.year = year
+    return c
+
+
+def test_best_match_prefers_airing_season_over_finished_base():
+    """A season-less dub-feed title (no explicit 'Season N') must attach to the
+    currently-airing record, not the finished base/franchise row of the same
+    name — both score ~100 via token-set subset, so recency breaks the tie."""
+    base = _cand("Attack on Titan", "Attack on Titan",
+                 status="Finished Airing", year=2013)
+    current = _cand("Attack on Titan Final Season", "Attack on Titan Final Season",
+                    status="Currently Airing", year=2026)
+    anime, _ = best_match("Attack on Titan", [base, current])
+    assert anime is current
+
+
+def test_best_match_does_not_promote_clearly_worse_airing():
+    """The recency tiebreak only fires among near-equal scores — a much weaker
+    airing match never steals from a strong finished match."""
+    strong_finished = _cand("Attack on Titan", "Attack on Titan",
+                            status="Finished Airing", year=2013)
+    weak_airing = _cand("Attackers United", "Attackers United",
+                        status="Currently Airing", year=2026)
+    anime, _ = best_match("Attack on Titan", [strong_finished, weak_airing])
+    assert anime is strong_finished

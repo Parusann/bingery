@@ -47,6 +47,17 @@ SEASON_NUM_RE = re.compile(
 # How much to demote a candidate whose season differs from the feed's.
 SEASON_MISMATCH_PENALTY = 35.0
 
+# When several candidates match a season-less title within this margin of the
+# top adjusted score, prefer a currently-airing record (then the most recent
+# year). This keeps a dub feed's bare title from landing on the finished
+# base/franchise row when the current season is also in the catalog.
+TIEBREAK_MARGIN = 8.0
+_AIRING_STATUSES = {"currently airing", "airing", "releasing"}
+
+
+def _is_airing(status) -> bool:
+    return (status or "").strip().lower() in _AIRING_STATUSES
+
 
 def _parse_season(title: str) -> int:
     if not title:
@@ -232,19 +243,31 @@ def best_match(show_title: str, candidates: Iterable) -> tuple[Optional[object],
     top = _rf_process.extract(
         query, titles, scorer=_rf_fuzz.token_set_ratio, limit=25
     )
-    best_owner = None
+    # Adjusted score per candidate (raw token-set ratio minus a season penalty
+    # so e.g. "... Season 7" can't land on the base/Season-1 row).
+    scored = []  # (adj, is_airing, year, owner)
     best_adj = -1.0
     for _matched_title, score, idx in top:
         adj = score
         if seasons[idx] != query_season:
             adj -= SEASON_MISMATCH_PENALTY
+        owner = owners[idx]
+        scored.append(
+            (adj, _is_airing(getattr(owner, "status", None)),
+             getattr(owner, "year", None) or 0, owner)
+        )
         if adj > best_adj:
             best_adj = adj
-            best_owner = owners[idx]
 
-    if best_owner is None:
+    if not scored or best_adj < 0:
         return None, 0.0
-    return best_owner, max(0.0, best_adj)
+
+    # Recency tiebreak: among candidates within TIEBREAK_MARGIN of the best
+    # adjusted score, prefer a currently-airing record, then the most recent
+    # year, then the higher score. Clearly-worse candidates are never promoted.
+    near = [t for t in scored if t[0] >= best_adj - TIEBREAK_MARGIN]
+    adj, _airing, _year, owner = max(near, key=lambda t: (t[1], t[2], t[0]))
+    return owner, max(0.0, adj)
 
 
 # ─── Top-level ingest ────────────────────────────────────────────────────────
@@ -277,11 +300,13 @@ def ingest_feed(
     # instead of full Anime ORM instances. Drops candidate-list memory
     # ~30x on a 25k-anime catalog (mirrors the AnimeSchedule fix).
     from collections import namedtuple as _nt
-    _AnimeCand = _nt("_AnimeCand", ["id", "title", "title_english"])
+    _AnimeCand = _nt(
+        "_AnimeCand", ["id", "title", "title_english", "status", "year"]
+    )
     candidates = [
-        _AnimeCand(row.id, row.title, row.title_english)
+        _AnimeCand(row.id, row.title, row.title_english, row.status, row.year)
         for row in db.session.query(
-            Anime.id, Anime.title, Anime.title_english
+            Anime.id, Anime.title, Anime.title_english, Anime.status, Anime.year
         ).all()
     ]
     for entry in entries:
