@@ -2,7 +2,7 @@
 from datetime import datetime, timedelta
 
 from models import db, Anime, Episode
-from seed_dub_schedule import _learned_lag_days, SYNTHETIC_TAG, LAG_DAYS, main
+from seed_dub_schedule import _learned_lag_days, SYNTHETIC_TAG, main
 
 
 def test_learned_lag_days_median():
@@ -50,7 +50,10 @@ def test_seeder_uses_learned_lag_for_partially_dubbed_show():
         assert ep1.dub_source == "crunchyroll_rss"
 
 
-def test_seeder_falls_back_to_default_lag():
+def test_seeder_skips_shows_with_no_dub_evidence():
+    # A currently-airing show with only sub dates and NO real dub data must
+    # NOT get a synthetic dub date. We no longer invent dubs for shows that
+    # may have no dub at all (never-dubbed long-runners, far-behind dubs).
     from app import app as seeder_app
 
     with seeder_app.app_context():
@@ -72,5 +75,5 @@ def test_seeder_falls_back_to_default_lag():
 
     with seeder_app.app_context():
         ep = Episode.query.filter_by(anime_id=aid, episode_number=1).first()
-        assert ep.dub_source == SYNTHETIC_TAG
-        assert ep.air_date_dub == datetime(2026, 2, 1) + timedelta(days=LAG_DAYS)
+        assert ep.air_date_dub is None
+        assert ep.dub_source is None
