@@ -153,6 +153,69 @@ def test_console_provider_logs_waitlist_confirmation(caplog):
     assert "fan@example.com" in caplog.text
 
 
+def test_console_provider_logs_waitlist_owner_alert(caplog):
+    provider = ConsoleEmailProvider()
+    with caplog.at_level(logging.INFO):
+        provider.send_waitlist_owner_alert("fan@example.com")
+    assert "fan@example.com" in caplog.text
+
+
+@responses.activate
+def test_brevo_sends_waitlist_owner_alert_to_configured_owner(monkeypatch):
+    monkeypatch.setenv("BREVO_API_KEY", "test-key")
+    monkeypatch.setenv("EMAIL_FROM", "hello@example.com")
+    monkeypatch.setenv("WAITLIST_ALERT_EMAIL", "owner@example.com")
+    responses.add(
+        responses.POST,
+        "https://api.brevo.com/v3/smtp/email",
+        json={"messageId": "x"},
+        status=201,
+    )
+    BrevoEmailProvider().send_waitlist_owner_alert("fan@example.com")
+
+    assert len(responses.calls) == 1
+    req = responses.calls[0].request
+    body = req.body.decode() if isinstance(req.body, bytes) else req.body
+    assert "owner@example.com" in body  # the alert goes to the owner
+    assert "fan@example.com" in body  # ...and names the signup
+    assert "waitlist" in body.lower()
+
+
+@responses.activate
+def test_brevo_owner_alert_escapes_html_in_signup_email(monkeypatch):
+    """The signup email is attacker-controlled (the route regex allows < >),
+    so it must be HTML-escaped in the owner alert's HTML body."""
+    import json
+
+    monkeypatch.setenv("BREVO_API_KEY", "test-key")
+    monkeypatch.setenv("EMAIL_FROM", "hello@example.com")
+    monkeypatch.setenv("WAITLIST_ALERT_EMAIL", "owner@example.com")
+    responses.add(
+        responses.POST,
+        "https://api.brevo.com/v3/smtp/email",
+        json={"messageId": "x"},
+        status=201,
+    )
+    BrevoEmailProvider().send_waitlist_owner_alert("<b>x</b>@example.com")
+
+    req = responses.calls[0].request
+    body = req.body.decode() if isinstance(req.body, bytes) else req.body
+    html = json.loads(body)["htmlContent"]
+    assert "<b>x</b>" not in html
+    assert "&lt;b&gt;x&lt;/b&gt;@example.com" in html
+
+
+@responses.activate
+def test_brevo_owner_alert_skipped_when_recipient_unset(monkeypatch):
+    """No WAITLIST_ALERT_EMAIL → no HTTP call and no exception; the signup
+    itself must never depend on the alert being configured."""
+    monkeypatch.setenv("BREVO_API_KEY", "test-key")
+    monkeypatch.setenv("EMAIL_FROM", "hello@example.com")
+    monkeypatch.delenv("WAITLIST_ALERT_EMAIL", raising=False)
+    BrevoEmailProvider().send_waitlist_owner_alert("fan@example.com")
+    assert len(responses.calls) == 0
+
+
 @responses.activate
 def test_brevo_sends_waitlist_confirmation(monkeypatch):
     monkeypatch.setenv("BREVO_API_KEY", "test-key")
