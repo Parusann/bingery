@@ -59,6 +59,41 @@ def test_sync_persists_and_replaces_tags(app):
         assert [(l.tag.name, l.rank) for l in a.tag_links] == [("Tragedy", 71)]
 
 
+def test_sync_survives_duplicate_mal_id(app):
+    """AniList occasionally maps two entries to one MAL id. The sync must
+    skip the conflicting mal_id (keeping the original owner) instead of
+    dying on the unique constraint — this aborted a prod resync."""
+    from utils.anilist import sync_anime_to_db
+
+    with app.app_context():
+        holder = sync_anime_to_db(
+            {"anilist_id": 111, "mal_id": 555, "title": "Holder", "genres": [], "tags": []}
+        )
+        db.session.commit()
+
+        thief = sync_anime_to_db(
+            {"anilist_id": 222, "mal_id": 555, "title": "Thief", "genres": [], "tags": []}
+        )
+        db.session.commit()  # must not raise
+        assert thief.mal_id is None
+        assert holder.mal_id == 555
+
+        # Re-syncing the same conflicting payload on the now-existing row
+        # (the exact prod crash path: UPDATE with a taken mal_id).
+        thief2 = sync_anime_to_db(
+            {"anilist_id": 222, "mal_id": 555, "title": "Thief", "genres": [], "tags": []}
+        )
+        db.session.commit()
+        assert thief2.mal_id is None
+
+        # The legitimate owner keeps updating its own mal_id fine.
+        holder2 = sync_anime_to_db(
+            {"anilist_id": 111, "mal_id": 555, "title": "Holder", "genres": [], "tags": []}
+        )
+        db.session.commit()
+        assert holder2.mal_id == 555
+
+
 def test_anime_tag_unique_per_pair(app):
     with app.app_context():
         a = Anime(title="Dup Show")

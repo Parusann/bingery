@@ -661,7 +661,32 @@ def sync_anime_to_db(anime_data: dict) -> "Anime":
     if anime_data.get("anilist_id"):
         anime = Anime.query.filter_by(anilist_id=anime_data["anilist_id"]).first()
     if not anime and anime_data.get("mal_id"):
-        anime = Anime.query.filter_by(mal_id=anime_data["mal_id"]).first()
+        # mal_id fallback exists for legacy MAL-seeded rows. A row that
+        # already belongs to a DIFFERENT AniList entry must not be hijacked
+        # by an incoming entry that merely shares its MAL id.
+        candidate = Anime.query.filter_by(mal_id=anime_data["mal_id"]).first()
+        if candidate is not None and (
+            candidate.anilist_id is None
+            or candidate.anilist_id == anime_data.get("anilist_id")
+        ):
+            anime = candidate
+
+    # AniList occasionally maps two entries to one MAL id; writing a mal_id
+    # another row already owns violates the unique constraint and aborts
+    # the whole sync run. Skip the conflicting id, keep the original owner.
+    mal_id = anime_data.get("mal_id")
+    if mal_id:
+        holder = Anime.query.filter_by(mal_id=mal_id).first()
+        if holder is not None and holder is not anime:
+            import logging
+
+            logging.getLogger(__name__).warning(
+                "mal_id %s already owned by anime id=%s; skipping it for "
+                "anilist_id=%s (%s)",
+                mal_id, holder.id, anime_data.get("anilist_id"),
+                anime_data.get("title"),
+            )
+            mal_id = None
 
     if anime:
         # Update existing record
@@ -672,15 +697,15 @@ def sync_anime_to_db(anime_data: dict) -> "Anime":
         ]:
             if anime_data.get(key) is not None:
                 setattr(anime, key, anime_data[key])
-        if anime_data.get("mal_id"):
-            anime.mal_id = anime_data["mal_id"]
+        if mal_id:
+            anime.mal_id = mal_id
         if anime_data.get("anilist_id"):
             anime.anilist_id = anime_data["anilist_id"]
     else:
         # Create new record
         anime = Anime(
             anilist_id=anime_data.get("anilist_id"),
-            mal_id=anime_data.get("mal_id"),
+            mal_id=mal_id,
             title=anime_data["title"],
             title_english=anime_data.get("title_english"),
             title_japanese=anime_data.get("title_japanese"),
