@@ -137,6 +137,65 @@ def test_find_similar_results_pass_grounding_validation(
     assert "Tool Pick" in titles
 
 
+@patch("routes.chatbot.execute_tool")
+@patch("routes.chatbot.get_provider")
+def test_similar_seed_surfaces_as_seed_anime_card(
+    get_provider_mock, execute_tool_mock, client, app
+):
+    """'Something like Charlotte' must return the seed's own card in a
+    dedicated seed_anime field — and never duplicate it into the
+    suggestion cards even if the LLM bolds it."""
+    import json as _json
+
+    from models import db, Anime
+
+    with app.app_context():
+        seed = Anime(title="Charlotte", year=2015, image_url="http://img/x.jpg",
+                     api_score=7.8)
+        pick = Anime(title="Plastic Memories", year=2015, api_score=7.9)
+        db.session.add_all([seed, pick])
+        db.session.commit()
+        seed_id, pick_id = seed.id, pick.id
+
+    execute_tool_mock.return_value = _json.dumps({
+        "seed": {"id": seed_id, "title": "Charlotte"},
+        "results": [{"id": pick_id, "title": "Plastic Memories"}],
+    })
+    get_provider_mock.return_value.chat.side_effect = [
+        AIResponse(tool_calls=[
+            ToolCall(id="t1", name="find_similar_anime",
+                     arguments={"title": "Charlotte"})
+        ]),
+        AIResponse(text="**Charlotte** fans should try **Plastic Memories**."),
+    ]
+    r = client.post(
+        "/api/chat/message",
+        json={"message": "recommend me something like Charlotte",
+              "conversation": []},
+    )
+    assert r.status_code == 200
+    body = r.get_json()
+    assert body["seed_anime"]["id"] == seed_id
+    assert body["seed_anime"]["title"] == "Charlotte"
+    assert body["seed_anime"]["image_url"] == "http://img/x.jpg"
+    titles = [c["title"] for c in body["suggested_anime"]]
+    assert "Plastic Memories" in titles
+    assert "Charlotte" not in titles  # seed never doubles as a suggestion
+
+
+@patch("routes.chatbot.get_provider")
+def test_no_seed_anime_without_similarity_lookup(get_provider_mock, client):
+    get_provider_mock.return_value.chat.return_value = AIResponse(
+        text="Tell me more about what you like!"
+    )
+    r = client.post(
+        "/api/chat/message",
+        json={"message": "hi", "conversation": []},
+    )
+    assert r.status_code == 200
+    assert r.get_json()["seed_anime"] is None
+
+
 @patch("routes.chatbot.get_provider")
 def test_legacy_modes_normalized_to_recommend(
     get_provider_mock, client, auth_headers

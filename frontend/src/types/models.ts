@@ -123,6 +123,9 @@ export interface ChatResponse {
   response: string;
   suggested_anime?: ChatAnimeRef[];
   suggested_actions?: string[];
+  // The anime the user asked to match against ("something like X"),
+  // rendered as its own card above the suggestions.
+  seed_anime?: ChatAnimeRef | null;
 }
 
 export interface Collection {

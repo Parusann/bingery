@@ -98,6 +98,21 @@ export function ChatPage() {
                         ))}
                       </div>
                     ) : null}
+                    {t.role === "assistant" && t.extra?.seed ? (
+                      <motion.div
+                        initial={{ opacity: 0, y: 6 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        transition={{ duration: 0.25 }}
+                        className="w-full"
+                      >
+                        <div className="text-[11px] font-mono uppercase tracking-wider text-text-muted mb-1.5">
+                          Similar to
+                        </div>
+                        <div className="sm:max-w-[calc(50%-0.3125rem)] rounded-lg ring-1 ring-amber/40">
+                          <ChatAnimeCard anime={t.extra.seed} />
+                        </div>
+                      </motion.div>
+                    ) : null}
                     {t.role === "assistant" && t.extra?.anime?.length ? (
                       <div className="grid sm:grid-cols-2 gap-2.5 w-full">
                         {t.extra.anime.slice(0, 6).map((a, j) => (

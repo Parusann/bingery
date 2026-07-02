@@ -9,6 +9,7 @@ import type {
 interface TurnExtra {
   anime?: ChatAnimeRef[];
   actions?: string[];
+  seed?: ChatAnimeRef;
 }
 
 interface Turn {
@@ -42,15 +43,17 @@ export function useChat(seed: Turn[] = []) {
       });
       const hasAnime = !!res.suggested_anime?.length;
       const hasActions = !!res.suggested_actions?.length;
+      const hasSeed = !!res.seed_anime;
       setTurns((curr) => [
         ...curr,
         {
           role: "assistant",
           content: res.response,
-          extra: hasAnime || hasActions
+          extra: hasAnime || hasActions || hasSeed
             ? {
                 anime: hasAnime ? res.suggested_anime : undefined,
                 actions: hasActions ? res.suggested_actions : undefined,
+                seed: hasSeed ? res.seed_anime ?? undefined : undefined,
               }
             : undefined,
         },
