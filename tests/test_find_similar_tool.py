@@ -9,6 +9,7 @@ def _fresh_tag_index():
     from utils import similarity
 
     similarity._TAG_INDEX = None
+    similarity._TAG_IDF = None
     similarity._TAG_INDEX_AT = 0.0
     yield
 

@@ -77,17 +77,78 @@ def test_similarity_identical_near_max():
     from utils.similarity import similarity_score
 
     a = _feat()
-    # tags 45 + genres 20 + fan 0 (both empty) + format 10 + quality 8.6 + era 5
-    assert abs(similarity_score(a, a) - 88.6) < 0.01
+    # tags 55 + genres 15 + fan 0 (both empty) + format 10 + quality 8.6 + era 5
+    assert abs(similarity_score(a, a) - 93.6) < 0.01
 
 
 def test_similarity_tagless_seed_redistributes():
     from utils.similarity import similarity_score
 
     scored = similarity_score(_feat(tags={}), _feat())
-    # tag weight (45) spreads proportionally over the other 55 points:
-    # genres 36.36 + format 18.18 + quality 15.64 + era 9.09 + fan 0
-    assert abs(scored - 79.2727) < 0.01
+    # tag weight (55) spreads proportionally over the other 45 points:
+    # genres 33.33 + format 22.22 + quality 19.11 + era 11.11 + fan 0
+    assert abs(scored - 85.7778) < 0.01
+
+
+def test_seed_coverage_is_asymmetric():
+    """A candidate with many EXTRA tags must not be penalized — what
+    matters is how much of the seed's DNA it covers."""
+    from utils.similarity import seed_coverage
+
+    seed = {"Time Loop": 0.9, "Isekai": 0.8}
+    broad = {"Time Loop": 0.9, "Isekai": 0.8, "Comedy": 0.9, "Mecha": 0.8, "Idol": 0.7}
+    assert seed_coverage(seed, broad) == 1.0
+
+    # half-strength on one tag, nothing on the other
+    got = seed_coverage(seed, {"Time Loop": 0.45})
+    assert abs(got - 0.45 / (0.9 + 0.8)) < 1e-9
+
+    assert seed_coverage({}, broad) == 0.0
+
+
+def test_seed_coverage_idf_downweights_ubiquitous_tags():
+    """'Male Protagonist' (on half the catalog) must matter far less than
+    'Time Loop' (rare). This is why prod shared_tags looked like junk."""
+    from utils.similarity import seed_coverage
+
+    seed = {"Male Protagonist": 0.9, "Time Loop": 0.9}
+    idf = {"Male Protagonist": 0.05, "Time Loop": 2.0}
+    only_junk = seed_coverage(seed, {"Male Protagonist": 0.9}, idf)
+    only_rare = seed_coverage(seed, {"Time Loop": 0.9}, idf)
+    assert only_rare > only_junk * 10
+
+
+def test_seed_coverage_falls_back_when_all_idf_zero():
+    """If every seed tag is catalog-universal (idf 0 everywhere), fall back
+    to unweighted coverage instead of scoring all candidates 0."""
+    from utils.similarity import seed_coverage
+
+    seed = {"Isekai": 0.9}
+    idf = {"Isekai": 0.0}
+    assert abs(seed_coverage(seed, {"Isekai": 0.75}, idf) - 0.75 / 0.9) < 1e-9
+
+
+def test_tag_idf_from_catalog(app):
+    from models import db, Anime, Tag, AnimeTag
+    from utils import similarity as sim
+
+    with app.app_context():
+        common = Tag(name="Everywhere")
+        rare = Tag(name="Rare Gem")
+        db.session.add_all([common, rare])
+        db.session.flush()
+        for i in range(4):
+            a = Anime(title=f"IDF Show {i}")
+            db.session.add(a)
+            db.session.flush()
+            db.session.add(AnimeTag(anime_id=a.id, tag_id=common.id, rank=80))
+            if i == 0:
+                db.session.add(AnimeTag(anime_id=a.id, tag_id=rare.id, rank=80))
+        db.session.commit()
+        sim.get_tag_index(force_refresh=True)
+        idf = sim.get_tag_idf()
+        assert idf["Everywhere"] == 0.0  # on every tagged anime => no signal
+        assert idf["Rare Gem"] > 1.0
 
 
 @pytest.fixture(autouse=True)
@@ -97,6 +158,7 @@ def _fresh_tag_index():
     from utils import similarity
 
     similarity._TAG_INDEX = None
+    similarity._TAG_IDF = None
     similarity._TAG_INDEX_AT = 0.0
     yield
 
@@ -207,7 +269,7 @@ def test_similar_to_ranks_and_excludes(app, monkeypatch):
         assert "Re:Alpha" not in titles  # seed excluded
         assert "Re:Alpha Season 2" not in titles  # title-root franchise guard
         assert titles[-1] == "Far Show"
-        assert out["similar"][0]["shared_tags"][0] == "Isekai"  # rank 80 > 70
+        assert set(out["similar"][0]["shared_tags"]) == {"Isekai", "Time Loop"}
         assert out["similar"][0]["match_score"] > out["similar"][-1]["match_score"]
         fam_titles = [c["title"] for c in out["franchise"]]
         assert fam_titles == ["Re:Alpha Season 2"]
