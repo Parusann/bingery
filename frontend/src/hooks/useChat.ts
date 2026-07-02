@@ -1,12 +1,10 @@
-import { useEffect, useRef, useState } from "react";
+import { useState } from "react";
 import { api, ApiError } from "@/lib/api";
 import type {
   ChatAnimeRef,
   ChatMessage,
   ChatRole,
 } from "@/types/models";
-
-type Mode = "recommend" | "rate" | "onboard";
 
 interface TurnExtra {
   anime?: ChatAnimeRef[];
@@ -19,26 +17,11 @@ interface Turn {
   extra?: TurnExtra;
 }
 
-export function useChat(mode: Mode, seed: Turn[] = []) {
+export function useChat(seed: Turn[] = []) {
   const [turns, setTurns] = useState<Turn[]>(seed);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [offline, setOffline] = useState(false);
-
-  // When the mode changes, reset the conversation to that mode's seed so
-  // the greeting + system prompt context match what the user sees. Without
-  // this, switching to Rate or Onboard still shows the Recommend greeting,
-  // and small local models anchor on the old assistant turn and keep
-  // recommending titles instead of obeying the new mode prompt.
-  const lastMode = useRef(mode);
-  useEffect(() => {
-    if (lastMode.current === mode) return;
-    lastMode.current = mode;
-    setTurns(seed);
-    setError(null);
-    setOffline(false);
-    setLoading(false);
-  }, [mode, seed]);
 
   async function send(userText: string) {
     if (!userText.trim()) return;
@@ -55,7 +38,7 @@ export function useChat(mode: Mode, seed: Turn[] = []) {
       const res = await api.chatMessage({
         message: userText,
         conversation,
-        mode,
+        mode: "recommend",
       });
       const hasAnime = !!res.suggested_anime?.length;
       const hasActions = !!res.suggested_actions?.length;

@@ -105,7 +105,8 @@ export interface RecommendationsResponse {
 export interface ChatRequest {
   message: string;
   conversation: ChatMessage[];
-  mode: "recommend" | "rate" | "onboard";
+  // Legacy "rate"/"onboard" modes were removed; chat is recommend-only.
+  mode: "recommend";
 }
 
 export type { WatchStatus, ChatResponse };

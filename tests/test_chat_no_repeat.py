@@ -138,19 +138,21 @@ def test_find_similar_results_pass_grounding_validation(
 
 
 @patch("routes.chatbot.get_provider")
-def test_rate_mode_injects_context_for_authed_user(
+def test_legacy_modes_normalized_to_recommend(
     get_provider_mock, client, auth_headers
 ):
+    """rate/onboard modes were removed; a legacy client sending them gets
+    the full grounded recommend experience (context + candidates)."""
     headers, _user = auth_headers
     get_provider_mock.return_value.chat.return_value = AIResponse(
-        text="I'd say **8/10**."
+        text="Here's a pick."
     )
     r = client.post(
         "/api/chat/message",
-        json={"message": "help me rate this", "mode": "rate"},
+        json={"message": "help me pick something", "mode": "rate"},
         headers=headers,
     )
     assert r.status_code == 200
     system_arg = get_provider_mock.return_value.chat.call_args.kwargs.get("system") or ""
     assert "CONTEXT JSON" in system_arg
-    assert '"candidates"' not in system_arg  # rate mode carries no candidates
+    assert '"candidates"' in system_arg  # everything is recommend now

@@ -17,8 +17,13 @@ def test_word_cap_raised_to_100():
     assert "80 words" not in BINGERY_SYSTEM
 
 
-def test_other_modes_do_not_gain_recommendation_behavior():
-    from routes.chatbot_tools import MODE_PROMPTS
+def test_rate_and_onboard_modes_removed():
+    """Chat is a single recommendation experience; the rate/onboard modes
+    were removed. Legacy clients sending old mode values must still get
+    the recommend prompt."""
+    from routes.chatbot_tools import MODE_PROMPTS, build_system_prompt
 
-    assert "find_similar_anime" not in MODE_PROMPTS["rate"]
-    assert "find_similar_anime" not in MODE_PROMPTS["onboard"]
+    assert set(MODE_PROMPTS) == {"recommend"}
+    assert build_system_prompt("rate") == build_system_prompt("recommend")
+    assert build_system_prompt("onboard") == build_system_prompt("recommend")
+    assert build_system_prompt(None) == build_system_prompt("recommend")
