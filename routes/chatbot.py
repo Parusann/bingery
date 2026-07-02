@@ -256,6 +256,10 @@ def chat_message():
         )
 
     provider = get_provider()
+    # Set when find_similar_anime resolves a seed ("something like X"):
+    # the seed gets its own card in the response so the user sees what
+    # the matches were computed against.
+    similar_seed_id: int | None = None
 
     try:
         for _ in range(MAX_TOOL_LOOPS):
@@ -278,17 +282,24 @@ def chat_message():
                         )
                     # execute_tool already returns a JSON string.
                     result = execute_tool(call.name, arguments, user_id)
-                    # Titles the similarity engine surfaced are grounded
-                    # recommendations — let them pass the candidate
-                    # validation even when outside the static top-40.
-                    if call.name == "find_similar_anime" and candidate_ids is not None:
+                    if call.name == "find_similar_anime":
                         try:
                             payload = json.loads(result)
-                            candidate_ids |= {
-                                r["id"]
-                                for r in payload.get("results", [])
-                                if isinstance(r.get("id"), int)
-                            }
+                            # The resolved seed becomes its own card in the
+                            # response ("similar to <this>"); latest lookup wins.
+                            sid = (payload.get("seed") or {}).get("id")
+                            if isinstance(sid, int):
+                                similar_seed_id = sid
+                            # Titles the similarity engine surfaced are
+                            # grounded recommendations — let them pass the
+                            # candidate validation even when outside the
+                            # static top-40.
+                            if candidate_ids is not None:
+                                candidate_ids |= {
+                                    r["id"]
+                                    for r in payload.get("results", [])
+                                    if isinstance(r.get("id"), int)
+                                }
                         except Exception:
                             pass
                     messages.append(Message(
@@ -313,11 +324,31 @@ def chat_message():
                     if r["id"] not in already_suggested
                     or r["title"].lower() in user_msg.lower()
                 ]
+
+            # The similarity seed renders as its own "similar to" card —
+            # and never doubles as a suggestion.
+            seed_anime = None
+            if similar_seed_id is not None:
+                seed_obj = db.session.get(Anime, similar_seed_id)
+                if seed_obj is not None and not any(
+                    g.name in _CARD_BLOCKED_GENRES
+                    for g in seed_obj.official_genres
+                ):
+                    seed_anime = {
+                        "id": seed_obj.id,
+                        "title": seed_obj.title_english or seed_obj.title,
+                        "image_url": seed_obj.image_url,
+                        "year": seed_obj.year,
+                        "genres": [g.name for g in seed_obj.official_genres[:3]],
+                    }
+                refs = [r for r in refs if r["id"] != similar_seed_id]
+
             options, cleaned = _extract_options(cleaned)
             return jsonify({
                 "response": cleaned,
                 "suggested_anime": refs,
                 "suggested_actions": options,
+                "seed_anime": seed_anime,
                 "stop_reason": resp.stop_reason,
             })
 
