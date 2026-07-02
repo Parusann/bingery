@@ -23,7 +23,7 @@ export function AddToCollection({ animeId }: Props) {
         Add to collection
       </Button>
       {open ? (
-        <div className="absolute right-0 top-full mt-2 z-10 w-72 rounded-lg border border-border bg-bg-elevated glass-edge p-3 space-y-2">
+        <div className="absolute right-0 top-full mt-2 z-10 w-72 rounded-lg border border-border-strong bg-bg-elevated/95 backdrop-blur-xl shadow-e3 p-3 space-y-2">
           {collections.length === 0 ? (
             <p className="text-xs text-text-muted px-1 py-2">
               No collections yet. Create one below.
@@ -53,7 +53,7 @@ export function AddToCollection({ animeId }: Props) {
               value={newTitle}
               onChange={(e) => setNewTitle(e.target.value)}
               placeholder="New collection title…"
-              className="flex-1 h-8 px-2 rounded-md bg-surface border border-border text-sm outline-none"
+              className="flex-1 h-9 px-2.5 rounded-md bg-surface border border-border text-sm outline-none placeholder:text-text-dim transition-colors focus:border-amber/50 focus:ring-1 focus:ring-amber/35"
             />
             <Button size="sm" type="submit" disabled={!newTitle.trim()}>
               Add
@@ -88,10 +88,10 @@ function AddRow({
           /* toast later */
         }
       }}
-      className="w-full text-left text-sm px-2 py-2 rounded-md hover:bg-white/[0.05] flex items-center justify-between"
+      className="w-full text-left text-sm px-2.5 py-2 rounded-md transition-colors hover:bg-surface-strong focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber/60 flex items-center justify-between"
     >
-      <span>{title}</span>
-      <span className="text-xs text-text-muted">
+      <span className="truncate">{title}</span>
+      <span className={done ? "text-xs text-success" : "text-xs font-mono text-text-muted"}>
         {add.isPending ? "…" : done ? "✓" : "+"}
       </span>
     </button>

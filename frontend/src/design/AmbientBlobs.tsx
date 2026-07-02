@@ -18,7 +18,7 @@ export function AmbientBlobs() {
           left: "-20%",
           top: "-30%",
           background:
-            "radial-gradient(closest-side, rgba(230,166,128,0.45), rgba(230,166,128,0) 70%)",
+            "radial-gradient(closest-side, rgba(239,171,129,0.45), rgba(239,171,129,0) 70%)",
         }}
       />
       <div

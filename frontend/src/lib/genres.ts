@@ -30,27 +30,30 @@ export const FAN_GENRES = [
   "Bittersweet", "Noir", "Western", "Body Horror",
 ];
 
-// Hand-picked colors for the most common genres. Anything not listed falls
-// back to a stable, deterministic color derived from its name (below) so the
-// full tag set stays visually varied instead of one flat default.
+// Hand-picked colors for the most common genres — retuned to sit on the warm
+// dark stage: dusty, film-grade hues at a consistent perceived lightness
+// (~L66–74) instead of the old raw saturated palette. Anything not listed
+// falls back to a stable, deterministic color derived from its name (below)
+// at the same softened saturation, so the full tag set stays varied without
+// ever screaming against the amber accent.
 export const GENRE_COLORS: Record<string, string> = {
-  Action: "#ef4444",
-  Adventure: "#f59e0b",
-  Comedy: "#22c55e",
-  Drama: "#8b5cf6",
-  Fantasy: "#ec4899",
-  Horror: "#991b1b",
-  Mystery: "#6366f1",
-  Romance: "#f43f5e",
-  "Sci-Fi": "#06b6d4",
-  "Slice of Life": "#84cc16",
-  Supernatural: "#a855f7",
-  Thriller: "#f97316",
-  Shounen: "#3b82f6",
-  Seinen: "#64748b",
-  Isekai: "#10b981",
-  Psychological: "#7c3aed",
-  "Dark Fantasy": "#881337",
+  Action: "#e07a6a",
+  Adventure: "#e0a068",
+  Comedy: "#9fc482",
+  Drama: "#b89ac4",
+  Fantasy: "#d98bb1",
+  Horror: "#c47a7a",
+  Mystery: "#8f9bc4",
+  Romance: "#e88fa2",
+  "Sci-Fi": "#7fb8c4",
+  "Slice of Life": "#9BB8A8",
+  Supernatural: "#ab8fd1",
+  Thriller: "#d9985f",
+  Shounen: "#7fa3d1",
+  Seinen: "#9a94a8",
+  Isekai: "#83c4a8",
+  Psychological: "#9d86c9",
+  "Dark Fantasy": "#c47a8f",
 };
 
 // Same name -> same hue, every time. Keeps the tags distinguishable
@@ -64,5 +67,5 @@ function hashHue(name: string): number {
 export function genreColor(name: string): string {
   const fixed = GENRE_COLORS[name];
   if (fixed) return fixed;
-  return `hsl(${hashHue(name)} 62% 55%)`;
+  return `hsl(${hashHue(name)} 34% 68%)`;
 }

@@ -5,7 +5,7 @@ import { genreColor } from "@/lib/genres";
 
 export function ChatAnimeCard({ anime }: { anime: ChatAnimeRef }) {
   const inner = (
-    <div className="group flex gap-3.5 p-3 rounded-xl border border-amber/20 bg-white/[0.04] backdrop-blur-md hover:border-amber/55 hover:bg-amber/[0.06] hover:-translate-y-px transition-all duration-200 shadow-[0_8px_24px_-12px_rgba(0,0,0,0.5)]">
+    <div className="group flex gap-3.5 p-3 rounded-xl border border-amber/20 bg-surface backdrop-blur-md hover:border-amber/55 hover:bg-amber/[0.06] hover:-translate-y-px transition-all duration-200 shadow-e1">
       {anime.image_url ? (
         <img
           src={anime.image_url}
@@ -14,14 +14,14 @@ export function ChatAnimeCard({ anime }: { anime: ChatAnimeRef }) {
           className="w-14 h-20 object-cover rounded-md border border-border shrink-0 group-hover:border-amber/40 transition-colors"
         />
       ) : (
-        <div className="w-14 h-20 rounded-md bg-white/[0.05] border border-border shrink-0" />
+        <div className="w-14 h-20 rounded-md bg-surface border border-border shrink-0" />
       )}
       <div className="flex-1 min-w-0 flex flex-col gap-1.5">
-        <div className="text-sm font-display leading-snug line-clamp-2 group-hover:text-amber transition-colors">
+        <div className="text-sm font-display leading-snug line-clamp-2 group-hover:text-amber-hi transition-colors">
           {anime.title}
         </div>
         {anime.year ? (
-          <div className="font-mono text-[10px] tracking-wider uppercase text-text-dim">
+          <div className="font-mono text-[10px] tracking-wider uppercase tnum text-text-dim">
             {anime.year}
           </div>
         ) : null}
@@ -38,7 +38,10 @@ export function ChatAnimeCard({ anime }: { anime: ChatAnimeRef }) {
     </div>
   );
   return anime.id ? (
-    <Link to={`/anime/${anime.id}`} className="block">
+    <Link
+      to={`/anime/${anime.id}`}
+      className="block rounded-xl focus:outline-none focus-visible:ring-2 focus-visible:ring-amber/60 focus-visible:ring-offset-2 focus-visible:ring-offset-bg"
+    >
       {inner}
     </Link>
   ) : (
