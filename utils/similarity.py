@@ -114,7 +114,7 @@ _TAG_INDEX_AT: float = 0.0
 TAG_INDEX_TTL = 6 * 3600  # catalog syncs are weekly; 6h is generous
 
 _ROOT_NOISE = re.compile(
-    r"\b(season|part|cour|movie|film|ova|ona|special|final)\b.*$"
+    r"\b(seasons?|parts?|cours?|movies?|films?|ovas?|onas?|specials?|final)\b.*$"
     r"|\b(2nd|3rd|\dth|s\d+|ii|iii|iv)\b.*$"
     r"|[:\-–]\s.*$"
     r"|\s+\d+\s*$",

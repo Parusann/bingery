@@ -123,6 +123,11 @@ def test_title_root_strips_sequels():
     assert title_root("Mushoku Tensei Part 2") == title_root("Mushoku Tensei")
     assert title_root("K-On! Movie") == title_root("K-On!")
     assert title_root("Overlord II") == title_root("Overlord")
+    # Plural forms leaked Re:Zero OVAs into prod /similar results.
+    assert title_root("Re:Zero kara Hajimeru Isekai Seikatsu OVAs") == title_root(
+        "Re:Zero kara Hajimeru Isekai Seikatsu"
+    )
+    assert title_root("Kaguya-sama Specials") == title_root("Kaguya-sama")
     assert title_root("Attack on Titan") != title_root("Death Note")
 
 
