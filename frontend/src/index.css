@@ -122,3 +122,18 @@
     display: none;
   }
 }
+
+@layer base {
+  /* Native <select> popups (watchlist sort, dub-report episode picker):
+     Chromium derives the option list's colors from the select element's
+     own color-scheme, not the page's — without this the popup paints
+     white with near-white option text. Options need solid colors; the
+     translucent surface tokens don't composite in native popups. */
+  select {
+    color-scheme: dark;
+  }
+  select option {
+    background-color: #161120;
+    color: #f3ece4;
+  }
+}
