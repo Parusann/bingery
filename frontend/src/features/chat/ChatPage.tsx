@@ -1,5 +1,4 @@
 import { useEffect, useRef, useState } from "react";
-import { useSearchParams } from "react-router-dom";
 import { motion, AnimatePresence } from "framer-motion";
 import { Button } from "@/design/Button";
 import { GlassCard } from "@/design/GlassCard";
@@ -8,49 +7,16 @@ import { useChat } from "@/hooks/useChat";
 import type { Turn } from "@/hooks/useChat";
 import { ChatAnimeCard } from "./ChatAnimeCard";
 
-type Mode = "recommend" | "rate" | "onboard";
-
-const MODE_META: Record<Mode, { label: string; eyebrow: string; seed: Turn[] }> = {
-  recommend: {
-    label: "Recommend",
-    eyebrow: "Get a pick that fits your mood",
-    seed: [
-      {
-        role: "assistant",
-        content:
-          "Hey — I'm your anime guide. Tell me what you're in the mood for and I'll pick a few.",
-      },
-    ],
+const SEED: Turn[] = [
+  {
+    role: "assistant",
+    content:
+      "Hey — I'm your anime guide. Name a show you loved or a mood you're in and I'll pick a few.",
   },
-  rate: {
-    label: "Rate with AI",
-    eyebrow: "Talk through a rating with the AI",
-    seed: [
-      {
-        role: "assistant",
-        content:
-          "Which anime did you just finish? Tell me how it felt and I'll suggest a score.",
-      },
-    ],
-  },
-  onboard: {
-    label: "Onboard",
-    eyebrow: "Build your taste profile in a few questions",
-    seed: [
-      {
-        role: "assistant",
-        content:
-          "Let's build your taste. Name three anime you already love and a couple you bounced off.",
-      },
-    ],
-  },
-};
+];
 
 export function ChatPage() {
-  const [params] = useSearchParams();
-  const initialMode = (params.get("mode") as Mode) || "recommend";
-  const [mode, setMode] = useState<Mode>(initialMode);
-  const { turns, send, loading, error, offline } = useChat(mode, MODE_META[mode].seed);
+  const { turns, send, loading, error, offline } = useChat(SEED);
   const [input, setInput] = useState("");
   const scroller = useRef<HTMLDivElement | null>(null);
 
@@ -74,24 +40,8 @@ export function ChatPage() {
             Guide
           </h1>
           <span className="text-sm text-text-muted mb-1">
-            {MODE_META[mode].eyebrow}
+            Recommendations that fit your taste
           </span>
-          <div className="ml-auto flex flex-wrap gap-1.5 md:flex-nowrap">
-            {(Object.keys(MODE_META) as Mode[]).map((m) => (
-              <button
-                key={m}
-                onClick={() => setMode(m)}
-                className={cn(
-                  "px-3.5 py-1.5 rounded-pill text-xs font-mono tracking-wider uppercase transition-all",
-                  mode === m
-                    ? "bg-amber/15 text-amber border border-amber/55"
-                    : "text-text-muted border border-border hover:border-border-strong hover:text-text"
-                )}
-              >
-                {MODE_META[m].label}
-              </button>
-            ))}
-          </div>
         </div>
       </header>
 

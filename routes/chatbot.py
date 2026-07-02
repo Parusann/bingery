@@ -206,9 +206,9 @@ def chat_message():
     # The frontend hook posts `conversation`; older callers posted `history`.
     # Accept either so existing thread context isn't silently dropped.
     history = data.get("conversation") or data.get("history") or []
-    # Frontend sends `mode`: "recommend" | "rate" | "onboard". Each mode
-    # composes its own system prompt — see chatbot_tools.MODE_PROMPTS.
-    mode = data.get("mode")
+    # Chat is a single recommendation experience — the legacy
+    # "rate"/"onboard" modes were removed; any client-sent mode is ignored.
+    mode = "recommend"
     user_id = _optional_user_id()
 
     messages: list[Message] = []
@@ -239,18 +239,15 @@ def chat_message():
 
     # Ground recommendations against the scored candidate set so the LLM
     # can't surface anime the user has already engaged with or the rec
-    # engine has filtered out. Candidates are attached for authenticated
-    # recommend mode; rate mode gets the full-signal user context without
-    # candidates so scoring help is personally informed.
+    # engine has filtered out.
     candidate_ids: set[int] | None = None
-    if user_id and mode in ("recommend", "rate"):
+    if user_id:
         context = build_llm_context(user_id, user_msg, mode, include_nsfw=False)
-        if mode == "recommend":
-            context["candidates"] = [
-                c for c in context.get("candidates", [])
-                if c["id"] not in already_suggested
-            ]
-            candidate_ids = {c["id"] for c in context["candidates"]}
+        context["candidates"] = [
+            c for c in context.get("candidates", [])
+            if c["id"] not in already_suggested
+        ]
+        candidate_ids = {c["id"] for c in context["candidates"]}
         system += "\n\n# CONTEXT JSON\n" + json.dumps(context, ensure_ascii=False)
     if already_suggested:
         system += (
