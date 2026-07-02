@@ -347,6 +347,26 @@ def test_similar_to_query_count_is_bounded(app, monkeypatch):
         assert len(queries) < 15, f"{len(queries)} queries — N+1 regression"
 
 
+def test_similar_to_dedupes_candidate_franchises(app, monkeypatch):
+    """Results shouldn't spend two slots on Other Show + Other Show II —
+    keep only the best-scoring entry per candidate franchise root."""
+    from models import Anime
+    from utils.similarity import similar_to
+
+    seed_id = _mk(app, "Re:Epsilon", {"Isekai": 90, "Time Loop": 85}, ["Fantasy"])
+    _mk(app, "Other Show", {"Isekai": 80, "Time Loop": 70}, ["Fantasy"])
+    _mk(app, "Other Show II", {"Isekai": 78, "Time Loop": 68}, ["Fantasy"])
+    _mk(app, "Third Show", {"Isekai": 60}, ["Fantasy"])
+    monkeypatch.setattr("utils.similarity.franchise_anilist_ids", lambda *a, **k: set())
+
+    with app.app_context():
+        out = similar_to(Anime.query.get(seed_id), limit=10)
+        titles = [c["title"] for c in out["similar"]]
+        assert "Other Show" in titles
+        assert "Other Show II" not in titles  # same root, lower score
+        assert "Third Show" in titles
+
+
 def test_similar_to_personalized_excludes_watched_and_flags_plan(app, monkeypatch):
     from models import db, Anime, Rating, User, WatchlistEntry
     from utils.similarity import similar_to
