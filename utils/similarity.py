@@ -13,9 +13,9 @@ import time
 ERA_SIGMA_YEARS = 8.0
 
 WEIGHTS = {
-    "tags": 45,
-    "genres": 20,
-    "fan_genres": 10,
+    "tags": 55,
+    "genres": 15,
+    "fan_genres": 5,
     "format": 10,
     "quality": 10,
     "era": 5,
@@ -36,6 +36,33 @@ def jaccard(a: set, b: set) -> float:
     if not a or not b:
         return 0.0
     return len(a & b) / len(a | b)
+
+
+def seed_coverage(
+    seed_tags: dict[str, float],
+    cand_tags: dict[str, float],
+    idf: dict[str, float] | None = None,
+) -> float:
+    """How much of the SEED's tag identity the candidate covers, 0..1.
+
+    Deliberately asymmetric (unlike Jaccard): a candidate carrying many
+    extra tags is not penalized — only missing the seed's DNA costs. Each
+    tag is weighted by IDF so near-universal tags ('Male Protagonist')
+    contribute almost nothing while rare ones ('Time Loop') dominate.
+    """
+    if not seed_tags:
+        return 0.0
+    idf = idf or {}
+    denom = sum(w * idf.get(k, 1.0) for k, w in seed_tags.items())
+    if denom <= 0:
+        # Every seed tag is catalog-universal (idf 0). Rather than score
+        # all candidates 0, fall back to unweighted coverage.
+        return seed_coverage(seed_tags, cand_tags, None)
+    num = sum(
+        min(w, cand_tags.get(k, 0.0)) * idf.get(k, 1.0)
+        for k, w in seed_tags.items()
+    )
+    return num / denom
 
 
 def source_bucket(source: str | None) -> str:
@@ -83,12 +110,12 @@ def build_feature_from_parts(
     }
 
 
-def similarity_score(seed: dict, cand: dict) -> float:
+def similarity_score(seed: dict, cand: dict, idf: dict | None = None) -> float:
     """0-100. A tagless seed (not yet backfilled) redistributes the tag
     weight proportionally across the other components instead of zeroing
-    45 points for every candidate."""
+    them for every candidate."""
     comps = {
-        "tags": weighted_jaccard(seed["tags"], cand["tags"]),
+        "tags": seed_coverage(seed["tags"], cand["tags"], idf),
         "genres": jaccard(seed["genres"], cand["genres"]),
         "fan_genres": jaccard(seed["fan_genres"], cand["fan_genres"]),
         "format": (
@@ -110,6 +137,7 @@ def similarity_score(seed: dict, cand: dict) -> float:
 # ─── Catalog-backed helpers (need an app context) ───────────────────────────
 
 _TAG_INDEX: dict[int, dict[str, int]] | None = None
+_TAG_IDF: dict[str, float] | None = None
 _TAG_INDEX_AT: float = 0.0
 TAG_INDEX_TTL = 6 * 3600  # catalog syncs are weekly; 6h is generous
 
@@ -149,8 +177,26 @@ def get_tag_index(force_refresh: bool = False) -> dict[int, dict[str, int]]:
     idx: dict[int, dict[str, int]] = {}
     for anime_id, name, rank in rows:
         idx.setdefault(anime_id, {})[name] = rank
-    _TAG_INDEX, _TAG_INDEX_AT = idx, time.time()
+
+    # IDF over the tagged population: idf = ln(N / df). A tag on every
+    # tagged anime carries zero signal; rare tags dominate similarity.
+    df: dict[str, int] = {}
+    for tags in idx.values():
+        for name in tags:
+            df[name] = df.get(name, 0) + 1
+    n = len(idx)
+    idf = {name: math.log(n / count) for name, count in df.items()} if n else {}
+
+    global _TAG_IDF
+    _TAG_INDEX, _TAG_IDF, _TAG_INDEX_AT = idx, idf, time.time()
     return idx
+
+
+def get_tag_idf() -> dict[str, float]:
+    """{tag_name: idf} for the catalog; built alongside get_tag_index."""
+    if _TAG_IDF is None:
+        get_tag_index(force_refresh=True)
+    return _TAG_IDF or {}
 
 
 def _cache_only_relations(anilist_id):
@@ -249,6 +295,7 @@ def similar_to(
     from utils.nsfw import exclude_hard_blocked, exclude_soft_blocked
 
     tag_index = get_tag_index()
+    tag_idf = get_tag_idf()
     fan_index = _fan_genre_index()
     score_index = _community_score_index()
     seed_feat = _feature_for(seed, tag_index, fan_index, score_index)
@@ -301,7 +348,7 @@ def similar_to(
         if c.id in excluded_user_ids:
             continue
         s = similarity_score(
-            seed_feat, _feature_for(c, tag_index, fan_index, score_index)
+            seed_feat, _feature_for(c, tag_index, fan_index, score_index), tag_idf
         )
         if profile is not None:
             personal = score_candidate(
@@ -319,9 +366,11 @@ def similar_to(
                 top_100_ids,
             )["signals"]["total_score"]
             s = 0.7 * s + 0.3 * personal
+        # Display the most IDENTIFYING shared tags, not the most common:
+        # idf x rank sinks near-universal tags like 'Male Protagonist'.
         shared = sorted(
             set(tag_index.get(seed.id, {})) & set(tag_index.get(c.id, {})),
-            key=lambda n: -tag_index[c.id][n],
+            key=lambda n: -(tag_idf.get(n, 1.0) * tag_index[c.id][n]),
         )[:4]
         scored.append((s, c, shared))
 
