@@ -384,6 +384,20 @@ def similar_to(
         return d
 
     scored.sort(key=lambda t: (-t[0], t[1].id))
+
+    # One slot per candidate franchise: don't spend two results on
+    # Other Show + Other Show II — keep the best-scoring entry per root.
+    picked: list = []
+    seen_roots: set[str] = set()
+    for s, c, shared in scored:
+        root = title_root(c.title)
+        if root in seen_roots:
+            continue
+        seen_roots.add(root)
+        picked.append((s, c, shared))
+        if len(picked) >= limit:
+            break
+
     return {
         "similar": [
             {
@@ -392,7 +406,7 @@ def similar_to(
                 "shared_tags": shared,
                 "in_plan_to_watch": c.id in plan_ids,
             }
-            for s, c, shared in scored[:limit]
+            for s, c, shared in picked
         ],
         "franchise": [_card(c) for c in franchise[:6]],
     }
