@@ -281,6 +281,19 @@ def chat_message():
                         )
                     # execute_tool already returns a JSON string.
                     result = execute_tool(call.name, arguments, user_id)
+                    # Titles the similarity engine surfaced are grounded
+                    # recommendations — let them pass the candidate
+                    # validation even when outside the static top-40.
+                    if call.name == "find_similar_anime" and candidate_ids is not None:
+                        try:
+                            payload = json.loads(result)
+                            candidate_ids |= {
+                                r["id"]
+                                for r in payload.get("results", [])
+                                if isinstance(r.get("id"), int)
+                            }
+                        except Exception:
+                            pass
                     messages.append(Message(
                         role="tool",
                         tool_call_id=call.id,

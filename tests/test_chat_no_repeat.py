@@ -89,6 +89,54 @@ def test_no_repeat_feeds_exclude_ids_to_find_similar(
     assert repeat_id in passed_input.get("exclude_ids", [])
 
 
+@patch("routes.chatbot.execute_tool")
+@patch("routes.chatbot.get_provider")
+def test_find_similar_results_pass_grounding_validation(
+    get_provider_mock, execute_tool_mock, client, app, auth_headers
+):
+    """In grounded recommend mode, titles surfaced by find_similar_anime
+    must survive the candidate validation pass — they are engine-grounded
+    even when outside the static candidates list."""
+    import json as _json
+
+    from models import db, Anime, Rating
+
+    headers, user = auth_headers
+    with app.app_context():
+        # One rating => warm profile (limit 40); flood the candidate list
+        # so Tool Pick can't make the static top-40.
+        rated = Anime(title="Warmup Show", api_score=8.0)
+        db.session.add(rated)
+        db.session.flush()
+        db.session.add(Rating(user_id=user.id, anime_id=rated.id, score=8))
+        for i in range(44):
+            db.session.add(Anime(title=f"Filler {i}", api_score=9.0))
+        tool_pick = Anime(title="Tool Pick", api_score=None)
+        db.session.add(tool_pick)
+        db.session.commit()
+        tool_pick_id = tool_pick.id
+
+    execute_tool_mock.return_value = _json.dumps(
+        {"seed": {"id": 1, "title": "X"}, "results": [{"id": tool_pick_id, "title": "Tool Pick"}]}
+    )
+    get_provider_mock.return_value.chat.side_effect = [
+        AIResponse(
+            tool_calls=[
+                ToolCall(id="t1", name="find_similar_anime", arguments={"title": "X"})
+            ]
+        ),
+        AIResponse(text="Try **Tool Pick**!"),
+    ]
+    r = client.post(
+        "/api/chat/message",
+        json={"message": "something like X", "conversation": [], "mode": "recommend"},
+        headers=headers,
+    )
+    assert r.status_code == 200
+    titles = [c["title"] for c in r.get_json()["suggested_anime"]]
+    assert "Tool Pick" in titles
+
+
 @patch("routes.chatbot.get_provider")
 def test_rate_mode_injects_context_for_authed_user(
     get_provider_mock, client, auth_headers
