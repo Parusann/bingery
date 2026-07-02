@@ -15,10 +15,10 @@ interface Props {
 
 /**
  * Responsive modal.
- *  - >=768px (md): UNCHANGED from the original — centered dialog, scale/y
- *    enter, max-w via `maxWidth`, max-h-[92vh].
+ *  - >=768px (md): centered dialog, scale/y enter, max-w via `maxWidth`,
+ *    max-h-[92vh].
  *  - <768px: docks to the bottom as a native sheet — full width,
- *    rounded-t-2xl, max-h-[85vh], grab handle, slide-up enter,
+ *    rounded-t-3xl, max-h-[85vh], grab handle, slide-up enter,
  *    safe-area bottom padding.
  *
  * Every existing <Modal> consumer (CollectionForm, AddToCollection,
@@ -34,7 +34,6 @@ export function Modal({ open, onClose, children, maxWidth = "640px", className }
     return () => window.removeEventListener("keydown", onKey);
   }, [open, onClose]);
 
-  // Desktop variant values are byte-identical to the original component.
   const panelMotion = isDesktop
     ? {
         initial: { opacity: 0, scale: 0.96, y: 8 },
@@ -58,7 +57,7 @@ export function Modal({ open, onClose, children, maxWidth = "640px", className }
           transition={transitions.easeFast}
         >
           <motion.div
-            className="absolute inset-0 bg-black/60 backdrop-blur-sm"
+            className="absolute inset-0 bg-bg/70 backdrop-blur-sm"
             onClick={onClose}
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
@@ -66,10 +65,10 @@ export function Modal({ open, onClose, children, maxWidth = "640px", className }
           />
           <motion.div
             className={cn(
-              "relative z-10 w-full bg-bg-elevated border border-border glass-edge overflow-y-auto",
+              "relative z-10 w-full bg-bg-elevated border border-border-strong shadow-e3 overflow-y-auto",
               // mobile: bottom sheet
-              "rounded-t-2xl max-h-[85vh]",
-              // desktop: unchanged centered dialog
+              "rounded-t-3xl max-h-[85vh]",
+              // desktop: centered dialog
               "md:rounded-xl md:max-h-[92vh]",
               className
             )}
@@ -83,7 +82,7 @@ export function Modal({ open, onClose, children, maxWidth = "640px", className }
           >
             {/* grab handle — mobile only */}
             <div className="md:hidden pt-3 pb-1 flex justify-center sticky top-0">
-              <div className="w-9 h-1 rounded-full bg-border-strong" />
+              <div className="w-10 h-1 rounded-full bg-border-strong" />
             </div>
             {children}
           </motion.div>

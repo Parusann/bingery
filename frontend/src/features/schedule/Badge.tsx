@@ -1,5 +1,7 @@
 export type BadgeType = "sub" | "dub";
 
+// sub = amber/peach (the house accent), dub = sage. This pairing is the
+// canonical sub/dub color language — NextEpisodeWidget matches it.
 export function Badge({ type, size = "md" }: { type: BadgeType; size?: "sm" | "md" }) {
   const label = type.toUpperCase();
   const isSub = type === "sub";
@@ -10,7 +12,7 @@ export function Badge({ type, size = "md" }: { type: BadgeType; size?: "sm" | "m
   const text = size === "sm" ? "text-[9.5px]" : "text-[11px]";
   return (
     <span
-      className={`${color} ${bg} ${border} ${text} font-mono uppercase tracking-[0.18em] inline-flex items-center gap-[5px] rounded px-[9px] py-[4px] border`}
+      className={`${color} ${bg} ${border} ${text} font-mono uppercase tracking-[0.18em] inline-flex items-center gap-1.5 rounded px-2 py-1 border`}
     >
       <span className={`${dotColor} h-[5px] w-[5px] rounded-full shadow-[0_0_5px_currentColor]`} />
       {label}

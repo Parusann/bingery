@@ -6,8 +6,7 @@ import { cn } from "@/lib/cn";
  * Header (desktop) and the MoreSheet (mobile) share one implementation.
  *
  * `size` controls the hit area: "sm" = 36px (the original desktop size),
- * "lg" = 44px (mobile touch target). Desktop callers MUST pass size="sm"
- * so the desktop instance is byte-identical to before.
+ * "lg" = 44px (mobile touch target).
  */
 export function NsfwToggle({ size = "sm" }: { size?: "sm" | "lg" }) {
   const visible = useNsfw((s) => s.visible);
@@ -24,8 +23,9 @@ export function NsfwToggle({ size = "sm" }: { size?: "sm" | "lg" }) {
           : "Ecchi hidden — click to show. (Hentai is always hidden.)"
       }
       className={cn(
-        "rounded-pill border border-amber/30 bg-white/[0.04] backdrop-blur-md text-text-muted",
+        "rounded-pill border border-amber/30 bg-surface backdrop-blur-md text-text-muted",
         "hover:text-amber hover:border-amber/55 hover:bg-amber/[0.08] transition-colors",
+        "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber/60",
         "flex items-center justify-center shrink-0",
         size === "lg" ? "w-11 h-11" : "w-9 h-9"
       )}

@@ -16,7 +16,7 @@ const items = [
 
 export function NavBar() {
   return (
-    <nav className="flex items-center gap-1 text-sm overflow-x-auto">
+    <nav className="flex items-center gap-1 text-sm overflow-x-auto scrollbar-none">
       {items.map((it) => (
         <NavLink
           key={it.to}
@@ -24,8 +24,9 @@ export function NavBar() {
           className={({ isActive }) =>
             cn(
               "shrink-0 relative inline-flex items-center min-h-[44px] px-3 py-2.5 rounded-md text-text-muted transition-colors",
-              "hover:text-text hover:bg-white/[0.04]",
-              isActive && "text-text bg-white/[0.06]"
+              "hover:text-text hover:bg-surface",
+              "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber/60",
+              isActive && "text-text bg-surface-strong"
             )
           }
         >

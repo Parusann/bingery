@@ -22,9 +22,24 @@ export function AnimeDetailPage() {
   const related = useRelated(numericId);
 
   if (detail.isLoading || !detail.data) {
+    // Skeleton mirrors the hero anatomy: poster + title + meta + description.
     return (
       <div className="space-y-6">
-        <Skeleton className="h-72" rounded="lg" />
+        <div className="rounded-xl border border-border bg-surface p-4 sm:p-6 md:p-10">
+          <div className="flex flex-col md:flex-row gap-6 md:gap-8">
+            <Skeleton className="w-40 md:w-56 aspect-[2/3] shrink-0" rounded="lg" />
+            <div className="flex-1 space-y-3 min-w-0">
+              <Skeleton className="h-10 w-2/3" />
+              <Skeleton className="h-4 w-1/3" />
+              <div className="flex gap-1.5 pt-1">
+                <Skeleton className="h-6 w-16" rounded="full" />
+                <Skeleton className="h-6 w-20" rounded="full" />
+                <Skeleton className="h-6 w-14" rounded="full" />
+              </div>
+              <Skeleton className="h-24 w-full max-w-3xl" />
+            </div>
+          </div>
+        </div>
         <Skeleton className="h-48" rounded="lg" />
       </div>
     );
@@ -50,14 +65,14 @@ export function AnimeDetailPage() {
           <DubReportButton animeId={anime.id} />
         </div>
       ) : null}
-      <div className="grid md:grid-cols-[1fr_420px] gap-8">
+      <div className="grid md:grid-cols-[1fr_420px] gap-8 mt-8">
         <section>
-          <h2 className="font-display text-2xl mb-4">Community fan genres</h2>
+          <h2 className="font-display text-title mb-4">Community fan genres</h2>
           <GlassCard className="p-4 sm:p-6">
             {anime.fan_genres && anime.fan_genres.length ? (
               <FanGenreBars fanGenres={anime.fan_genres} />
             ) : (
-              <p className="text-text-muted text-sm">
+              <p className="font-display italic text-text-muted">
                 No fan-genre votes yet. Be the first.
               </p>
             )}
@@ -65,7 +80,7 @@ export function AnimeDetailPage() {
           <RelatedStrip related={related.data?.related ?? []} />
         </section>
         <aside>
-          <h2 className="font-display text-2xl mb-4">Your rating</h2>
+          <h2 className="font-display text-title mb-4">Your rating</h2>
           <GlassCard tone="warm" className="p-4 sm:p-6">
             <RatingPanel anime={anime} />
           </GlassCard>

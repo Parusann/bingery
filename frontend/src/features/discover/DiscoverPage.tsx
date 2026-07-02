@@ -30,9 +30,12 @@ export function DiscoverPage() {
 
   return (
     <div>
-      <div className="flex flex-col md:flex-row gap-4 mb-6 items-start md:items-center">
-        <h1 className="font-display text-display text-amber">Discover</h1>
-        <div className="flex-1 md:ml-auto md:max-w-xl">
+      <div className="flex flex-col md:flex-row gap-4 mb-6 md:mb-8 items-start md:items-end">
+        <div>
+          <div className="font-mono text-micro uppercase text-amber mb-2">Catalog</div>
+          <h1 className="font-display text-display">Discover</h1>
+        </div>
+        <div className="flex-1 w-full md:ml-auto md:max-w-xl md:pb-1">
           <SearchAutocomplete
             onSubmit={(q) => update("q", q)}
           />
@@ -46,27 +49,30 @@ export function DiscoverPage() {
       />
       <AnimeGrid anime={data?.anime ?? []} loading={isLoading} />
       {data && data.pages > 1 ? (
-        <div className="flex justify-center items-center gap-3 mt-8 text-sm">
+        <nav
+          className="flex justify-center items-center gap-3 mt-10 text-sm"
+          aria-label="Pagination"
+        >
           <Button
-            variant="ghost"
+            variant="glass"
             size="sm"
             disabled={page <= 1}
             onClick={() => setPage((p) => Math.max(1, p - 1))}
           >
             Prev
           </Button>
-          <span className="text-text-muted tabular-nums">
+          <span className="font-mono text-caption text-text-muted tnum">
             {data.page} / {data.pages}
           </span>
           <Button
-            variant="ghost"
+            variant="glass"
             size="sm"
             disabled={page >= data.pages || isFetching}
             onClick={() => setPage((p) => p + 1)}
           >
             Next
           </Button>
-        </div>
+        </nav>
       ) : null}
     </div>
   );

@@ -7,7 +7,10 @@ export function AuthPage() {
   return (
     <div className="max-w-md mx-auto mt-8">
       <GlassCard tone="warm" className="p-8" elevated>
-        <h1 className="font-display text-3xl mb-1">Welcome back</h1>
+        <div className="font-mono text-micro uppercase text-amber mb-2">
+          Bingery
+        </div>
+        <h1 className="font-display text-title mb-1">Welcome back</h1>
         <p className="text-text-muted mb-6">
           Sign in to rate, collect, and chat with your taste guide.
         </p>

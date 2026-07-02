@@ -23,7 +23,7 @@ export function RatingPanel({ anime }: { anime: AnimeDetail }) {
 
   if (!user) {
     return (
-      <p className="text-sm text-text-muted">
+      <p className="font-display italic text-text-muted">
         Sign in to rate, review, and vote on fan-genres.
       </p>
     );
@@ -37,11 +37,13 @@ export function RatingPanel({ anime }: { anime: AnimeDetail }) {
   return (
     <div className="space-y-5">
       <div>
-        <label className="text-sm text-text-muted block mb-2">Your rating</label>
+        <label className="text-caption font-medium text-text-muted block mb-2">
+          Your rating
+        </label>
         <StarRating value={score} onChange={setScore} />
       </div>
       <div>
-        <label className="text-sm text-text-muted block mb-2">
+        <label className="text-caption font-medium text-text-muted block mb-2">
           Short review (optional)
         </label>
         <textarea
@@ -51,12 +53,18 @@ export function RatingPanel({ anime }: { anime: AnimeDetail }) {
             setSaved(false);
           }}
           placeholder="What did you think?"
-          className="w-full min-h-[80px] px-3 py-2 rounded-lg bg-surface border border-border focus:border-border-strong outline-none text-sm font-sans"
+          className={cn(
+            "w-full min-h-[80px] px-3.5 py-2.5 rounded-lg text-sm font-sans",
+            "bg-surface border border-border outline-none transition-colors",
+            "placeholder:text-text-dim",
+            "focus:border-amber/50 focus:ring-1 focus:ring-amber/35 focus:bg-amber/[0.03]"
+          )}
         />
       </div>
       <div>
-        <label className="text-sm text-text-muted block mb-2">
-          Fan-genre votes <span className="text-text-dim">({fgs.length}/15)</span>
+        <label className="text-caption font-medium text-text-muted block mb-2">
+          Fan-genre votes{" "}
+          <span className="font-mono text-text-dim tnum">({fgs.length}/15)</span>
         </label>
         <div className="flex flex-wrap gap-2">
           {FAN_GENRES.map((g) => {
@@ -66,10 +74,10 @@ export function RatingPanel({ anime }: { anime: AnimeDetail }) {
                 key={g}
                 onClick={() => toggle(g)}
                 className={cn(
-                  "px-3.5 py-2 rounded-full text-sm border transition-colors min-h-[44px] inline-flex items-center",
+                  "px-3.5 py-2 rounded-pill text-sm border transition-colors min-h-[44px] inline-flex items-center",
                   active
-                    ? "border-transparent text-bg"
-                    : "border-border text-text-muted hover:border-border-strong"
+                    ? "border-transparent text-bg font-medium"
+                    : "border-border bg-surface text-text-muted hover:text-text hover:border-border-strong"
                 )}
                 style={active ? { background: genreColor(g) } : undefined}
               >

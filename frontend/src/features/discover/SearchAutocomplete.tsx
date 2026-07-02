@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { AnimatePresence, motion } from "framer-motion";
+import { Search } from "lucide-react";
 import { Input } from "@/design/Input";
 import { useSearch } from "@/hooks/useSearch";
 import { transitions } from "@/design/motion";
@@ -38,6 +39,7 @@ export function SearchAutocomplete({ onSubmit }: Props) {
         <Input
           placeholder="Search anime…"
           value={q}
+          leading={<Search aria-hidden className="w-4 h-4 text-text-dim shrink-0" />}
           onFocus={() => setOpen(true)}
           onChange={(e) => {
             setQ(e.target.value);
@@ -52,10 +54,12 @@ export function SearchAutocomplete({ onSubmit }: Props) {
             animate={{ opacity: 1, y: 0 }}
             exit={{ opacity: 0, y: -6 }}
             transition={transitions.easeFast}
-            className="absolute left-0 right-0 mt-2 rounded-lg border border-border bg-bg-elevated/95 backdrop-blur-xl overflow-hidden z-20 glass-edge"
+            className="absolute left-0 right-0 mt-2 rounded-lg border border-border-strong bg-bg-elevated/95 backdrop-blur-xl overflow-hidden z-20 shadow-e3"
           >
             {loading ? (
-              <div className="p-3 text-sm text-text-muted">Searching…</div>
+              <div className="p-3 text-caption text-text-muted animate-pulse">
+                Searching…
+              </div>
             ) : (
               results.slice(0, 8).map((a) => (
                 <button
@@ -66,22 +70,22 @@ export function SearchAutocomplete({ onSubmit }: Props) {
                     setQ("");
                     nav(`/anime/${a.id}`);
                   }}
-                  className="flex gap-3 w-full text-left p-2 hover:bg-white/[0.05]"
+                  className="flex gap-3 w-full text-left p-2.5 transition-colors hover:bg-surface-strong"
                 >
                   {a.image_url ? (
                     <img
                       src={a.image_url}
                       alt=""
-                      className="w-10 h-14 object-cover rounded"
+                      className="w-10 h-14 object-cover rounded-sm"
                     />
                   ) : (
-                    <div className="w-10 h-14 rounded bg-white/5" />
+                    <div className="w-10 h-14 rounded-sm bg-surface" />
                   )}
                   <div className="flex-1 min-w-0">
                     <div className="text-sm truncate">
                       {a.title_english ?? a.title}
                     </div>
-                    <div className="text-xs text-text-muted truncate">
+                    <div className="text-xs text-text-dim truncate tnum">
                       {a.year ?? ""} {a.format ?? ""}
                     </div>
                   </div>
