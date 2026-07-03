@@ -275,6 +275,19 @@
     .reveal-stagger.in-view > *:nth-child(4){ transition-delay: 360ms; }
     .reveal-stagger.in-view > *:nth-child(5){ transition-delay: 480ms; }
 
+    /* ───────── first screen: hero + top-rated rail pinned at the fold ─────────
+       The topbar occupies 107px of flow; hero flexes to fill the remainder so
+       the rail's bottom edge lands exactly on the first viewport's fold. */
+    .first-screen{
+      display:flex;
+      flex-direction:column;
+      /* --nav-h is measured from the real topbar height by script — the
+         nav's height is responsive, so no constant survives all widths. */
+      min-height: calc(100vh - var(--nav-h, 107px));
+      min-height: calc(100dvh - var(--nav-h, 107px));
+      margin-bottom: 64px;
+    }
+    .first-screen .marquee-wrap{ margin-bottom: 0; }
     /* ───────── hero grid ───────── */
     .hero{
       display:grid;
@@ -282,7 +295,8 @@
       gap:72px;
       align-items:center;
       padding: 16px 0 32px;
-      min-height: calc(100vh - 92px - 240px);
+      flex: 1;
+      min-height: 0;
     }
     .hero-right{ align-self: center; }
     /* scroll indicator at end of hero */
@@ -1687,6 +1701,21 @@
       .alive h2{ font-size: 27px; }
       .waitlist h2{ font-size: 28px; }
     }
+
+    /* Short desktop viewports (768-840px laptops): compact the hero stack so
+       the full first screen — topbar + hero + top-rated rail — fits exactly
+       one viewport with the rail pinned at the fold. Last in the sheet (and
+       .first-screen-scoped) so it wins over the base component rules. */
+    @media (max-height: 840px) and (min-width: 1004px){
+      .first-screen .hero{ padding: 8px 0 16px; }
+      .first-screen .logo-lockup{ margin-bottom: 22px; }
+      .first-screen .logo-row .logo-emblem{ width: 72px; height: 72px; }
+      .first-screen .logo-emblem svg{ width: 100%; height: 100%; }
+      .first-screen .logo-row .logo-wordmark{ font-size: 62px; }
+      .first-screen .headline{ font-size: clamp(44px, 4.8vw, 62px); margin-bottom: 20px; }
+      .first-screen .sub{ margin-bottom: 26px; }
+      .first-screen .rec-wrap{ transform: scale(0.92); transform-origin: center top; }
+    }
   </style>
 </head>
 <body>
@@ -1716,6 +1745,8 @@
     <button class="signin" onclick="window.top.location.href='/auth'">Sign in</button>
   </nav>
 
+  <!-- first screen: hero + top-rated rail composed to exactly one viewport -->
+  <div class="first-screen">
   <!-- hero -->
   <section class="hero" style="position:relative;">
 
@@ -1776,6 +1807,7 @@
     <div class="marquee-label">Top rated</div>
     <div class="marquee-track" id="marqueeTrack"></div>
   </section>
+  </div><!-- /first-screen -->
 
   <!-- alive / spline 3D -->
   <section class="alive reveal">
@@ -2287,6 +2319,16 @@
     host.classList.add("ready");
     tick();
   });
+})();
+
+// measure the responsive topbar into --nav-h so the first screen
+// (hero + top-rated rail) composes to exactly one viewport at any size
+(function(){
+  const nav = document.querySelector("nav");
+  if(!nav) return;
+  const set = () => document.documentElement.style.setProperty("--nav-h", nav.offsetHeight + "px");
+  set();
+  addEventListener("resize", set);
 })();
 
 // marquee of poster placeholders
