@@ -123,6 +123,55 @@ def sync_dub_sources():
     return jsonify(results), 200
 
 
+@admin_bp.route("/audit-schedule", methods=["POST"])
+def audit_schedule_endpoint():
+    """Run the schedule auditor in-process and return its report.
+
+    Read-only: verifies the entries `/api/schedule/week` serves against
+    independent sources (AniList, MAL/Jikan, AnimeSchedule, Crunchyroll RSS)
+    and classifies them CONFIRMED / MISMATCH / ESTIMATED / UNVERIFIABLE.
+    Never writes to the database — corrections stay attended-only.
+
+    Body (all optional): {"weeks": 1, "max_anime": 60, "offline": false}
+    `weeks` is clamped to 1..4 and `max_anime` to 10..200 to keep the
+    in-request runtime bounded (source calls are rate-limited).
+    """
+    _check_secret()
+
+    body = request.get_json(silent=True) or {}
+    weeks = max(1, min(int(body.get("weeks", 1)), 4))
+    max_anime = max(10, min(int(body.get("max_anime", 60)), 200))
+    offline = bool(body.get("offline", False))
+
+    from datetime import datetime, timezone
+
+    from audit_schedule import run_audit, sunday_of
+    from utils.schedule_audit import evaluate_thresholds
+
+    report = run_audit(
+        week_start=sunday_of(datetime.now(timezone.utc)),
+        weeks=weeks,
+        max_anime=max_anime,
+        sources=[] if offline else None,
+    )
+    payload = report.to_dict()
+    payload["threshold_breaches"] = evaluate_thresholds(report.totals())
+
+    # Best-effort server-side copy for later inspection; the response body
+    # is the artifact the CI workflow uploads.
+    try:
+        out_dir = os.path.join("reports", "schedule-audit")
+        os.makedirs(out_dir, exist_ok=True)
+        tag = report.generated_at.strftime("%Y%m%dT%H%M%SZ")
+        with open(os.path.join(out_dir, f"{tag}-audit.json"), "w",
+                  encoding="utf-8") as fh:
+            fh.write(report.to_json())
+    except OSError:
+        pass
+
+    return jsonify(payload), 200
+
+
 @admin_bp.route("/ingest-dub-dates", methods=["POST"])
 def ingest_dub_dates():
     """Ingest real dub air dates from a JSON batch (the "research" fallback).
