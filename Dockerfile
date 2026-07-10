@@ -41,6 +41,7 @@ COPY routes/ ./routes/
 COPY utils/ ./utils/
 COPY seed.py seed_demo_user.py seed_dub_schedule.py ./
 COPY sync_anilist.py sync_dub_animeschedule.py sync_dub_crunchyroll.py ./
+COPY audit_schedule.py ./
 COPY migrate_watchlist.py ./
 
 # Copy built frontend from stage 1 — app.py serves /frontend/dist if present.
