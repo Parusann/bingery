@@ -14,7 +14,12 @@ export function StatsPage() {
   if (!user) {
     return (
       <div className="py-20 text-center">
-        <h1 className="font-display text-4xl mb-2">Sign in for your stats</h1>
+        <div className="font-mono text-micro uppercase text-amber mb-3">
+          Stats
+        </div>
+        <h1 className="font-display text-display mb-2">
+          Sign in for your stats
+        </h1>
         <p className="text-text-muted">
           See your rating distribution, heatmap, and top genres.
         </p>
@@ -24,11 +29,16 @@ export function StatsPage() {
 
   return (
     <div className="space-y-8">
-      <h1 className="font-display text-4xl text-amber">Your stats</h1>
+      <div>
+        <div className="font-mono text-micro uppercase text-amber mb-2">
+          Your year in anime
+        </div>
+        <h1 className="font-display text-display">Your stats</h1>
+      </div>
       {overview.isLoading || !overview.data ? (
-        <div className="grid grid-cols-2 md:grid-cols-6 gap-3">
+        <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3">
           {Array.from({ length: 6 }).map((_, i) => (
-            <Skeleton key={i} className="h-20" rounded="lg" />
+            <Skeleton key={i} className="h-[92px]" rounded="lg" />
           ))}
         </div>
       ) : (
@@ -50,7 +60,7 @@ export function StatsPage() {
       {heatmap.data ? (
         <ActivityHeatmap data={heatmap.data.heatmap} />
       ) : (
-        <Skeleton className="h-40" rounded="lg" />
+        <Skeleton className="h-48" rounded="lg" />
       )}
     </div>
   );

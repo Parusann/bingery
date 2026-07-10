@@ -1,13 +1,17 @@
 import { Link } from "react-router-dom";
+import { Star } from "lucide-react";
 import { GlassCard } from "@/design/GlassCard";
 import { Badge } from "@/design/Badge";
+import { palette } from "@/design/tokens";
 import type { AnimeCompareResponse, AnimeCompareSide } from "@/types/models";
 
 // Side-by-side comparison of two anime + the user's own ratings.
 //
-// Shared genres are highlighted on each side with an "amber" badge tone;
-// unique-to-this-side genres get a neutral badge. The shared/unique
-// breakdown panel at the bottom calls out how much the two anime overlap.
+// Shared genres are highlighted on each side with the amber badge tone;
+// unique-to-this-side genres get the warm neutral (was an off-palette
+// slate). Your own score reads gold — the reserved star color.
+
+const NEUTRAL = palette.mute;
 
 function Side({ side, sharedGenres }: { side: AnimeCompareSide; sharedGenres: Set<string> }) {
   const a = side.anime;
@@ -18,32 +22,32 @@ function Side({ side, sharedGenres }: { side: AnimeCompareSide; sharedGenres: Se
     <GlassCard tone="warm" className="p-5 space-y-4">
       <Link
         to={`/anime/${a.id}`}
-        className="flex gap-3 items-start group"
+        className="flex gap-3 items-start group rounded-md focus:outline-none focus-visible:ring-2 focus-visible:ring-amber/60"
       >
         {a.image_url ? (
           <img
             src={a.image_url}
             alt=""
-            className="w-20 h-28 object-cover rounded-md shadow-md shrink-0"
+            className="w-20 h-28 object-cover rounded-md shadow-e1 shrink-0"
           />
         ) : (
-          <div className="w-20 h-28 rounded-md bg-white/5 shrink-0" />
+          <div className="w-20 h-28 rounded-md bg-surface shrink-0" />
         )}
         <div className="min-w-0">
-          <div className="font-display text-xl leading-tight group-hover:text-amber line-clamp-3">
+          <div className="font-display text-heading leading-tight group-hover:text-amber-hi transition-colors line-clamp-3">
             {display}
           </div>
-          <div className="text-xs text-text-muted mt-1">
+          <div className="text-xs text-text-muted tnum mt-1">
             {a.year ?? "—"} · {a.episodes ?? "?"} eps
           </div>
-          <div className="text-sm mt-2">
+          <div className="text-sm mt-2 tnum">
             <span className="text-text-muted">Public</span>{" "}
-            <span className="font-mono">★ {score}</span>
+            <span className="font-mono text-amber-hi">{score}</span>
             {community ? (
               <>
                 {"  ·  "}
                 <span className="text-text-muted">Community</span>{" "}
-                <span className="font-mono">★ {community}</span>
+                <span className="font-mono text-amber-hi">{community}</span>
               </>
             ) : null}
           </div>
@@ -56,14 +60,14 @@ function Side({ side, sharedGenres }: { side: AnimeCompareSide; sharedGenres: Se
       </Link>
 
       <div>
-        <div className="text-xs font-mono uppercase tracking-wider text-text-muted mb-2">
+        <div className="font-mono text-micro uppercase text-text-dim mb-2">
           Genres
         </div>
         <div className="flex flex-wrap gap-1.5">
           {(a.official_genres ?? []).map((g) => (
             <Badge
               key={g.name}
-              color={sharedGenres.has(g.name) ? "#e6a680" : "#94a3b8"}
+              color={sharedGenres.has(g.name) ? palette.amber : NEUTRAL}
             >
               {g.name}
             </Badge>
@@ -75,14 +79,18 @@ function Side({ side, sharedGenres }: { side: AnimeCompareSide; sharedGenres: Se
       </div>
 
       <div>
-        <div className="text-xs font-mono uppercase tracking-wider text-text-muted mb-2">
+        <div className="font-mono text-micro uppercase text-text-dim mb-2">
           Your take
         </div>
         {side.user.score != null ? (
           <div className="text-sm">
-            You rated this <span className="font-mono text-amber">{side.user.score}/10</span>
+            You rated this{" "}
+            <span className="inline-flex items-center gap-1 font-mono tnum text-gold">
+              <Star className="h-3 w-3" fill="currentColor" aria-hidden />
+              {side.user.score}/10
+            </span>
             {side.user.review ? (
-              <div className="text-text-muted italic mt-1 line-clamp-2">
+              <div className="text-text-muted font-display italic mt-1 line-clamp-2">
                 "{side.user.review}"
               </div>
             ) : null}
@@ -114,20 +122,20 @@ export function CompareSummary({ data }: { data: AnimeCompareResponse }) {
 
       <GlassCard tone="warm" className="p-5">
         <div className="flex items-baseline justify-between mb-3">
-          <h2 className="font-display text-xl">Overlap</h2>
-          <span className="text-sm text-text-muted">
+          <h2 className="font-display text-heading">Overlap</h2>
+          <span className="font-mono text-caption tnum text-text-muted">
             {overlapPct}% genre match · {overlap} shared
           </span>
         </div>
         <div className="grid sm:grid-cols-3 gap-4 text-sm">
           <div>
-            <div className="text-xs font-mono uppercase tracking-wider text-text-muted mb-1">
+            <div className="font-mono text-micro uppercase text-text-dim mb-1.5">
               Shared genres
             </div>
             {data.shared.official_genres.length ? (
               <div className="flex flex-wrap gap-1.5">
                 {data.shared.official_genres.map((g) => (
-                  <Badge key={g} color="#e6a680">{g}</Badge>
+                  <Badge key={g} color={palette.amber}>{g}</Badge>
                 ))}
               </div>
             ) : (
@@ -135,13 +143,13 @@ export function CompareSummary({ data }: { data: AnimeCompareResponse }) {
             )}
           </div>
           <div>
-            <div className="text-xs font-mono uppercase tracking-wider text-text-muted mb-1">
+            <div className="font-mono text-micro uppercase text-text-dim mb-1.5">
               A only
             </div>
             {aOnly.length ? (
               <div className="flex flex-wrap gap-1.5">
                 {aOnly.map((g) => (
-                  <Badge key={g} color="#94a3b8">{g}</Badge>
+                  <Badge key={g} color={NEUTRAL}>{g}</Badge>
                 ))}
               </div>
             ) : (
@@ -149,13 +157,13 @@ export function CompareSummary({ data }: { data: AnimeCompareResponse }) {
             )}
           </div>
           <div>
-            <div className="text-xs font-mono uppercase tracking-wider text-text-muted mb-1">
+            <div className="font-mono text-micro uppercase text-text-dim mb-1.5">
               B only
             </div>
             {bOnly.length ? (
               <div className="flex flex-wrap gap-1.5">
                 {bOnly.map((g) => (
-                  <Badge key={g} color="#94a3b8">{g}</Badge>
+                  <Badge key={g} color={NEUTRAL}>{g}</Badge>
                 ))}
               </div>
             ) : (

@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { Input } from "@/design/Input";
 import { Button } from "@/design/Button";
+import { cn } from "@/lib/cn";
 import { useAuth } from "@/stores/auth";
 import { api } from "@/lib/api";
 
@@ -101,7 +102,7 @@ export function AuthForm({ onSuccess }: { onSuccess?: () => void }) {
         className="flex flex-col gap-4"
       >
         <div>
-          <h2 className="font-display text-2xl mb-1">Check your email</h2>
+          <h2 className="font-display text-title mb-1">Check your email</h2>
           <p className="text-sm text-text-muted">
             We sent a 6-digit code to <span className="text-text">{email}</span>.
           </p>
@@ -114,12 +115,12 @@ export function AuthForm({ onSuccess }: { onSuccess?: () => void }) {
           pattern="[0-9]{6}"
           maxLength={6}
           autoComplete="one-time-code"
-          className="text-center tracking-[0.4em] font-mono text-lg"
+          className="text-center tracking-[0.4em] font-mono tnum text-lg"
           required
         />
         {error ? <p className="text-sm text-danger">{error}</p> : null}
         {resent && !error ? (
-          <p className="text-sm text-text-muted">Code sent.</p>
+          <p className="text-sm text-success">Code sent.</p>
         ) : null}
         <Button type="submit" loading={loading} disabled={code.length !== 6}>
           Verify
@@ -129,7 +130,7 @@ export function AuthForm({ onSuccess }: { onSuccess?: () => void }) {
             type="button"
             onClick={resend}
             disabled={resending || resendIn > 0}
-            className="text-text-muted hover:text-text disabled:opacity-50 disabled:hover:text-text-muted"
+            className="text-text-muted transition-colors hover:text-text disabled:opacity-50 disabled:hover:text-text-muted tnum"
           >
             {resendIn > 0
               ? `Resend in ${resendIn}s`
@@ -143,7 +144,7 @@ export function AuthForm({ onSuccess }: { onSuccess?: () => void }) {
               setStep("form");
               setError(null);
             }}
-            className="text-text-muted hover:text-text"
+            className="text-text-muted transition-colors hover:text-text"
           >
             Wrong email? Go back
           </button>
@@ -162,14 +163,14 @@ export function AuthForm({ onSuccess }: { onSuccess?: () => void }) {
         className="flex flex-col gap-4"
       >
         <div>
-          <h2 className="font-display text-2xl mb-1">Join the waitlist</h2>
+          <h2 className="font-display text-title mb-1">Join the waitlist</h2>
           <p className="text-sm text-text-muted">
             Leave your email and we'll let you know the moment a spot opens
             up.
           </p>
         </div>
         {waitlistStatus ? (
-          <p className="text-sm text-text">
+          <p className="text-sm text-success">
             {waitlistStatus === "added"
               ? "You're on the list! We'll email you when a spot opens up."
               : "You're already on the list — we'll be in touch."}
@@ -197,7 +198,7 @@ export function AuthForm({ onSuccess }: { onSuccess?: () => void }) {
             setMode("register");
             setError(null);
           }}
-          className="text-sm text-text-muted hover:text-text text-left disabled:opacity-50"
+          className="text-sm text-text-muted transition-colors hover:text-text text-left disabled:opacity-50"
         >
           ← Back to sign up
         </button>
@@ -213,17 +214,18 @@ export function AuthForm({ onSuccess }: { onSuccess?: () => void }) {
       }}
       className="flex flex-col gap-4"
     >
-      <div className="flex gap-2 text-sm">
+      {/* Mode switch — the system segmented control */}
+      <div className="inline-flex self-start rounded-pill border border-border bg-surface p-1 text-sm">
         <button
           type="button"
           disabled={loading}
           onClick={() => setMode("login")}
-          className={
-            "px-3 py-1.5 rounded-md disabled:opacity-50 " +
-            (mode === "login"
-              ? "bg-white/[0.08] text-text"
-              : "text-text-muted hover:text-text")
-          }
+          className={cn(
+            "px-4 min-h-[36px] rounded-pill transition-colors disabled:opacity-50",
+            mode === "login"
+              ? "bg-surface-strong text-text shadow-[inset_0_1px_0_rgba(255,255,255,0.08)]"
+              : "text-text-muted hover:text-text"
+          )}
         >
           Sign in
         </button>
@@ -231,12 +233,12 @@ export function AuthForm({ onSuccess }: { onSuccess?: () => void }) {
           type="button"
           disabled={loading}
           onClick={() => setMode("register")}
-          className={
-            "px-3 py-1.5 rounded-md disabled:opacity-50 " +
-            (mode === "register"
-              ? "bg-white/[0.08] text-text"
-              : "text-text-muted hover:text-text")
-          }
+          className={cn(
+            "px-4 min-h-[36px] rounded-pill transition-colors disabled:opacity-50",
+            mode === "register"
+              ? "bg-surface-strong text-text shadow-[inset_0_1px_0_rgba(255,255,255,0.08)]"
+              : "text-text-muted hover:text-text"
+          )}
         >
           Sign up
         </button>
@@ -273,7 +275,7 @@ export function AuthForm({ onSuccess }: { onSuccess?: () => void }) {
                 setWaitlistStatus(null);
                 setError(null);
               }}
-              className="text-amber hover:underline disabled:opacity-50"
+              className="text-amber-hi transition-colors hover:underline disabled:opacity-50"
             >
               Join the waitlist
             </button>

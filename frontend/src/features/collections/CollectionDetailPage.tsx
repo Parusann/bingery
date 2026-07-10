@@ -25,10 +25,18 @@ export function CollectionDetailPage() {
   const [editing, setEditing] = useState(false);
 
   if (isLoading || !data) {
+    // Mirrors the real page: title row, then a poster grid.
     return (
-      <div className="space-y-4">
-        <Skeleton className="h-16" rounded="lg" />
-        <Skeleton className="h-64" rounded="lg" />
+      <div>
+        <div className="flex items-baseline gap-3 mb-6">
+          <Skeleton className="h-9 w-64" />
+          <Skeleton className="h-4 w-24" />
+        </div>
+        <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-x-4 gap-y-6">
+          {Array.from({ length: 6 }).map((_, i) => (
+            <Skeleton key={i} className="aspect-[2/3]" rounded="lg" />
+          ))}
+        </div>
       </div>
     );
   }
@@ -42,7 +50,7 @@ export function CollectionDetailPage() {
     <article>
       <header className="flex flex-col gap-3 mb-6">
         <div className="flex flex-wrap items-baseline gap-3">
-          <h1 className="font-display text-4xl text-amber">{c.name}</h1>
+          <h1 className="font-display text-display">{c.name}</h1>
           {ownerLabel ? (
             <span className="text-sm text-text-muted">by {ownerLabel}</span>
           ) : null}
@@ -50,7 +58,7 @@ export function CollectionDetailPage() {
             <ShareButton token={c.share_token} />
             {isOwner ? (
               <>
-                <Button size="sm" variant="ghost" onClick={() => setEditing(true)}>
+                <Button size="sm" variant="glass" onClick={() => setEditing(true)}>
                   Edit
                 </Button>
                 <Button
@@ -74,21 +82,26 @@ export function CollectionDetailPage() {
       </header>
 
       {c.items.length === 0 ? (
-        <GlassCard className="p-10 text-center text-text-muted">
-          This collection is empty.{" "}
-          {isOwner
-            ? "Add anime from the discover or detail page."
-            : "Nothing here yet."}
+        <GlassCard className="p-10 text-center">
+          <div className="font-mono text-micro uppercase text-text-dim mb-3">
+            Empty collection
+          </div>
+          <p className="font-display italic text-title text-text-muted">
+            This collection is empty.{" "}
+            {isOwner
+              ? "Add anime from the discover or detail page."
+              : "Nothing here yet."}
+          </p>
         </GlassCard>
       ) : (
-        <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-4">
+        <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-x-4 gap-y-6">
           {c.items.map((it, i) => (
             <div key={it.id} className="relative group">
               <AnimeCard anime={it.anime} index={i} />
               {isOwner ? (
                 <button
                   onClick={() => remove.mutate(it.anime.id)}
-                  className="absolute top-2 left-2 px-2 py-0.5 text-xs rounded-md bg-black/60 text-danger opacity-0 group-hover:opacity-100 transition-opacity"
+                  className="absolute top-2 left-2 px-2 py-1 text-xs rounded-md bg-bg/80 backdrop-blur-md border border-danger/40 text-danger opacity-0 group-hover:opacity-100 focus-visible:opacity-100 transition-opacity hover:bg-danger/15 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-danger/60"
                   aria-label="Remove"
                 >
                   Remove
@@ -101,7 +114,7 @@ export function CollectionDetailPage() {
 
       <Modal open={editing} onClose={() => setEditing(false)}>
         <div className="p-6">
-          <h2 className="font-display text-2xl mb-4">Edit collection</h2>
+          <h2 className="font-display text-title mb-4">Edit collection</h2>
           <CollectionForm initial={c} onSuccess={() => setEditing(false)} />
         </div>
       </Modal>

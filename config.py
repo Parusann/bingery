@@ -54,6 +54,12 @@ class Config:
 
     ANTHROPIC_API_KEY = os.environ.get("ANTHROPIC_API_KEY", "")
 
+    # Schedule source credentials (sync scripts + auditor read the same env
+    # vars directly; mirrored here so the config surface documents them and
+    # health checks can report which tiers are provisioned).
+    ANIMESCHEDULE_API_KEY = os.environ.get("ANIMESCHEDULE_API_KEY", "")
+    MAL_CLIENT_ID = os.environ.get("MAL_CLIENT_ID", "")
+
     # Email verification (sign-up codes). 'console' logs the code (dev);
     # 'brevo' sends via the Brevo HTTP API (production).
     EMAIL_PROVIDER = (os.environ.get("EMAIL_PROVIDER") or "console").strip().lower()

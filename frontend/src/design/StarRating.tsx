@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { cn } from "@/lib/cn";
+import { palette } from "./tokens";
 
 interface Props {
   value: number;
@@ -9,6 +10,8 @@ interface Props {
   className?: string;
 }
 
+// Stars are GOLD — the one reserved meaning in the palette (stars, favorites,
+// watchlist highlights). Off-state strokes are warm ink, not gray.
 export function StarRating({ value, onChange, readOnly, size = 24, className }: Props) {
   const [hover, setHover] = useState(0);
   const display = hover || value;
@@ -40,10 +43,11 @@ export function StarRating({ value, onChange, readOnly, size = 24, className }: 
                 width={size}
                 height={size}
                 viewBox="0 0 24 24"
-                fill={on ? "#e6a680" : "none"}
-                stroke={on ? "#e6a680" : "rgba(255,255,255,0.3)"}
+                fill={on ? palette.gold : "none"}
+                stroke={on ? palette.gold : "rgba(243,236,228,0.28)"}
                 strokeWidth="2"
                 strokeLinejoin="round"
+                style={on ? { filter: "drop-shadow(0 0 6px rgba(244,207,144,0.35))" } : undefined}
               >
                 <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2" />
               </svg>

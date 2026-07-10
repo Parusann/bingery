@@ -1,3 +1,4 @@
+import { Tv } from "lucide-react";
 import { useAnimeEpisodes } from "@/hooks/useSchedule";
 import { EstimatedTag } from "@/features/schedule/EstimatedTag";
 import type { Episode } from "@/types/models";
@@ -35,10 +36,12 @@ function Pill({
   airAt: string;
   estimated?: boolean;
 }) {
+  // sub = amber (the house accent), dub = sage — matching the schedule's
+  // sub/dub badge language everywhere episodes appear.
   const tone =
     kind === "dub"
-      ? "bg-violet-400/15 text-violet-300 border-violet-400/30"
-      : "bg-amber/15 text-amber border-amber/30";
+      ? "bg-sage-bg text-sage border-sage-bd"
+      : "bg-amber/[0.12] text-amber-hi border-amber/30";
   // Estimated dub: avoid a fake live countdown off a projected time — show an
   // approximate date instead so the precision matches what we actually know.
   const label = estimated
@@ -46,10 +49,10 @@ function Pill({
     : `Episode ${episode.episode_number} (${kind}) airs in ${formatRelative(airAt)}`;
   return (
     <span
-      className={`inline-flex items-center gap-2 px-3 py-1.5 rounded-full border text-sm ${tone}`}
+      className={`inline-flex items-center gap-2 px-3 py-1.5 rounded-pill border text-sm tnum ${tone}`}
       title={airAt}
     >
-      <span aria-hidden>📺</span>
+      <Tv aria-hidden className="w-3.5 h-3.5 shrink-0" />
       {label}
     </span>
   );

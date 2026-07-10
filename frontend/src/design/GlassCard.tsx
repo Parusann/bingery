@@ -13,6 +13,8 @@ const toneClass: Record<NonNullable<Props["tone"]>, string> = {
   cool: "bg-gradient-to-br from-violet/[0.08] to-transparent",
 };
 
+// Glass surface on elevation tokens: resting cards sit at e2, elevated
+// (modals, spotlit panels) at e3 with a stronger border.
 export function GlassCard({
   children,
   tone = "default",
@@ -24,10 +26,9 @@ export function GlassCard({
     <div
       {...rest}
       className={cn(
-        "relative rounded-xl border border-border glass-edge",
-        "backdrop-blur-md",
+        "relative rounded-xl border backdrop-blur-md",
+        elevated ? "border-border-strong shadow-e3" : "border-border shadow-e2",
         toneClass[tone],
-        elevated && "shadow-[0_24px_60px_-30px_rgba(0,0,0,0.6)]",
         className
       )}
     >

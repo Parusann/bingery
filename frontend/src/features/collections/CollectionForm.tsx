@@ -3,6 +3,7 @@ import { useNavigate } from "react-router-dom";
 import type { Collection } from "@/types/models";
 import { Button } from "@/design/Button";
 import { Input } from "@/design/Input";
+import { cn } from "@/lib/cn";
 import {
   useCreateCollection,
   useUpdateCollection,
@@ -53,24 +54,31 @@ export function CollectionForm({ initial, onSuccess }: Props) {
         required
       />
       <label className="flex flex-col gap-1.5 text-sm">
-        <span className="text-text-muted">Description</span>
+        <span className="text-caption font-medium text-text-muted">
+          Description
+        </span>
         <textarea
           value={description}
           onChange={(e) => setDescription(e.target.value)}
-          className="min-h-[80px] px-3 py-2 rounded-lg bg-surface border border-border focus:border-border-strong outline-none text-sm"
+          className={cn(
+            "min-h-[80px] px-3.5 py-2.5 rounded-lg text-sm",
+            "bg-surface border border-border outline-none transition-colors",
+            "focus:border-amber/50 focus:ring-1 focus:ring-amber/35 focus:bg-amber/[0.03]"
+          )}
         />
       </label>
-      <label className="flex items-center gap-2 text-sm">
+      <label className="flex items-center gap-2.5 text-sm cursor-pointer">
         <input
           type="checkbox"
           checked={isPublic}
           onChange={(e) => setIsPublic(e.target.checked)}
+          className="w-4 h-4 accent-amber"
         />
         <span className="text-text-muted">
           Public — anyone with the share link can view
         </span>
       </label>
-      <div className="flex gap-3">
+      <div className="flex gap-3 items-center">
         <Button type="submit" loading={busy} disabled={!name.trim()}>
           {initial ? "Save changes" : "Create collection"}
         </Button>
