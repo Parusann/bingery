@@ -57,8 +57,12 @@ def enumerate_entries(week_start: datetime, weeks: int, lang: str = "both"):
     from models import Episode
     from utils.schedule_window import window_rows_query
 
-    start_naive = week_start.astimezone(timezone.utc).replace(tzinfo=None)
-    end_naive = start_naive + timedelta(days=7 * weeks)
+    # The route queries a ±1 day margin around the visible window because
+    # timezone bucketing can pull margin rows into a viewer's week. Audit the
+    # same superset so no served row escapes enumeration.
+    anchor = week_start.astimezone(timezone.utc).replace(tzinfo=None)
+    start_naive = anchor - timedelta(days=1)
+    end_naive = anchor + timedelta(days=7 * weeks + 1)
 
     tracks = []
     if lang in ("sub", "both"):
@@ -185,6 +189,11 @@ def run_audit(
 
 
 def main(argv=None) -> int:
+    # Windows consoles default to cp1252, which cannot encode the report's
+    # arrows/dashes; never let a summary print kill an otherwise-good run.
+    if hasattr(sys.stdout, "reconfigure"):
+        sys.stdout.reconfigure(errors="replace")
+
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--week", help="Sunday anchor YYYY-MM-DD (default: this week)")
     parser.add_argument("--weeks", type=int, default=2)
@@ -210,9 +219,13 @@ def main(argv=None) -> int:
         os.environ["AUDIT_RESEARCH_FILE"] = args.research_file
 
     if args.week:
-        week_start = datetime.strptime(args.week, "%Y-%m-%d").replace(
+        requested = datetime.strptime(args.week, "%Y-%m-%d").replace(
             tzinfo=timezone.utc
         )
+        week_start = sunday_of(requested)
+        if week_start != requested:
+            print(f"note: --week {args.week} is not a Sunday; "
+                  f"snapped to {week_start.date()}")
     else:
         week_start = sunday_of(datetime.now(timezone.utc))
 

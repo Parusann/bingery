@@ -59,12 +59,25 @@ def sync_dub_sources():
     # AnimeSchedule.net ──────────────────────────────────────────────────
     try:
         from utils.dub_sources.animeschedule import (
+            ANIMESCHEDULE_API_KEY_ENV,
             ANIMESCHEDULE_URL,
             fetch_payload,
             ingest_payload,
         )
-        payload = fetch_payload(ANIMESCHEDULE_URL)
-        results["animeschedule"] = ingest_payload(payload)
+        if not os.environ.get(ANIMESCHEDULE_API_KEY_ENV):
+            # Do not disguise a missing key as a fetch error: the tier is
+            # DARK and the schedule will be synthetic-only until it's fixed.
+            results["animeschedule"] = {
+                "tier": "dark",
+                "error": (
+                    f"{ANIMESCHEDULE_API_KEY_ENV} is not set — skipping fetch; "
+                    "real dub dates will NOT sync and synthetic estimates "
+                    "fill the gap"
+                ),
+            }
+        else:
+            payload = fetch_payload(ANIMESCHEDULE_URL)
+            results["animeschedule"] = ingest_payload(payload)
     except Exception as exc:  # noqa: BLE001
         results["animeschedule"] = {"error": f"{type(exc).__name__}: {exc}"}
 
@@ -120,7 +133,27 @@ def sync_dub_sources():
     except Exception as exc:  # noqa: BLE001
         results["snapshot"] = {"error": f"{type(exc).__name__}: {exc}"}
 
+    # Tier doctor — every sync response says which tiers are live/dark so a
+    # dark tier shows up in the cron logs instead of hiding behind estimates.
+    try:
+        from utils.dub_doctor import dub_tier_health
+
+        results["dub_doctor"] = dub_tier_health()
+    except Exception as exc:  # noqa: BLE001
+        results["dub_doctor"] = {"error": f"{type(exc).__name__}: {exc}"}
+
     return jsonify(results), 200
+
+
+@admin_bp.route("/dub-doctor", methods=["GET"])
+def dub_doctor():
+    """Report dub-tier health: live / configured / dark / idle per tier,
+    plus the synthetic fraction of the next 14 days of dub dates."""
+    _check_secret()
+
+    from utils.dub_doctor import dub_tier_health
+
+    return jsonify(dub_tier_health()), 200
 
 
 @admin_bp.route("/audit-schedule", methods=["POST"])
@@ -139,8 +172,11 @@ def audit_schedule_endpoint():
     _check_secret()
 
     body = request.get_json(silent=True) or {}
-    weeks = max(1, min(int(body.get("weeks", 1)), 4))
-    max_anime = max(10, min(int(body.get("max_anime", 60)), 200))
+    try:
+        weeks = max(1, min(int(body.get("weeks", 1)), 4))
+        max_anime = max(10, min(int(body.get("max_anime", 60)), 200))
+    except (TypeError, ValueError):
+        return jsonify({"error": "weeks and max_anime must be integers"}), 400
     offline = bool(body.get("offline", False))
 
     from datetime import datetime, timezone

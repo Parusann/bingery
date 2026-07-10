@@ -308,9 +308,23 @@ def classify_entry(
         if c.kind == "weekly_slot" and c.track == entry.track
     ]
 
+    # A row stored at exactly UTC midnight is almost always a date-only
+    # ingest (research rows, manual fixes) — give it the same ±1 day grace
+    # a date-only source claim gets.
+    our_date_only = (
+        entry.our_date.hour == 0
+        and entry.our_date.minute == 0
+        and entry.our_date.second == 0
+    )
+
     supporting: dict[str, SourceClaim] = {}
     for c in exact:
-        if dates_agree(entry.our_date, c.date, b_date_only=c.date_only):
+        if dates_agree(
+            entry.our_date,
+            c.date,
+            a_date_only=our_date_only,
+            b_date_only=c.date_only,
+        ):
             supporting.setdefault(c.source, c)
     # A weekly slot corroborates our date only while the source says the
     # track is still running (a slot for a finished show confirms nothing).

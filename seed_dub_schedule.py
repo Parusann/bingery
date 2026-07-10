@@ -26,6 +26,10 @@ SYNTHETIC_TAG = "synthetic_lag_8w"
 LAG_DAYS = 56
 DEFAULT_RECENT_WINDOW_DAYS = 90
 
+# Catalog spellings that mean the show's (sub) run is over. Used by the
+# ghost-prune below and by the serving guards in utils/schedule_window.py.
+FINISHED_STATUSES = ("Finished Airing", "Completed", "Cancelled")
+
 # Real dub sources we never overwrite from the synthetic projector, even
 # when --overwrite is passed. The synthetic seed exists to fill gaps, not
 # to clobber authoritative data from RSS, AnimeSchedule, the research
@@ -46,6 +50,13 @@ def main(argv: list | None = None) -> int:
                         help="Report what would change; write nothing.")
     parser.add_argument("--reset", action="store_true",
                         help="Wipe synthetic rows (dub_source=%(default)r) and exit." % {"default": SYNTHETIC_TAG})
+    parser.add_argument("--prune-ghosts", action="store_true",
+                        help=(
+                            "Remove fabricated synthetic rows and exit: projections "
+                            "for finished/cancelled shows with no real dub evidence, "
+                            "and projections numbered past the show's episode count. "
+                            "Attended maintenance — not run by the daily sync."
+                        ))
     parser.add_argument("--overwrite", action="store_true",
                         help="Replace existing air_date_dub even from real sources. Off by default.")
     parser.add_argument("--top", type=int, default=400,
@@ -75,6 +86,78 @@ def main(argv: list | None = None) -> int:
             )
             db.session.commit()
             print(f"reset: cleared {wiped} synthetic dub rows")
+            return 0
+
+        # ── Prune-ghosts path ────────────────────────────────────────
+        if args.prune_ghosts:
+            from sqlalchemy import or_ as sa_or, update as sa_update
+
+            preserve = sa_or(
+                Episode.dub_source.in_(tuple(_REAL_DUB_SOURCES)),
+                Episode.dub_source.like("user:%"),
+            )
+            synth_anime = {
+                aid for (aid,) in db.session.query(Episode.anime_id)
+                .filter(Episode.dub_source == SYNTHETIC_TAG).distinct()
+            }
+            evidence_anime = {
+                aid for (aid,) in db.session.query(Episode.anime_id)
+                .filter(Episode.air_date_dub.isnot(None), preserve).distinct()
+            }
+            finished_anime = {
+                aid for (aid,) in db.session.query(Anime.id)
+                .filter(Anime.id.in_(synth_anime),
+                        Anime.status.in_(FINISHED_STATUSES))
+            }
+            # A: finished shows with zero real dub activity — the projection
+            # was never legitimate (the dub may not exist at all).
+            targets = sorted(finished_anime - evidence_anime)
+            wiped_finished = 0
+            if targets and not args.dry_run:
+                wiped_finished = (
+                    Episode.query
+                    .filter(Episode.anime_id.in_(targets),
+                            Episode.dub_source == SYNTHETIC_TAG)
+                    .update({Episode.air_date_dub: None,
+                             Episode.dub_source: None},
+                            synchronize_session=False)
+                )
+            elif targets:
+                wiped_finished = (
+                    db.session.query(Episode.id)
+                    .filter(Episode.anime_id.in_(targets),
+                            Episode.dub_source == SYNTHETIC_TAG)
+                    .count()
+                )
+            # B: projections numbered past the catalog's own episode count —
+            # those episodes cannot exist on any track.
+            counts = dict(
+                db.session.query(Anime.id, Anime.episodes)
+                .filter(Anime.id.in_(synth_anime),
+                        Anime.episodes.isnot(None), Anime.episodes > 0)
+            )
+            wiped_overrun = 0
+            for aid, total in counts.items():
+                q = Episode.query.filter(
+                    Episode.anime_id == aid,
+                    Episode.dub_source == SYNTHETIC_TAG,
+                    Episode.episode_number > total,
+                )
+                if args.dry_run:
+                    wiped_overrun += q.count()
+                else:
+                    wiped_overrun += q.update(
+                        {Episode.air_date_dub: None, Episode.dub_source: None},
+                        synchronize_session=False,
+                    )
+            if not args.dry_run:
+                db.session.commit()
+            print(
+                f"prune-ghosts{' (dry-run)' if args.dry_run else ''}: "
+                f"cleared {wiped_finished} synthetic rows across "
+                f"{len(targets)} finished evidence-less shows; "
+                f"cleared {wiped_overrun} rows numbered past the finale"
+            )
             return 0
 
         # ── Selection: top-N airing-or-recently-airing by score ────
@@ -200,10 +283,26 @@ def main(argv: list | None = None) -> int:
         n_set = 0
         # Shows with real dub data: project their remaining episodes at the
         # show's own observed lag. Shows with no dub evidence are skipped.
+        # Never project past the catalog's own episode count — a projection
+        # for episode N+1 of an N-episode show fabricates a date for an
+        # episode that cannot exist.
+        episode_totals = dict(
+            db.session.query(Anime.id, Anime.episodes)
+            .filter(Anime.id.in_(dubbed_ids))
+        ) if dubbed_ids else {}
         for aid, lag in learned.items():
+            per_show_clauses = list(eligible_clauses)
+            total = episode_totals.get(aid)
+            if total and total > 0:
+                per_show_clauses.append(
+                    or_(
+                        Episode.episode_number.is_(None),
+                        Episode.episode_number <= total,
+                    )
+                )
             res = db.session.execute(
                 update(Episode)
-                .where(*eligible_clauses, Episode.anime_id == aid)
+                .where(*per_show_clauses, Episode.anime_id == aid)
                 .values(
                     air_date_dub=sa_func.datetime(
                         Episode.air_date_sub, f"+{lag} days"

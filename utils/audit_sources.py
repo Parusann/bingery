@@ -343,6 +343,7 @@ class MalSource:
             health.detail = "MAL_CLIENT_ID missing — falling back to Jikan only"
         jikan_fallbacks = 0
         errors = 0
+        key_rejected = False
         for rec in anime_records:
             mal_id = rec.get("mal_id")
             if not mal_id:
@@ -354,7 +355,12 @@ class MalSource:
                     health.requests += 1
                 except requests.HTTPError as exc:
                     sc = exc.response.status_code if exc.response is not None else 0
-                    if sc in (429, 403, 401):
+                    if sc == 429:
+                        jikan_fallbacks += 1
+                    elif sc in (401, 403):
+                        # Bad/expired client id — this is a credentials
+                        # problem, not rate limiting; surface it as degraded.
+                        key_rejected = True
                         jikan_fallbacks += 1
                     elif sc == 404:
                         continue  # MAL doesn't know this id — nothing to claim
@@ -394,7 +400,17 @@ class MalSource:
             claims.setdefault(rec["id"], []).extend(entry_claims)
             health.claims += len(entry_claims)
         if health.state != "dark":
-            health.state = "live" if health.requests else "error"
+            if not any(rec.get("mal_id") for rec in anime_records):
+                health.state = "skipped"
+                health.detail = "no mal_id in window"
+            elif key_rejected:
+                health.state = "degraded"
+                health.detail = (
+                    "MAL client id rejected (401/403) — Jikan answered "
+                    "instead; fix MAL_CLIENT_ID"
+                )
+            else:
+                health.state = "live" if health.requests else "error"
         parts = []
         if jikan_fallbacks:
             parts.append(f"{jikan_fallbacks} Jikan fallbacks")

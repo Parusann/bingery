@@ -31,10 +31,27 @@ def main(argv: Optional[list] = None) -> int:
 
     from app import create_app
     from utils.dub_sources.animeschedule import (
+        ANIMESCHEDULE_API_KEY_ENV,
         ANIMESCHEDULE_URL,
         fetch_payload,
         ingest_payload,
     )
+
+    import os
+
+    if not args.url and not os.environ.get(ANIMESCHEDULE_API_KEY_ENV):
+        # Fail loudly and distinctly: this is a credentials problem, not a
+        # transient fetch error. Without the key the live endpoint 401s,
+        # no real dub dates sync, and the synthetic seeder's estimates are
+        # all the schedule has.
+        print(
+            f"TIER DARK: {ANIMESCHEDULE_API_KEY_ENV} is not set.\n"
+            "  Real dub dates will NOT sync; the schedule will show "
+            "synthetic estimates only.\n"
+            "  Provision a token at https://animeschedule.net/ (account "
+            "settings) and set it in the runtime environment."
+        )
+        return 2
 
     app = create_app()
     ctx = app.app_context()
