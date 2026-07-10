@@ -295,3 +295,107 @@ def test_fetch_payload_raises_on_4xx():
     responses.add(responses.GET, ANIMESCHEDULE_URL, status=403)
     with pytest.raises(Exception):
         fetch_payload()
+
+
+def test_ingest_upgrades_synthetic_estimates(app):
+    """Tier 2 (real timetable) must replace Tier 5 (synthetic projection).
+
+    A +8-week estimate blocking a real near-simulcast date left users a
+    month-plus wrong (observed live: estimate 2026-08-14 vs timetable
+    2026-07-06). Real sources outrank the synthetic seeder — always.
+    """
+    from datetime import datetime as dt
+    from seed_dub_schedule import SYNTHETIC_TAG
+
+    with app.app_context():
+        anime = Anime(title="Synthetic Upgrade Show", status="Currently Airing")
+        db.session.add(anime)
+        db.session.flush()
+        db.session.add(Episode(
+            anime_id=anime.id, episode_number=1,
+            air_date_sub=dt(2026, 6, 1),
+            air_date_dub=dt(2026, 8, 14),        # stale +8w estimate
+            dub_source=SYNTHETIC_TAG,
+        ))
+        db.session.commit()
+        aid = anime.id
+
+        payload = json.dumps([{
+            "title": "Synthetic Upgrade Show",
+            "episodeNumber": 1,
+            "episodeDate": "2026-07-06T18:00:00Z",
+        }])
+        summary = ingest_payload(payload, dry_run=False)
+
+        ep = Episode.query.filter_by(anime_id=aid, episode_number=1).first()
+        assert ep.dub_source == "animeschedule"
+        assert ep.air_date_dub.replace(tzinfo=None) == dt(2026, 7, 6, 18, 0)
+    assert summary["written"] == 1
+    assert summary["upgraded_synthetic"] == 1
+    assert summary["skipped_already_filled"] == 0
+
+
+def test_ingest_refreshes_own_rows_only_when_date_moves(app):
+    """Same-payload re-runs stay idempotent; a moved timetable date updates."""
+    from datetime import datetime as dt
+
+    with app.app_context():
+        anime = Anime(title="Self Refresh Show", status="Currently Airing")
+        db.session.add(anime)
+        db.session.flush()
+        db.session.commit()
+        aid = anime.id
+
+        first = json.dumps([{
+            "title": "Self Refresh Show",
+            "episodeNumber": 2,
+            "episodeDate": "2026-07-06T18:00:00Z",
+        }])
+        s1 = ingest_payload(first, dry_run=False)
+        s2 = ingest_payload(first, dry_run=False)          # unchanged date
+        moved = json.dumps([{
+            "title": "Self Refresh Show",
+            "episodeNumber": 2,
+            "episodeDate": "2026-07-08T18:00:00Z",
+        }])
+        s3 = ingest_payload(moved, dry_run=False)
+
+        ep = Episode.query.filter_by(anime_id=aid, episode_number=2).first()
+        assert ep.air_date_dub.replace(tzinfo=None) == dt(2026, 7, 8, 18, 0)
+    assert s1["written"] == 1
+    assert s2["written"] == 0 and s2["skipped_already_filled"] == 1
+    assert s3["written"] == 1
+
+
+def test_ingest_never_touches_research_or_user_rows(app):
+    from datetime import datetime as dt
+
+    with app.app_context():
+        for i, src in enumerate(("research", "user:parusan"), start=1):
+            anime = Anime(title=f"Protected Source Show {i}",
+                          status="Currently Airing")
+            db.session.add(anime)
+            db.session.flush()
+            db.session.add(Episode(
+                anime_id=anime.id, episode_number=1,
+                air_date_dub=dt(2026, 8, 1), dub_source=src,
+            ))
+        db.session.commit()
+
+        payload = json.dumps([
+            {"title": "Protected Source Show 1", "episodeNumber": 1,
+             "episodeDate": "2026-07-06T18:00:00Z"},
+            {"title": "Protected Source Show 2", "episodeNumber": 1,
+             "episodeDate": "2026-07-06T18:00:00Z"},
+        ])
+        summary = ingest_payload(payload, dry_run=False)
+
+        kept = [
+            Episode.query.join(Anime).filter(
+                Anime.title == f"Protected Source Show {i}"
+            ).first().dub_source
+            for i in (1, 2)
+        ]
+        assert kept == ["research", "user:parusan"]
+    assert summary["written"] == 0
+    assert summary["skipped_already_filled"] == 2

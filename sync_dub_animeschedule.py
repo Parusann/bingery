@@ -69,6 +69,7 @@ def main(argv: Optional[list] = None) -> int:
         print(
             f"Done. parsed={summary['parsed']} matched={summary['matched']} "
             f"written={summary['written']} "
+            f"upgraded_synthetic={summary['upgraded_synthetic']} "
             f"already_filled={summary['skipped_already_filled']} "
             f"unmatched={summary['unmatched']} "
             f"skipped_no_ep={summary['skipped_no_episode_number']} "
