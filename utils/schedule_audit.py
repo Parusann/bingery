@@ -232,18 +232,39 @@ def consensus_status(claims: Iterable[SourceClaim], track: str) -> tuple[str, li
     return status, sorted(voices)
 
 
-def confirmed_total_episodes(claims: Iterable[SourceClaim]) -> Optional[int]:
-    """Total episode count when at least one ID-matched source reports it.
+def episode_count_overrun(
+    claims: Iterable[SourceClaim], episode_number: int
+) -> tuple[Optional[int], bool]:
+    """Return (confirmed_total, overrun_is_evidenced) for one episode number.
 
-    When two sources report different totals, be conservative: use the max
-    (never leak-flag an episode a source says exists).
+    The overrun verdict follows the same two-voice discipline as status:
+    an episode "past the finale" is evidenced when at least two ID-matched
+    voices report totals below it, or when one voice does AND no voice says
+    the show is still airing (a lone total against a dissenting RELEASING
+    claim is a cross-source disagreement — flag it, don't guess). The
+    reported total is the max any voice claims (never contradict a source
+    that says the episode exists).
     """
-    totals = [
-        c.total_episodes
+    claims = list(claims)
+    totals = {
+        c.source: c.total_episodes
         for c in claims
         if c.total_episodes and c.match_confidence >= 100.0
-    ]
-    return max(totals) if totals else None
+    }
+    if not totals:
+        return None, False
+    confirmed = max(totals.values())
+    below = [s for s, t in totals.items() if t < episode_number]
+    airing_voices = {
+        c.source
+        for c in claims
+        if c.kind == "status" and c.track == "sub" and c.status == ST_AIRING
+    }
+    evidenced = (
+        episode_number > confirmed
+        and (len(below) >= 2 or (len(below) == 1 and not airing_voices))
+    )
+    return confirmed, evidenced
 
 
 # ─── Entry classification ───────────────────────────────────────────────────
@@ -350,7 +371,19 @@ def classify_entry(
             mismatch_day = day
             break
 
-    total_eps = confirmed_total_episodes(claims)
+    total_eps, overrun = episode_count_overrun(claims, entry.episode_number)
+    if (
+        total_eps is not None
+        and entry.episode_number > total_eps
+        and not overrun
+    ):
+        # One voice's total says this episode can't exist while another
+        # voice disagrees (or says the show is still airing) — a genuine
+        # cross-source disagreement for attended research, not a verdict.
+        entry.notes.append(
+            f"sources disagree: episode {entry.episode_number} exceeds one "
+            f"voice's total ({total_eps}) but another voice contests it"
+        )
 
     # ── Classification ──
     if entry.synthetic:
@@ -369,7 +402,7 @@ def classify_entry(
         entry.consensus_date = datetime.combine(
             mismatch_day, datetime.min.time(), tzinfo=timezone.utc
         )
-    elif total_eps is not None and entry.episode_number > total_eps:
+    elif overrun:
         # No source can list this episode because it does not exist.
         entry.classification = MISMATCH
         entry.notes.append(
@@ -380,7 +413,7 @@ def classify_entry(
 
     # ── Leak rules (per track, evidence-gated) ──
     future = _utc(entry.our_date) > now
-    if total_eps is not None and entry.episode_number > total_eps:
+    if overrun:
         entry.leak = True
         entry.leak_reason = (
             f"episode {entry.episode_number} exceeds confirmed episode count "
