@@ -244,6 +244,32 @@ def test_nonexistent_episode_is_leak_on_any_track():
     assert "exceeds confirmed episode count" in e.leak_reason
 
 
+def test_single_voice_episode_total_contested_is_not_a_leak():
+    # AniList says the show is still RELEASING (total unknown); only MAL
+    # claims 39 episodes. A lone total against a dissenting airing claim is
+    # a cross-source disagreement — flagged for research, never a leak.
+    e = _entry(track="dub", synthetic=True, episode_number=47,
+               date=datetime(2026, 7, 14, 15, 0, tzinfo=UTC))
+    claims = [
+        _status_claim("anilist", ST_AIRING),           # no total, still airing
+        _status_claim("myanimelist", ST_FINISHED, total=39),
+    ]
+    classify_entry(e, claims, now=NOW)
+    assert not e.leak
+    assert e.classification == ESTIMATED
+    assert any("sources disagree" in n for n in e.notes)
+
+
+def test_lone_total_with_no_dissent_still_leaks():
+    # One voice's total, no voice claiming the show airs → evidenced overrun.
+    e = _entry(episode_number=26,
+               date=datetime(2026, 7, 14, 15, 0, tzinfo=UTC))
+    claims = [_status_claim("myanimelist", ST_FINISHED, total=24)]
+    classify_entry(e, claims, now=NOW)
+    assert e.leak
+    assert e.classification == MISMATCH
+
+
 def test_stale_db_status_detected():
     e = _entry(db_status="airing",
                date=datetime(2026, 7, 6, 15, 0, tzinfo=UTC))
