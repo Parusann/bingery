@@ -22,6 +22,7 @@ from flask_jwt_extended import get_jwt_identity, jwt_required
 
 from models import db, Anime, Episode, WatchlistEntry
 from utils.nsfw import maybe_exclude_nsfw
+from utils.schedule_window import window_rows_query
 from seed_dub_schedule import SYNTHETIC_TAG
 
 
@@ -216,10 +217,7 @@ def schedule_week():
     def _collect(field, kind: str) -> None:
         rows = (
             maybe_exclude_nsfw(
-                db.session.query(Episode, Anime)
-                .join(Anime, Anime.id == Episode.anime_id)
-                .filter(field >= start_naive)
-                .filter(field < end_naive)
+                window_rows_query(field, start_naive, end_naive)
             )
             .all()
         )
