@@ -13,6 +13,14 @@ name: Daily schedule refresh
 #   GitHub: ADMIN_SYNC_SECRET  (sent in the request header)
 #   Fly:    ADMIN_SYNC_SECRET  (matched server-side; same value)
 #   Fly:    ANIMESCHEDULE_API_KEY  (used by the AnimeSchedule sync)
+#
+# After the sync, the `audit` job verifies the schedule the app now serves
+# against independent sources (AniList, MAL/Jikan, AnimeSchedule, CR RSS)
+# via POST /api/admin/audit-schedule. The audit is strictly READ-ONLY —
+# the cron reports and alarms; it never corrects data. Thresholds
+# (documented in docs/runbooks/schedule-audit.md): >5 MISMATCH entries,
+# >60% synthetic dub fraction, or any evidence-backed leak fails the job
+# and opens/updates a `schedule-audit` issue.
 
 on:
   schedule:
@@ -58,3 +66,89 @@ jobs:
           echo
           echo "=== Snapshot ==="
           jq '.snapshot' sync-result.json
+          echo
+          echo "=== Dub tier doctor ==="
+          jq '.dub_doctor // "doctor unavailable"' sync-result.json
+          # Dark tiers show up here loudly (e.g. a missing/expired
+          # ANIMESCHEDULE_API_KEY); the audit job below turns sustained
+          # problems into a failed run + issue.
+          jq -r '.dub_doctor.alarms[]? | "::warning::dub tier alarm: \(.)"' sync-result.json
+
+  audit:
+    # Verifies what the schedule now serves against independent sources.
+    # Report-only: uploads the audit as an artifact and alarms on
+    # thresholds. NO correction path runs unattended.
+    needs: refresh
+    if: always()
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
+      issues: write
+    env:
+      APP_URL: https://bingery.fly.dev
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - name: Wake the Fly machine
+        run: |
+          for i in 1 2 3 4 5; do
+            if curl -fsS --max-time 30 "$APP_URL/api/health" > /dev/null; then
+              echo "machine is up"; exit 0
+            fi
+            echo "attempt $i: not up yet, sleeping"
+            sleep 5
+          done
+          echo "machine never woke"; exit 1
+
+      - name: Run schedule audit via admin endpoint
+        # weeks=1 + max_anime=80 keeps the in-request runtime ~2-3 min
+        # (source calls are rate-limited server-side). Deeper windows are
+        # for attended CLI runs (python audit_schedule.py --weeks 3).
+        run: |
+          curl --fail-with-body --max-time 600 \
+            -X POST \
+            -H "X-Admin-Secret: ${{ secrets.ADMIN_SYNC_SECRET }}" \
+            -H "Content-Type: application/json" \
+            -d '{"weeks": 1, "max_anime": 80}' \
+            "$APP_URL/api/admin/audit-schedule" \
+            | tee audit-report.json
+          echo
+          echo "=== Audit totals ==="
+          jq '.totals' audit-report.json
+          echo "=== Source tiers ==="
+          jq '[.tiers[] | {name, state, detail}]' audit-report.json
+
+      - name: Upload audit report artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: schedule-audit-${{ github.run_id }}
+          path: audit-report.json
+          retention-days: 90
+
+      - name: Evaluate thresholds (report-only gate)
+        run: |
+          breaches=$(jq -r '.threshold_breaches[]?' audit-report.json)
+          if [ -z "$breaches" ]; then
+            echo "audit healthy — no threshold breaches"
+            exit 0
+          fi
+          echo "$breaches" | while read -r b; do
+            echo "::error::schedule audit breach: $b"
+          done
+          totals=$(jq -c '.totals' audit-report.json)
+          body=$(printf 'Daily schedule audit crossed alert thresholds.\n\nBreaches:\n%s\n\nTotals: `%s`\n\nRun: %s\n\nThresholds and remediation: docs/runbooks/schedule-audit.md. Corrections are attended-only — do not automate a fix from this issue.\n' \
+            "$(echo "$breaches" | sed 's/^/- /')" "$totals" \
+            "${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}")
+          existing=$(gh issue list --repo "${{ github.repository }}" \
+            --label schedule-audit --state open --json number --jq '.[0].number')
+          if [ -n "$existing" ]; then
+            gh issue comment "$existing" --repo "${{ github.repository }}" --body "$body"
+          else
+            gh issue create --repo "${{ github.repository }}" \
+              --title "Schedule audit: threshold breach" \
+              --label schedule-audit --body "$body" \
+              || gh issue create --repo "${{ github.repository }}" \
+                   --title "Schedule audit: threshold breach" --body "$body"
+          fi
+          exit 1
