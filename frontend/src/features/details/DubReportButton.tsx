@@ -1,6 +1,7 @@
 import { useMemo, useState } from "react";
 import { Button } from "@/design/Button";
 import { Modal } from "@/design/Modal";
+import { cn } from "@/lib/cn";
 import { useAnimeEpisodes } from "@/hooks/useSchedule";
 import { useCreateDubReport } from "@/hooks/useDubReports";
 import { useAuth } from "@/stores/auth";
@@ -14,6 +15,14 @@ function toIsoZ(localDatetimeValue: string): string {
   // treat it as UTC and append :00Z so the backend accepts it.
   return `${localDatetimeValue}:00Z`;
 }
+
+// Shared field skin — matches design/Input's warm focus treatment.
+const fieldClass = cn(
+  "mt-1 block w-full rounded-lg px-3.5 py-2.5 text-sm",
+  "bg-surface border border-border outline-none transition-colors",
+  "placeholder:text-text-dim",
+  "focus:border-amber/50 focus:ring-1 focus:ring-amber/35 focus:bg-amber/[0.03]"
+);
 
 export function DubReportButton({ animeId }: Props) {
   const user = useAuth((s) => s.user);
@@ -92,7 +101,7 @@ export function DubReportButton({ animeId }: Props) {
       <Modal open={open} onClose={close} maxWidth="500px">
         <form onSubmit={submit} className="p-6 space-y-4">
           <header>
-            <h2 className="font-display text-2xl">Report a dub air date</h2>
+            <h2 className="font-display text-title">Report a dub air date</h2>
             <p className="text-text-muted text-sm mt-1">
               Tell us when a dubbed episode aired (or will air). Admins review
               submissions before they appear publicly.
@@ -100,13 +109,15 @@ export function DubReportButton({ animeId }: Props) {
           </header>
 
           <label className="block text-sm">
-            <span className="text-text-muted">Episode</span>
+            <span className="text-caption font-medium text-text-muted">
+              Episode
+            </span>
             <select
               value={episodeId}
               onChange={(e) =>
                 setEpisodeId(e.target.value ? Number(e.target.value) : "")
               }
-              className="mt-1 block w-full bg-white/[0.04] border border-border rounded-md px-3 py-2"
+              className={fieldClass}
               disabled={episodes.isLoading}
               required
             >
@@ -122,41 +133,45 @@ export function DubReportButton({ animeId }: Props) {
           </label>
 
           <label className="block text-sm">
-            <span className="text-text-muted">Dub air date and time (UTC)</span>
+            <span className="text-caption font-medium text-text-muted">
+              Dub air date and time (UTC)
+            </span>
             <input
               type="datetime-local"
               value={airDate}
               onChange={(e) => setAirDate(e.target.value)}
-              className="mt-1 block w-full bg-white/[0.04] border border-border rounded-md px-3 py-2"
+              className={cn(fieldClass, "tnum")}
               required
             />
           </label>
 
           <label className="block text-sm">
-            <span className="text-text-muted">Note (optional)</span>
+            <span className="text-caption font-medium text-text-muted">
+              Note (optional)
+            </span>
             <textarea
               value={note}
               onChange={(e) => setNote(e.target.value)}
               maxLength={500}
               rows={3}
               placeholder="Where did you see this? Link to a tweet, trailer, etc."
-              className="mt-1 block w-full bg-white/[0.04] border border-border rounded-md px-3 py-2"
+              className={fieldClass}
             />
           </label>
 
           {submitError ? (
-            <p className="text-red-400 text-sm" role="alert">
+            <p className="text-danger text-sm" role="alert">
               {submitError}
             </p>
           ) : null}
           {submitSuccess ? (
-            <p className="text-emerald-400 text-sm" role="status">
+            <p className="text-success text-sm" role="status">
               Thanks — your report is in the queue.
             </p>
           ) : null}
 
           <div className="flex justify-end gap-2 pt-2">
-            <Button type="button" variant="ghost" onClick={close}>
+            <Button type="button" variant="glass" onClick={close}>
               Close
             </Button>
             <Button

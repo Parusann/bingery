@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { Star } from "lucide-react";
 import type { WatchStatus } from "@/types/models";
 import { STATUSES } from "./StatusTabs";
 import { cn } from "@/lib/cn";
@@ -22,6 +23,8 @@ interface Props {
  * response), then fires the mutation. If the save fails we revert to the
  * server value; `current`/`isFavorite` re-sync the local state once the
  * detail query refetches.
+ *
+ * Favorite reads GOLD — the palette's reserved star color.
  */
 export function WatchStatusSelector({ animeId, current, isFavorite }: Props) {
   const setStatus = useSetWatchStatus();
@@ -67,10 +70,11 @@ export function WatchStatusSelector({ animeId, current, isFavorite }: Props) {
                 : `Mark as ${s.label}`
             }
             className={cn(
-              "px-3 py-1 rounded-full text-xs border transition-colors",
+              "px-3 py-1 min-h-[32px] rounded-pill text-xs border transition-colors",
+              "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber/60",
               active
                 ? "border-transparent text-bg font-medium shadow-sm"
-                : "border-border text-text-muted hover:text-text hover:border-border-strong"
+                : "border-border bg-surface text-text-muted hover:text-text hover:border-border-strong"
             )}
             style={active ? { background: s.color } : undefined}
           >
@@ -88,14 +92,18 @@ export function WatchStatusSelector({ animeId, current, isFavorite }: Props) {
         aria-label={fav ? "Remove from favorites" : "Add to favorites"}
         title={fav ? "Favorited — click to unfavorite" : "Add to favorites"}
         className={cn(
-          "inline-flex items-center gap-1 px-3 py-1 rounded-full text-xs border transition-colors",
+          "inline-flex items-center gap-1.5 px-3 py-1 min-h-[32px] rounded-pill text-xs border transition-colors",
+          "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber/60",
           fav
-            ? "border-amber text-amber"
-            : "border-border text-text-muted hover:text-text hover:border-border-strong"
+            ? "border-gold-bd bg-gold/[0.08] text-gold"
+            : "border-border bg-surface text-text-muted hover:text-text hover:border-border-strong"
         )}
-        style={fav ? { background: "rgba(230,166,128,0.12)" } : undefined}
       >
-        <span aria-hidden="true">{fav ? "★" : "☆"}</span>
+        <Star
+          className="h-3 w-3"
+          fill={fav ? "currentColor" : "none"}
+          aria-hidden
+        />
         {fav ? "Favorited" : "Favorite"}
       </button>
     </div>

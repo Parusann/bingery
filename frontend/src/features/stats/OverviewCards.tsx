@@ -22,6 +22,8 @@ const cards: Array<{
   { key: "streak_days", label: "Streak (days)" },
 ];
 
+// Stat tiles: mono micro labels, big ink serif numerals. Amber stays
+// reserved for interaction — a wall of six amber numbers read as noise.
 export function OverviewCards({ overview }: { overview: StatsOverview }) {
   return (
     <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3">
@@ -30,10 +32,10 @@ export function OverviewCards({ overview }: { overview: StatsOverview }) {
         const formatted = c.format ? c.format(raw) : String(raw ?? "—");
         return (
           <GlassCard key={c.key} tone="warm" className="p-4">
-            <div className="text-xs uppercase tracking-wider text-text-dim">
+            <div className="font-mono text-micro uppercase text-text-dim">
               {c.label}
             </div>
-            <div className="font-display text-3xl text-amber mt-1 tabular-nums">
+            <div className="font-display text-3xl text-text mt-1.5 tnum">
               {formatted}
             </div>
           </GlassCard>

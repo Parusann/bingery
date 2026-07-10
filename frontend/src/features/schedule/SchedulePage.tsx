@@ -71,7 +71,12 @@ export function SchedulePage() {
   if (!user) {
     return (
       <div className="py-20 text-center">
-        <h1 className="font-display italic text-4xl mb-2">Sign in to see the schedule</h1>
+        <div className="font-mono text-micro uppercase text-amber mb-3">
+          Schedule
+        </div>
+        <h1 className="font-display text-display mb-2">
+          Sign in to see the schedule
+        </h1>
         <p className="text-text-muted">
           Track sub and dub episode releases for shows you're following.
         </p>
@@ -98,9 +103,12 @@ export function SchedulePage() {
       <div className="mt-10 space-y-14">
         {q.isLoading || !q.data
           ? Array.from({ length: 7 }).map((_, i) => (
+              // Mirrors the real day anatomy: banner (232px, xl radius) +
+              // two episode rows.
               <div key={i} data-skeleton="true" className="space-y-3">
                 <Skeleton className="h-[232px] rounded-[22px]" />
-                <Skeleton className="h-24 rounded-lg" />
+                <Skeleton className="h-[92px] rounded-lg" />
+                <Skeleton className="h-[92px] rounded-lg" />
               </div>
             ))
           : q.data.days.map((d) => (

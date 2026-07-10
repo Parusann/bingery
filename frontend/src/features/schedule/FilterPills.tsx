@@ -16,7 +16,8 @@ export function FilterPills({
 }) {
   return (
     <div className="flex flex-wrap items-center gap-3">
-      <div className="inline-flex rounded-lg border border-line bg-row-bg p-1">
+      {/* Segmented control — same pattern as Discover's sort switch */}
+      <div className="inline-flex rounded-pill border border-line bg-row-bg p-1">
         {OPTIONS.map((opt) => {
           const active = opt === lang;
           return (
@@ -26,7 +27,8 @@ export function FilterPills({
               data-active={active}
               onClick={() => onLangChange(opt)}
               className={[
-                "px-3 py-1 rounded-md font-mono text-[11px] uppercase tracking-[0.16em] transition",
+                "px-3.5 min-h-[36px] rounded-pill font-mono text-[11px] uppercase tracking-[0.16em] transition-colors",
+                "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber/60",
                 active ? "bg-peach/15 text-peach" : "text-ink-2 hover:text-ink",
               ].join(" ")}
             >
@@ -41,13 +43,14 @@ export function FilterPills({
         onClick={onMineToggle}
         data-active={myShowsOnly}
         className={[
-          "inline-flex items-center gap-2 rounded-full border px-3 py-1.5 font-mono text-[11px] uppercase tracking-[0.16em] transition",
+          "inline-flex items-center gap-2 rounded-pill border px-4 min-h-[44px] font-mono text-[11px] uppercase tracking-[0.16em] transition-colors",
+          "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber/60",
           myShowsOnly
             ? "border-gold/40 bg-gold/[0.08] text-gold"
             : "border-line bg-row-bg text-ink-2 hover:text-ink hover:border-line-2",
         ].join(" ")}
       >
-        <Star className="h-3 w-3" fill={myShowsOnly ? "currentColor" : "none"} />
+        <Star className="h-3 w-3" fill={myShowsOnly ? "currentColor" : "none"} aria-hidden />
         My shows
       </button>
     </div>

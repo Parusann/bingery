@@ -27,7 +27,8 @@ interface Props {
 export function BottomTabBar({ onOpenMore, moreOpen }: Props) {
   const base =
     "relative flex-1 flex flex-col items-center justify-center gap-1 min-h-[56px] py-2 " +
-    "text-[10px] font-mono tracking-wide transition-colors";
+    "text-[10px] font-mono tracking-wide transition-colors " +
+    "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber/60 focus-visible:ring-inset";
 
   return (
     <nav
@@ -46,7 +47,7 @@ export function BottomTabBar({ onOpenMore, moreOpen }: Props) {
             {({ isActive }) => (
               <>
                 {isActive && (
-                  <span className="absolute top-0 h-[2px] w-8 rounded-full bg-amber shadow-[0_0_10px_rgba(230,166,128,0.8)]" />
+                  <span className="absolute top-0 h-[2px] w-8 rounded-full bg-amber shadow-[0_0_10px_rgba(239,171,129,0.8)]" />
                 )}
                 <Icon size={22} strokeWidth={isActive ? 2 : 1.8} />
                 <span>{label}</span>
@@ -62,7 +63,7 @@ export function BottomTabBar({ onOpenMore, moreOpen }: Props) {
           className={cn(base, moreOpen ? "text-amber" : "text-text-muted hover:text-text")}
         >
           {moreOpen && (
-            <span className="absolute top-0 h-[2px] w-8 rounded-full bg-amber shadow-[0_0_10px_rgba(230,166,128,0.8)]" />
+            <span className="absolute top-0 h-[2px] w-8 rounded-full bg-amber shadow-[0_0_10px_rgba(239,171,129,0.8)]" />
           )}
           <MoreHorizontal size={22} strokeWidth={1.8} />
           <span>More</span>

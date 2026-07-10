@@ -1,9 +1,15 @@
+/* Bingery — global styles.
+   Fonts here MUST match design/tokens.ts `font` (Fraunces / Inter / JetBrains
+   Mono). Italic cuts of Fraunces are loaded for editorial display moments. */
 @import "@fontsource/fraunces/400.css";
+@import "@fontsource/fraunces/400-italic.css";
 @import "@fontsource/fraunces/600.css";
+@import "@fontsource/fraunces/600-italic.css";
 @import "@fontsource/inter/400.css";
 @import "@fontsource/inter/500.css";
 @import "@fontsource/inter/600.css";
 @import "@fontsource/jetbrains-mono/400.css";
+@import "@fontsource/jetbrains-mono/500.css";
 
 @tailwind base;
 @tailwind components;
@@ -12,8 +18,19 @@
 @layer base {
   :root {
     color-scheme: dark;
+    /* Motion vocabulary as CSS custom properties — mirror of tokens.motion,
+       for plain-CSS animation/transition use. */
+    --dur-fast: 160ms;
+    --dur-base: 260ms;
+    --dur-slow: 420ms;
+    --dur-glacial: 700ms;
+    --ease-out: cubic-bezier(0.22, 1, 0.36, 1);
+    --ease-out-strong: cubic-bezier(0.16, 1, 0.3, 1);
+    --ease-in: cubic-bezier(0.3, 0, 0.8, 0.15);
   }
-  html, body, #root {
+  html,
+  body,
+  #root {
     height: 100%;
   }
   body {
@@ -27,37 +44,96 @@
     -moz-osx-font-smoothing: grayscale;
     overflow-x: hidden;
   }
-  h1, h2, h3 {
+  h1,
+  h2,
+  h3 {
     font-family: theme(fontFamily.display);
     font-weight: 600;
-    letter-spacing: -0.01em;
+    letter-spacing: -0.015em;
+  }
+  h1,
+  h2 {
+    text-wrap: balance;
+  }
+  p {
+    text-wrap: pretty;
   }
   button {
     font-family: inherit;
     color: inherit;
   }
   ::selection {
-    background: rgba(230, 166, 128, 0.35);
+    background: rgba(239, 171, 129, 0.35);
     color: white;
+  }
+  /* Accessible focus baseline: every keyboard-focused element gets a warm
+     ring. Components with bespoke focus-visible styles opt out locally. */
+  :focus-visible {
+    outline: 2px solid rgba(239, 171, 129, 0.65);
+    outline-offset: 2px;
+  }
+  /* Slim, warm scrollbars that don't fight the stage. */
+  * {
+    scrollbar-width: thin;
+    scrollbar-color: rgba(243, 236, 228, 0.16) transparent;
+  }
+  *::-webkit-scrollbar {
+    width: 8px;
+    height: 8px;
+  }
+  *::-webkit-scrollbar-thumb {
+    background: rgba(243, 236, 228, 0.14);
+    border-radius: 9999px;
+  }
+  *::-webkit-scrollbar-track {
+    background: transparent;
+  }
+  /* Reduced motion: kill CSS animation/transition globally. framer-motion
+     is handled by <MotionConfig reducedMotion="user"> in the app root. */
+  @media (prefers-reduced-motion: reduce) {
+    *,
+    *::before,
+    *::after {
+      animation-duration: 0.01ms !important;
+      animation-iteration-count: 1 !important;
+      transition-duration: 0.01ms !important;
+      scroll-behavior: auto !important;
+    }
   }
 }
 
 @layer utilities {
+  /* e2 elevation — kept as a named utility for legacy call sites. */
   .glass-edge {
-    box-shadow:
-      inset 0 1px 0 rgba(255, 255, 255, 0.08),
-      inset 0 -1px 0 rgba(0, 0, 0, 0.18),
-      0 24px 48px -24px rgba(0, 0, 0, 0.5);
+    box-shadow: theme(boxShadow.e2);
   }
   .ring-amber {
-    box-shadow: 0 0 0 1px rgba(230, 166, 128, 0.35);
+    box-shadow: 0 0 0 1px rgba(239, 171, 129, 0.35);
   }
-  .text-display {
-    font-size: clamp(1.6rem, 5.5vw, 2.25rem);
-    line-height: 1.1;
+  /* Tabular lining numerals — stats, scores, dates, counts. */
+  .tnum {
+    font-variant-numeric: tabular-nums lining-nums;
   }
-  .text-display-hero {
-    font-size: clamp(1.9rem, 7vw, 3rem);
-    line-height: 1.05;
+  /* Hide scrollbars on horizontal chip rails (was silently undefined). */
+  .scrollbar-none {
+    scrollbar-width: none;
+  }
+  .scrollbar-none::-webkit-scrollbar {
+    display: none;
+  }
+}
+
+@layer base {
+  /* Native <select> popups (watchlist sort, dub-report episode picker):
+     Chromium derives the option list's colors from the select element's
+     own color-scheme, not the page's — without this the popup paints
+     white with near-white option text. Options need solid colors; the
+     translucent surface tokens don't composite in native popups. */
+  select {
+    color-scheme: dark;
+  }
+  select option {
+    background-color: #161120;
+    color: #f3ece4;
   }
 }

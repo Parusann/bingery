@@ -90,3 +90,14 @@ automatically, writes `dub-research/<date>.json`, and POSTs them when
 
 The seeder's date math uses SQLite's `datetime(...)`, so it runs on the **Fly
 (SQLite)** deployment — manually or via a Fly scheduled machine — not on Render.
+
+## Health & audit (see docs/runbooks/schedule-audit.md)
+
+Tier health is reported by `GET /api/admin/dub-doctor` and attached to every
+`sync-dub-sources` response (`dub_doctor`). A missing `ANIMESCHEDULE_API_KEY`
+now fails `sync_dub_animeschedule.py` loudly (exit 2, `TIER DARK`) instead of
+masquerading as a fetch error. The daily GitHub Action audits the schedule
+after each sync and alarms on mismatches / synthetic-fraction / leaks —
+thresholds and the attended correction policy live in the schedule-audit
+runbook. Fabricated legacy projections can be cleared with
+`python seed_dub_schedule.py --prune-ghosts` (attended; dry-run first).

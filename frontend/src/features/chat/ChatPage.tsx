@@ -3,6 +3,7 @@ import { motion, AnimatePresence } from "framer-motion";
 import { Button } from "@/design/Button";
 import { GlassCard } from "@/design/GlassCard";
 import { cn } from "@/lib/cn";
+import { transitions } from "@/design/motion";
 import { useChat } from "@/hooks/useChat";
 import type { Turn } from "@/hooks/useChat";
 import { ChatAnimeCard } from "./ChatAnimeCard";
@@ -30,15 +31,18 @@ export function ChatPage() {
   return (
     <div className="max-w-4xl mx-auto">
       {/* ─── Header ──────────────────────────────────────────────── */}
-      <header className="flex flex-col gap-3 mb-6">
+      <header className="flex flex-col gap-1 mb-6">
+        <div className="flex items-center gap-2">
+          <span
+            aria-hidden
+            className="inline-block w-1.5 h-1.5 rounded-full bg-amber shadow-[0_0_12px_rgba(239,171,129,0.7)]"
+          />
+          <span className="font-mono text-micro uppercase text-amber">
+            AI guide
+          </span>
+        </div>
         <div className="flex items-end gap-3 flex-wrap">
-          <h1 className="font-display text-4xl md:text-5xl text-amber leading-none flex items-center gap-2.5">
-            <span
-              aria-hidden
-              className="inline-block w-2 h-2 rounded-full bg-amber shadow-[0_0_12px_rgba(244,182,144,0.7)]"
-            />
-            Guide
-          </h1>
+          <h1 className="font-display text-display leading-none">Guide</h1>
           <span className="text-sm text-text-muted mb-1">
             Recommendations that fit your taste
           </span>
@@ -60,7 +64,7 @@ export function ChatPage() {
                   key={i}
                   initial={{ opacity: 0, y: 8 }}
                   animate={{ opacity: 1, y: 0 }}
-                  transition={{ duration: 0.25, ease: "easeOut" }}
+                  transition={transitions.ease}
                   className={cn(
                     "flex",
                     t.role === "user" ? "justify-end" : "justify-start"
@@ -85,11 +89,12 @@ export function ChatPage() {
                             disabled={loading}
                             initial={{ opacity: 0, y: 4 }}
                             animate={{ opacity: 1, y: 0 }}
-                            transition={{ delay: 0.05 * j, duration: 0.2 }}
+                            transition={{ delay: 0.05 * j, ...transitions.easeFast }}
                             className={cn(
-                              "px-4 py-1.5 rounded-pill text-xs font-mono tracking-wider uppercase",
-                              "bg-white/[0.04] border border-amber/40 text-amber backdrop-blur-md",
+                              "px-4 py-1.5 min-h-[36px] rounded-pill text-micro font-mono uppercase",
+                              "bg-surface border border-amber/40 text-amber backdrop-blur-md",
                               "hover:bg-amber/[0.12] hover:border-amber/70 hover:-translate-y-px",
+                              "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber/60",
                               "disabled:opacity-40 disabled:hover:translate-y-0 transition-all"
                             )}
                           >
@@ -102,13 +107,13 @@ export function ChatPage() {
                       <motion.div
                         initial={{ opacity: 0, y: 6 }}
                         animate={{ opacity: 1, y: 0 }}
-                        transition={{ duration: 0.25 }}
+                        transition={transitions.ease}
                         className="w-full"
                       >
-                        <div className="text-[11px] font-mono uppercase tracking-wider text-text-muted mb-1.5">
+                        <div className="font-mono text-micro uppercase text-amber mb-1.5">
                           Similar to
                         </div>
-                        <div className="sm:max-w-[calc(50%-0.3125rem)] rounded-lg ring-1 ring-amber/40">
+                        <div className="sm:max-w-[calc(50%-0.3125rem)] rounded-lg shadow-glow-amber">
                           <ChatAnimeCard anime={t.extra.seed} />
                         </div>
                       </motion.div>
@@ -120,7 +125,7 @@ export function ChatPage() {
                             key={`${a.id ?? j}`}
                             initial={{ opacity: 0, y: 6 }}
                             animate={{ opacity: 1, y: 0 }}
-                            transition={{ delay: 0.08 * j, duration: 0.25 }}
+                            transition={{ delay: 0.08 * j, ...transitions.ease }}
                           >
                             <ChatAnimeCard anime={a} />
                           </motion.div>
@@ -135,11 +140,7 @@ export function ChatPage() {
           {loading ? (
             <div className="flex justify-start">
               <Bubble role="assistant" muted>
-                <span className="inline-flex items-center gap-1.5">
-                  <Dot delay={0} />
-                  <Dot delay={120} />
-                  <Dot delay={240} />
-                </span>
+                <TypingIndicator />
               </Bubble>
             </div>
           ) : null}
@@ -162,7 +163,13 @@ export function ChatPage() {
             value={input}
             onChange={(e) => setInput(e.target.value)}
             disabled={loading}
-            className="flex-1 h-11 px-5 rounded-pill bg-white/[0.04] border border-amber/30 backdrop-blur-md text-sm placeholder:text-text-dim focus:outline-none focus:border-amber/60 focus:bg-amber/[0.04] transition-colors disabled:opacity-50"
+            className={cn(
+              "flex-1 h-11 px-5 rounded-pill text-sm",
+              "bg-surface border border-amber/35 backdrop-blur-md",
+              "placeholder:text-text-dim transition-colors",
+              "focus:outline-none focus:border-amber/60 focus:ring-1 focus:ring-amber/35 focus:bg-amber/[0.04]",
+              "disabled:opacity-50"
+            )}
           />
           <Button type="submit" loading={loading} disabled={!input.trim()}>
             Send
@@ -214,7 +221,7 @@ function Bubble({
 }) {
   // Lightweight inline markdown: **bold** and *italic*. We only render this
   // on string children; React node children pass through untouched (used for
-  // the dot-typing indicator).
+  // the typing indicator).
   const content =
     typeof children === "string" ? <Markdown text={children} /> : children;
 
@@ -235,7 +242,7 @@ function Bubble({
     <div
       className={cn(
         "relative pl-4 pr-4 py-3 rounded-2xl rounded-bl-md text-sm leading-relaxed",
-        "bg-white/[0.035] border border-border backdrop-blur-md",
+        "bg-surface border border-border backdrop-blur-md",
         muted && "text-text-muted"
       )}
     >
@@ -258,7 +265,7 @@ function Markdown({ text }: { text: string }) {
       {parts.map((part, i) => {
         if (part.startsWith("**") && part.endsWith("**") && part.length > 4) {
           return (
-            <strong key={i} className="font-display text-amber not-italic">
+            <strong key={i} className="font-semibold text-amber-hi">
               {part.slice(2, -2)}
             </strong>
           );
@@ -276,11 +283,29 @@ function Markdown({ text }: { text: string }) {
   );
 }
 
-function Dot({ delay }: { delay: number }) {
+// Signature loading state: three staggered dots + a quiet mono caption.
+// framer-motion respects MotionConfig reducedMotion="user" automatically.
+function TypingIndicator() {
   return (
-    <span
-      className="inline-block w-1.5 h-1.5 rounded-full bg-amber animate-pulse"
-      style={{ animationDelay: `${delay}ms` }}
-    />
+    <span className="inline-flex items-center gap-2.5">
+      <span className="inline-flex items-center gap-1" aria-hidden>
+        {[0, 1, 2].map((i) => (
+          <motion.span
+            key={i}
+            className="inline-block w-1.5 h-1.5 rounded-full bg-amber"
+            animate={{ y: [0, -3, 0], opacity: [0.4, 1, 0.4] }}
+            transition={{
+              duration: 0.9,
+              repeat: Infinity,
+              delay: i * 0.15,
+              ease: "easeInOut",
+            }}
+          />
+        ))}
+      </span>
+      <span className="font-mono text-micro uppercase text-text-dim">
+        Guide is thinking
+      </span>
+    </span>
   );
 }

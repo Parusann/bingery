@@ -1,3 +1,4 @@
+import { Star } from "lucide-react";
 import type { ScheduleWeekEpisode } from "@/types/models";
 import { formatWeekdayLong } from "./utils";
 
@@ -16,10 +17,12 @@ export function DayBanner({
   const fullLabel = formatWeekdayLong(date);
 
   const wrapperCls = [
-    "relative overflow-hidden rounded-[22px] border",
+    // Art-directed constants: 232px filled / 168px empty (mirrored by the
+    // SchedulePage loading skeleton).
+    "relative overflow-hidden rounded-xl border",
     isEmpty ? "h-[168px]" : "h-[232px]",
     isToday
-      ? "border-peach/30 shadow-[0_30px_70px_-28px_rgba(244,182,144,0.25)]"
+      ? "border-peach/30 shadow-[0_30px_70px_-28px_rgba(239,171,129,0.25)]"
       : "border-line-2 shadow-[0_30px_70px_-32px_rgba(0,0,0,0.6)]",
     "bg-bg-elevated",
   ].join(" ");
@@ -52,16 +55,16 @@ export function DayBanner({
         }}
       />
 
-      <div className="relative flex h-full flex-col justify-between p-7">
+      <div className="relative flex h-full flex-col justify-between p-5 md:p-7">
         <div className="flex items-center gap-3">
           {isToday && (
-            <span className="inline-flex items-center gap-2 rounded-full bg-peach/10 px-3 py-1 text-[10px] font-mono uppercase tracking-[0.22em] text-peach">
+            <span className="inline-flex items-center gap-2 rounded-pill bg-peach/10 px-3 py-1 text-[10px] font-mono uppercase tracking-[0.22em] text-peach">
               <span className="h-1.5 w-1.5 rounded-full bg-peach animate-pulse" />
               TODAY
             </span>
           )}
           <h2
-            className="font-display italic text-[52px] leading-none tracking-tight text-ink"
+            className="font-display italic text-[40px] md:text-[52px] leading-none tracking-tight text-ink"
             style={{ textShadow: "0 2px 4px rgba(10,7,16,0.92), 0 2px 22px rgba(10,7,16,0.7)" }}
           >
             {fullLabel}
@@ -69,18 +72,19 @@ export function DayBanner({
         </div>
 
         {isEmpty ? (
-          <p className="font-display italic text-[32px] text-ink-2">No releases</p>
+          <p className="font-display italic text-[28px] md:text-[32px] text-ink-2">No releases</p>
         ) : (
-          <div className="flex items-end justify-between">
+          <div className="flex items-end justify-between gap-3 flex-wrap">
             <div className="flex items-baseline gap-2">
-              <span className="font-display text-[40px] text-peach">{episodes.length}</span>
+              <span className="font-display text-[36px] md:text-[40px] tnum text-peach">{episodes.length}</span>
               <span className="font-mono text-[10.5px] uppercase tracking-[0.22em] text-mute">
                 {episodes.length === 1 ? "episode" : "episodes"}
               </span>
             </div>
             {watchlistCount > 0 && (
-              <span className="inline-flex items-center gap-2 rounded-full bg-gold/[0.08] border border-gold/[0.35] px-3 py-1 text-[11px] font-mono uppercase tracking-[0.18em] text-gold">
-                ★ {watchlistCount} on your watchlist
+              <span className="inline-flex items-center gap-2 rounded-pill bg-gold/[0.08] border border-gold/[0.35] px-3 py-1 text-[11px] font-mono uppercase tracking-[0.18em] tnum text-gold">
+                <Star className="h-3 w-3" fill="currentColor" aria-hidden />
+                {watchlistCount} on your watchlist
               </span>
             )}
           </div>

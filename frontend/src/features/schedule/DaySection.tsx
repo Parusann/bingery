@@ -1,3 +1,4 @@
+import { ArrowUp } from "lucide-react";
 import type { ScheduleWeekEpisode } from "@/types/models";
 import { DayBanner } from "./DayBanner";
 import { EpisodeRow } from "./EpisodeRow";
@@ -17,10 +18,10 @@ export function DaySection({
   const others = myShowsOnly ? [] : episodes.filter((e) => !e.on_watchlist);
 
   return (
-    <section id={`day-${date}`} className="space-y-4">
+    <section id={`day-${date}`} data-screen-label={`Schedule ${date}`} className="space-y-4">
       <DayBanner date={date} episodes={episodes} isToday={isToday} />
       {watchlist.length > 0 && (
-        <div className="space-y-2 rounded-2xl border border-gold/20 bg-gold/[0.025] p-5">
+        <div className="space-y-2 rounded-xl border border-gold/20 bg-gold/[0.025] p-4 md:p-5">
           {watchlist.map((e) => (
             <EpisodeRow key={`w-${e.id}-${e.type}`} episode={e} />
           ))}
@@ -40,11 +41,11 @@ export function DaySection({
         <button
           type="button"
           onClick={() => window.scrollTo({ top: 0, behavior: "smooth" })}
-          className="inline-flex items-center gap-2 rounded-full border border-peach/45 bg-peach/15 px-5 py-2 text-xs font-mono uppercase tracking-[0.2em] text-peach shadow-[0_8px_24px_-12px_rgba(244,182,144,0.5)] transition-all hover:gap-3 hover:border-peach/70 hover:bg-peach/25"
+          className="inline-flex items-center gap-2 min-h-[44px] rounded-pill border border-peach/45 bg-peach/15 px-5 py-2 text-xs font-mono uppercase tracking-[0.2em] text-peach shadow-[0_8px_24px_-12px_rgba(239,171,129,0.5)] transition-all hover:gap-3 hover:border-peach/70 hover:bg-peach/25 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber/60"
           aria-label="Back to top of schedule"
           title="Back to top"
         >
-          <span aria-hidden="true">↑</span> Back to top
+          <ArrowUp className="h-3.5 w-3.5" aria-hidden /> Back to top
         </button>
       </div>
     </section>

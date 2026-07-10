@@ -43,6 +43,7 @@ class IngestSummary:
     parsed: int = 0
     matched: int = 0
     written: int = 0
+    upgraded_synthetic: int = 0
     skipped_already_filled: int = 0
     unmatched: int = 0
     skipped_no_episode_number: int = 0
@@ -54,6 +55,7 @@ class IngestSummary:
             "parsed": self.parsed,
             "matched": self.matched,
             "written": self.written,
+            "upgraded_synthetic": self.upgraded_synthetic,
             "skipped_already_filled": self.skipped_already_filled,
             "unmatched": self.unmatched,
             "skipped_no_episode_number": self.skipped_no_episode_number,
@@ -186,14 +188,18 @@ def ingest_payload(
     dry_run: bool = False,
     threshold: float = MATCH_THRESHOLD,
 ) -> dict:
-    """Parse JSON, fuzzy-match, fill Episode.air_date_dub only where NULL.
+    """Parse JSON, fuzzy-match, write Episode.air_date_dub by tier precedence.
 
-    Tier 2 semantics: never overwrite an existing air_date_dub. The summary
-    reports how many gaps were filled vs already-populated.
+    Tier 2 semantics: fill NULL rows, UPGRADE synthetic projections (a real
+    timetable date always outranks the seeder's +lag estimate — observed 5-6
+    weeks off for near-simulcast dubs), and refresh our own rows when the
+    timetable moves. Never touch higher-precedence or attended sources:
+    crunchyroll_rss (Tier 1), research, user:* reports.
     """
     from collections import namedtuple
 
     from models import db, Anime, Episode
+    from seed_dub_schedule import SYNTHETIC_TAG
 
     summary = IngestSummary(dry_run=dry_run)
     entries = parse_payload(json_text)
@@ -235,9 +241,20 @@ def ingest_payload(
             .filter_by(anime_id=anime.id, episode_number=entry.episode_number)
             .first()
         )
+        upgrading_synthetic = False
         if ep is not None and ep.air_date_dub is not None:
-            summary.skipped_already_filled += 1
-            continue
+            src = ep.dub_source or ""
+            existing = ep.air_date_dub.replace(tzinfo=None)
+            incoming = entry.air_date.replace(tzinfo=None)
+            if src == SYNTHETIC_TAG:
+                upgrading_synthetic = True
+            elif src == DUB_SOURCE and existing != incoming:
+                pass  # our own row, timetable moved — refresh it
+            else:
+                # crunchyroll_rss / research / user:* / unchanged own row /
+                # unknown provenance: leave it alone.
+                summary.skipped_already_filled += 1
+                continue
         if dry_run:
             continue
         if ep is None:
@@ -248,6 +265,8 @@ def ingest_payload(
         ep.air_date_dub = entry.air_date
         ep.dub_source = DUB_SOURCE
         summary.written += 1
+        if upgrading_synthetic:
+            summary.upgraded_synthetic += 1
 
     if not dry_run:
         db.session.commit()

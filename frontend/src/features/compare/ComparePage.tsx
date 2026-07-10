@@ -19,7 +19,10 @@ export function ComparePage() {
   if (!user) {
     return (
       <div className="py-20 text-center">
-        <h1 className="font-display text-4xl mb-2">
+        <div className="font-mono text-micro uppercase text-amber mb-3">
+          Compare
+        </div>
+        <h1 className="font-display text-display mb-2">
           Sign in to compare anime
         </h1>
         <p className="text-text-muted">
@@ -31,8 +34,11 @@ export function ComparePage() {
 
   return (
     <div className="space-y-8 max-w-5xl">
-      <header className="space-y-2">
-        <h1 className="font-display text-4xl text-amber">Compare anime</h1>
+      <header>
+        <div className="font-mono text-micro uppercase text-amber mb-2">
+          Head to head
+        </div>
+        <h1 className="font-display text-display mb-2">Compare anime</h1>
         <p className="text-text-muted text-sm max-w-2xl">
           Pick any two anime to see them side-by-side: genres, scores,
           studios, and your own ratings. Shared genres get highlighted.
@@ -58,7 +64,7 @@ export function ComparePage() {
           </p>
         ) : null
       ) : (
-        <p className="text-text-muted text-sm">
+        <p className="font-display italic text-body-lg text-text-muted">
           Pick two anime above to start the comparison.
         </p>
       )}

@@ -101,7 +101,7 @@ export function MoreSheet({ open, onClose }: Props) {
                   key={to}
                   type="button"
                   onClick={() => go(to)}
-                  className="flex flex-col items-center justify-center gap-1.5 min-h-[76px] rounded-lg border border-border bg-surface glass-edge backdrop-blur-md text-text-muted hover:text-amber hover:border-amber/40 transition-colors"
+                  className="flex flex-col items-center justify-center gap-1.5 min-h-[76px] rounded-lg border border-border bg-surface glass-edge backdrop-blur-md text-text-muted hover:text-amber hover:border-amber/40 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber/60"
                 >
                   <Icon size={22} strokeWidth={1.8} />
                   <span className="text-xs">{label}</span>
