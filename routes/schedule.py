@@ -113,12 +113,24 @@ def anime_episodes(anime_id: int):
     if not anime:
         return jsonify({"error": "anime not found"}), 404
 
-    episodes = (
+    episodes_q = (
         db.session.query(Episode)
         .filter(Episode.anime_id == anime_id)
         .order_by(Episode.episode_number.asc())
-        .all()
     )
+    # Same episode-count bound the week view applies: rows numbered past the
+    # catalog's own finale are ghosts (season splits, stale schedules) and
+    # must not feed the "next episode" widget.
+    if anime.episodes and anime.episodes > 0:
+        from sqlalchemy import or_
+
+        episodes_q = episodes_q.filter(
+            or_(
+                Episode.episode_number.is_(None),
+                Episode.episode_number <= anime.episodes,
+            )
+        )
+    episodes = episodes_q.all()
 
     episode_dicts = [_episode_payload(e) for e in episodes]
 

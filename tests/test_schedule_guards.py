@@ -125,6 +125,21 @@ def test_dub_track_guards(client, auth_headers, guard_data):
     assert "Synthetic Dub Of Airing Show" in titles
 
 
+def test_episodes_endpoint_hides_past_finale_rows(client, auth_headers, app):
+    with app.app_context():
+        a = _mk("Detail Overrun Show", "Currently Airing", episodes=12)
+        _ep(a, 12, sub=PAST)
+        _ep(a, 13, sub=FUTURE)  # past the finale — must not become next_sub
+        db.session.commit()
+        aid = a.id
+    headers, _user = auth_headers
+    resp = client.get(f"/api/anime/{aid}/episodes", headers=headers)
+    assert resp.status_code == 200
+    body = resp.get_json()
+    assert [e["episode_number"] for e in body["episodes"]] == [12]
+    assert body["next_sub"] is None
+
+
 def test_estimated_flag_survives_guards(client, auth_headers, guard_data):
     headers, _user = auth_headers
     resp = client.get(
