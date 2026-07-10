@@ -1,0 +1,55 @@
+[
+  {"anime_id": 14436, "track": "sub", "status": "airing", "confidence": 90, "detail": "https://myanimelist.net/anime/57466 (via api.jikan.moe) — Honzuki no Gekokujou: Ryoushu no Youjo, Currently Airing, 24 eps, premiered 2026-04-04, Saturdays 17:30 JST (= Sat 08:30 UTC, same UTC day)"},
+
+  {"anime_id": 14428, "track": "sub", "status": "airing", "confidence": 90, "detail": "https://myanimelist.net/anime/56613 (via api.jikan.moe) — Azur Lane: Bisoku Zenshin! Ni!! Currently Airing, premiered 2026-07-06 JST, Mondays 01:00 JST; https://www.livechart.me/summer-2026/tv lists premiere Jul 5 2026 12:00pm EDT (= 16:00 UTC Sunday)"},
+  {"anime_id": 14428, "track": "sub", "episode_number": 4, "date": "2026-07-26", "date_only": true, "confidence": 75, "detail": "https://myanimelist.net/anime/56613 — weekly Mondays 01:00 JST from Jul 6 JST premiere; ep4 = Jul 27 JST = 2026-07-26 UTC (Sun 16:00 UTC). Derived from stated slot, matches our date"},
+
+  {"anime_id": 14642, "track": "sub", "status": "upcoming", "confidence": 90, "detail": "https://myanimelist.net/anime/63011 (via api.jikan.moe) — Chiikawa Movie: The Secret of the Mermaid Island is a MOVIE, status Not yet aired, opens 2026-07-24 (Japan)"},
+  {"anime_id": 14642, "track": "sub", "episode_number": 1, "date": "2026-07-24", "date_only": true, "confidence": 80, "detail": "https://myanimelist.net/anime/63011 — theatrical release 2026-07-24 JST date; no time stated, cannot determine UTC day (our 2026-07-23 UTC is plausible only if counted as prior UTC day). JST date"},
+
+  {"anime_id": 14565, "track": "sub", "status": "airing", "confidence": 90, "detail": "https://myanimelist.net/anime/62001 (via api.jikan.moe) — Yomi no Tsugai (Daemons of the Shadow Realm), Currently Airing, 24 eps, premiered 2026-04-04, Saturdays 23:30 JST (= Sat 14:30 UTC, same UTC day)"},
+  {"anime_id": 14565, "track": "sub", "episode_number": 15, "date": "2026-07-11", "date_only": true, "confidence": 75, "detail": "https://myanimelist.net/anime/62001 — weekly Sat 23:30 JST from Apr 4 premiere; unbroken weekly cadence puts ep15 on 2026-07-11 (same UTC day). Derived, matches our date"},
+  {"anime_id": 14565, "track": "sub", "episode_number": 16, "date": "2026-07-18", "date_only": true, "confidence": 75, "detail": "https://myanimelist.net/anime/62001 — weekly Sat 23:30 JST cadence; ep16 2026-07-18. Derived, matches our date"},
+  {"anime_id": 14565, "track": "sub", "episode_number": 17, "date": "2026-07-25", "date_only": true, "confidence": 75, "detail": "https://myanimelist.net/anime/62001 — weekly Sat 23:30 JST cadence; ep17 2026-07-25. Derived, matches our date"},
+
+  {"anime_id": 14689, "track": "sub", "status": "upcoming", "confidence": 90, "detail": "https://myanimelist.net/anime/63366 (via api.jikan.moe) — Kimi to Hanabi to Yakusoku to is a MOVIE, status Not yet aired, opens 2026-07-17 (Japan)"},
+  {"anime_id": 14689, "track": "sub", "episode_number": 1, "date": "2026-07-17", "date_only": true, "confidence": 80, "detail": "https://myanimelist.net/anime/63366 — theatrical release 2026-07-17 JST date; no time stated, cannot determine UTC day (our DB has 2026-07-16). JST date"},
+
+  {"anime_id": 14620, "track": "sub", "status": "airing", "confidence": 90, "detail": "https://myanimelist.net/anime/62683 (via api.jikan.moe) — Let's Go Kaiki-gumi, Currently Airing, 12 eps, premiered 2026-07-05, Sundays 16:30 JST (= Sun 07:30 UTC, same UTC day)"},
+  {"anime_id": 14620, "track": "sub", "episode_number": 2, "date": "2026-07-12", "date_only": true, "confidence": 75, "detail": "https://myanimelist.net/anime/62683 — Sundays 16:30 JST (= Sunday UTC) from Jul 5 premiere puts ep2 on 2026-07-12. CONTRADICTS our 2026-07-11 (Saturday)"},
+  {"anime_id": 14620, "track": "sub", "episode_number": 3, "date": "2026-07-19", "date_only": true, "confidence": 75, "detail": "https://myanimelist.net/anime/62683 — Sundays 16:30 JST cadence; ep3 2026-07-19. CONTRADICTS our 2026-07-18 (Saturday)"},
+  {"anime_id": 14620, "track": "sub", "episode_number": 4, "date": "2026-07-26", "date_only": true, "confidence": 75, "detail": "https://myanimelist.net/anime/62683 — Sundays 16:30 JST cadence; ep4 2026-07-26. CONTRADICTS our 2026-07-25 (Saturday)"},
+
+  {"anime_id": 14568, "track": "sub", "status": "airing", "confidence": 90, "detail": "https://myanimelist.net/anime/62048 (via api.jikan.moe) — MAO (Sunrise, 2026), Currently Airing, premiered 2026-04-04, Saturdays 23:45 JST (= Sat 14:45 UTC, same UTC day)"},
+  {"anime_id": 14568, "track": "sub", "episode_number": 15, "date": "2026-07-11", "date_only": true, "confidence": 75, "detail": "https://myanimelist.net/anime/62048 — weekly Sat 23:45 JST from Apr 4 premiere; unbroken cadence puts ep15 on 2026-07-11. Derived, matches our date"},
+
+  {"anime_id": 14457, "track": "sub", "status": "airing", "confidence": 85, "detail": "https://www.livechart.me/summer-2026/tv — Mushoku Tensei III listed in Summer 2026 TV chart, premiere Jul 4 2026 7:00am EDT (= 11:00 UTC Saturday). NOTE: weekly Saturday slot would put ep2 on 2026-07-11, our DB says 2026-07-12 — needs per-episode verification"},
+
+  {"anime_id": 14661, "track": "sub", "status": "airing", "confidence": 85, "detail": "https://myanimelist.net/anime/63125 (via api.jikan.moe) — Odekake Kozame 2nd Season, ONA, Currently Airing since 2026-04-12 (JST Sundays cadence implied; JST Sunday early-AM release would map to Saturday UTC, consistent with our Saturday UTC dates but exact time unstated)"},
+
+  {"anime_id": 14686, "track": "sub", "status": "airing", "confidence": 90, "detail": "https://myanimelist.net/anime/63352 (via api.jikan.moe) — Onegai AiPri, TV, Currently Airing, premiered 2026-04-05, Sundays 09:30 JST (= Sun 00:30 UTC, same UTC day)"},
+  {"anime_id": 14686, "track": "sub", "episode_number": 15, "date": "2026-07-12", "date_only": true, "confidence": 75, "detail": "https://myanimelist.net/anime/63352 — weekly Sun 09:30 JST from Apr 5 premiere; unbroken cadence puts ep15 on 2026-07-12. Derived, matches our date"},
+  {"anime_id": 14686, "track": "sub", "episode_number": 16, "date": "2026-07-19", "date_only": true, "confidence": 75, "detail": "https://myanimelist.net/anime/63352 — weekly Sun 09:30 JST cadence; ep16 2026-07-19. Derived, matches our date"},
+  {"anime_id": 14686, "track": "sub", "episode_number": 17, "date": "2026-07-26", "date_only": true, "confidence": 75, "detail": "https://myanimelist.net/anime/63352 — weekly Sun 09:30 JST cadence; ep17 2026-07-26. Derived, matches our date"},
+
+  {"anime_id": 14723, "track": "sub", "status": "airing", "confidence": 85, "detail": "https://myanimelist.net/anime/63773 (via api.jikan.moe) — PetitCure: Precure Fairies Season 3, ONA shorts, Currently Airing since 2026-03-26 (Thursdays JST cadence)"},
+  {"anime_id": 14723, "track": "sub", "episode_number": 17, "date": "2026-07-16", "date_only": true, "confidence": 70, "detail": "https://myanimelist.net/anime/63773 — weekly Thursday cadence from Mar 26 premiere puts ep17 on 2026-07-16. Derived; release time unstated (ONA), JST date; matches our date"},
+  {"anime_id": 14723, "track": "sub", "episode_number": 18, "date": "2026-07-23", "date_only": true, "confidence": 70, "detail": "https://myanimelist.net/anime/63773 — weekly Thursday cadence; ep18 2026-07-23. Derived, JST date; matches our date"},
+
+  {"anime_id": 14738, "track": "sub", "status": "airing", "confidence": 85, "detail": "https://myanimelist.net/anime/63830 (via api.jikan.moe) — Re:Zero kara Hajimeru Break Time 4th Season, Special, Currently Airing since 2026-04-08 (Wednesdays JST cadence)"},
+  {"anime_id": 14738, "track": "sub", "episode_number": 15, "date": "2026-07-15", "date_only": true, "confidence": 70, "detail": "https://myanimelist.net/anime/63830 — weekly Wednesday cadence from Apr 8 premiere puts ep15 on 2026-07-15. Derived; release time unstated, JST date; matches our date"},
+  {"anime_id": 14738, "track": "sub", "episode_number": 16, "date": "2026-07-22", "date_only": true, "confidence": 70, "detail": "https://myanimelist.net/anime/63830 — weekly Wednesday cadence; ep16 2026-07-22. Derived, JST date; matches our date"},
+
+  {"anime_id": 14595, "track": "sub", "status": "airing", "confidence": 90, "detail": "https://myanimelist.net/anime/62435 (via api.jikan.moe) — Sekai Saikyou no Kouei: Meikyuukoku no Shinjin Tansakusha, TV, Currently Airing, 12 eps, premiered 2026-07-05, Sundays 22:00 JST (= Sun 13:00 UTC, same UTC day)"},
+  {"anime_id": 14595, "track": "sub", "episode_number": 4, "date": "2026-07-26", "date_only": true, "confidence": 75, "detail": "https://myanimelist.net/anime/62435 — Sundays 22:00 JST from Jul 5 premiere; ep4 2026-07-26 (same UTC day). Derived, matches our date"},
+
+  {"anime_id": 14578, "track": "sub", "status": "airing", "confidence": 90, "detail": "https://myanimelist.net/anime/62171 (via api.jikan.moe) — Kuroneko to Majo no Kyoushitsu, TV, Currently Airing, premiered 2026-04-12, Sundays 23:30 JST (= Sun 14:30 UTC, same UTC day)"},
+  {"anime_id": 14578, "track": "sub", "episode_number": 16, "date": "2026-07-26", "date_only": true, "confidence": 75, "detail": "https://myanimelist.net/anime/62171 — weekly Sun 23:30 JST from Apr 12 premiere; unbroken cadence puts ep16 on 2026-07-26. Derived, matches our date"},
+
+  {"anime_id": 14685, "track": "sub", "status": "airing", "confidence": 90, "detail": "https://myanimelist.net/anime/63347 (via api.jikan.moe) — World Is Dancing, TV, Currently Airing, 13 eps, premiered 2026-07-02, Thursdays 22:00 JST (= Thu 13:00 UTC, same UTC day)"},
+  {"anime_id": 14685, "track": "sub", "episode_number": 3, "date": "2026-07-16", "date_only": true, "confidence": 75, "detail": "https://myanimelist.net/anime/63347 — Thursdays 22:00 JST from Jul 2 premiere; ep3 2026-07-16 (same UTC day). Derived, matches our date"},
+  {"anime_id": 14685, "track": "sub", "episode_number": 4, "date": "2026-07-23", "date_only": true, "confidence": 75, "detail": "https://myanimelist.net/anime/63347 — Thursdays 22:00 JST cadence; ep4 2026-07-23. Derived, matches our date"},
+
+  {"anime_id": 14733, "track": "sub", "status": "airing", "confidence": 90, "detail": "https://myanimelist.net/anime/63832 (via api.jikan.moe) — Seihantai na Kimi to Boku 2nd Season, TV, Currently Airing, 13 eps, premiered 2026-07-05, Sundays 17:00 JST (= Sun 08:00 UTC, same UTC day)"},
+  {"anime_id": 14733, "track": "sub", "episode_number": 4, "date": "2026-07-26", "date_only": true, "confidence": 75, "detail": "https://myanimelist.net/anime/63832 — Sundays 17:00 JST from Jul 5 premiere; ep4 2026-07-26 (same UTC day). Derived, matches our date"}
+]
