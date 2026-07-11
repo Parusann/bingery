@@ -130,7 +130,7 @@ flowchart LR
   Sync --> DB
 ```
 
-A single **Flask** application exposes a JSON API under `/api/*` and serves the built **React** SPA. Catalog and release data are kept fresh by **resumable CLI sync jobs** (run on a schedule via GitHub Actions / Render cron). The AI Guide talks to a **provider abstraction** so the same chat works against Claude in the cloud or a local Ollama model. State lives in **SQLite** on a Fly.io persistent volume.
+A single **Flask** application exposes a JSON API under `/api/*` and serves the built **React** SPA. Catalog and release data are kept fresh by **resumable CLI sync jobs** (run daily via a GitHub Actions workflow that calls in-process admin endpoints, followed by a multi-source schedule audit). The AI Guide talks to a **provider abstraction** so the same chat works against Claude in the cloud or a local Ollama model. State lives in **SQLite** on a Fly.io persistent volume.
 
 ---
 
@@ -163,8 +163,8 @@ bingery/
 │
 ├── docs/                       # DEPLOYMENT.md + design specs & implementation plans
 ├── Dockerfile · fly.toml       # Fly.io deployment (multi-stage build)
-├── render.yaml · Procfile      # Render cron workers / process definition
-└── .github/workflows/          # scheduled dub-schedule refresh
+├── Procfile                    # process definition
+└── .github/workflows/          # daily schedule refresh + accuracy audit
 ```
 
 ---
@@ -270,8 +270,7 @@ fly status -a bingery
 curl https://bingery.fly.dev/api/health    # → {"status":"ok"}
 ```
 
-- **`render.yaml`** defines **Render cron workers** that run the catalog/dub sync jobs on a schedule.
-- **`.github/workflows/refresh-schedule.yml`** refreshes the dub schedule via GitHub Actions.
+- **`.github/workflows/refresh-schedule.yml`** runs the daily pipeline: AniList status refresh (anti-drift), weekly seasonal catalog pull (Sundays), Crunchyroll/AnimeSchedule dub sync + synthetic re-seed, then a read-only multi-source schedule audit with alarm thresholds (see `docs/runbooks/schedule-audit.md`).
 - See **[`docs/DEPLOYMENT.md`](docs/DEPLOYMENT.md)** for the full runbook (including the Ollama‑over‑Cloudflare‑Access tunnel).
 
 ---

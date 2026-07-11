@@ -53,6 +53,48 @@ jobs:
           done
           echo "machine never woke"; exit 1
 
+      - name: Refresh AniList statuses (schedule-window anti-drift)
+        # Resyncs every show (any stored status) with an episode near
+        # today. Finished shows drop out of AniList's airing feed, so ONLY
+        # this cohort-by-our-own-rows refresh can flip them to Finished —
+        # this step is what keeps ghost shows from ever rebuilding.
+        # Failure is loud but must not block the dub sync below.
+        continue-on-error: true
+        run: |
+          curl --fail-with-body --max-time 600 \
+            -X POST \
+            -H "X-Admin-Secret: ${{ secrets.ADMIN_SYNC_SECRET }}" \
+            -H "Content-Type: application/json" \
+            -d '{"mode": "window"}' \
+            "$APP_URL/api/anilist/sync" \
+            | tee anilist-refresh.json \
+            || { echo "::warning::AniList window refresh failed — statuses may drift until the next run"; exit 1; }
+          echo
+          jq '{cohort, refreshed, synced, failed, capped}' anilist-refresh.json
+
+      - name: Weekly seasonal catalog pull (Sundays)
+        # Replaces the retired Render weekly resync: keeps new-season
+        # titles flowing into the catalog. Skips silently on other days.
+        continue-on-error: true
+        run: |
+          if [ "$(date -u +%u)" != "7" ]; then
+            echo "not Sunday (UTC) — skipping seasonal pull"; exit 0
+          fi
+          month=$(date -u +%m); year=$(date -u +%Y)
+          case $month in
+            01|02|03) season=WINTER ;;
+            04|05|06) season=SPRING ;;
+            07|08|09) season=SUMMER ;;
+            *)        season=FALL ;;
+          esac
+          curl --fail-with-body --max-time 600 \
+            -X POST \
+            -H "X-Admin-Secret: ${{ secrets.ADMIN_SYNC_SECRET }}" \
+            -H "Content-Type: application/json" \
+            -d "{\"mode\": \"seasonal\", \"season\": \"$season\", \"year\": $year, \"pages\": 2}" \
+            "$APP_URL/api/anilist/sync" \
+            || { echo "::warning::seasonal catalog pull failed"; exit 1; }
+
       - name: Run syncs via admin endpoint
         # max-time 600 = 10 min cap. Typical run is ~60-90s
         # (CR ~10s, AS ~30-60s, seed ~5s).

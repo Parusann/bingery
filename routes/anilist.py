@@ -76,8 +76,18 @@ def sync_from_anilist():
     Body: { "mode": "popular", "pages": 2 }
     Body: { "mode": "search", "query": "isekai", "pages": 1 }
     Body: { "mode": "seasonal", "season": "WINTER", "year": 2025, "pages": 1 }
+    Body: { "mode": "window", "days_back": 21, "days_forward": 28,
+            "max_ids": 60 }
 
-    Modes: popular, top, trending, seasonal, search
+    Modes: popular, top, trending, seasonal, search, window
+
+    "window" is the standing anti-drift refresh: it resyncs every anime
+    with a sub episode near today regardless of stored status, healing
+    drift in both directions — shows that finished (they drop out of
+    AniList's airing feed, so no airing-only sync catches them) and shows
+    wrongly marked finished (whose real episodes the serving guards would
+    otherwise hide). Runs in-process for the same memory reasons as
+    /api/admin/sync-dub-sources.
     """
     from utils.anilist import sync_anime_from_anilist
 
@@ -88,8 +98,34 @@ def sync_from_anilist():
     data = request.get_json(silent=True) or {}
     mode = data.get("mode", "popular")
 
-    if mode not in ("popular", "top", "trending", "seasonal", "search"):
+    if mode not in ("popular", "top", "trending", "seasonal", "search", "window"):
         return jsonify({"error": "Invalid mode."}), 400
+
+    if mode == "window":
+        try:
+            days_back = max(1, min(int(data.get("days_back", 21)), 60))
+            days_forward = max(1, min(int(data.get("days_forward", 28)), 60))
+            # Hard cap 120: this runs inside a gunicorn worker with
+            # --timeout 180; larger cohorts drain across daily runs.
+            max_ids = max(10, min(int(data.get("max_ids", 60)), 120))
+        except (TypeError, ValueError):
+            return jsonify(
+                {"error": "'days_back', 'days_forward' and 'max_ids' must be integers."}
+            ), 400
+        try:
+            from sync_anilist import window_refresh
+            from utils.anilist import AniListClient
+
+            summary = window_refresh(
+                AniListClient(),
+                days_back=days_back,
+                days_forward=days_forward,
+                max_ids=max_ids,
+            )
+            return jsonify({"mode": "window", **summary}), 200
+        except Exception:
+            current_app.logger.exception("AniList window refresh failed")
+            return jsonify({"error": "Window refresh failed."}), 502
     try:
         pages = int(data.get("pages", 1))
     except (TypeError, ValueError):

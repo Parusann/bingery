@@ -1283,7 +1283,7 @@ No env vars — everything is constants in code:
 
 Bingery is a single Flask application (`app.py`) that exposes a JSON API under `/api/*` and serves the Vite-built React SPA from the same process. All persistent state lives in one SQLAlchemy database — SQLite by default, with URL-level Postgres support — and the anime catalog itself is not user-generated: it is ingested from the AniList GraphQL API by a resumable CLI sync pipeline (`sync_anilist.py` + `utils/anilist.py`) and refreshed on a schedule. The production target is a single Fly.io machine (region `yyz`) built from the multi-stage `Dockerfile`, with the SQLite file on a persistent volume at `/data`.
 
-This section covers the app factory and blueprint map, the AniList ingestion/sync pipeline, the database backends, the production boot guards, and the deployment/scheduling story (Fly.io primary; Render and Heroku-style configs also present in-repo).
+This section covers the app factory and blueprint map, the AniList ingestion/sync pipeline, the database backends, the production boot guards, and the deployment/scheduling story (Fly.io primary; a Heroku-style `Procfile` is also present; the Render config was retired 2026-07-10).
 
 ### User flow
 
@@ -1333,7 +1333,7 @@ Error handlers: 404 on `/api/*` paths returns JSON `{"error": "Not found."}`; 40
 
 | Method | Path | Auth | Purpose |
 |---|---|---|---|
-| GET | `/api/health` | None | Liveness probe: `{"status": "ok", "service": "bingery-api"}`. Used by the Docker `HEALTHCHECK`, Fly's `[[http_service.checks]]`, Render's `healthCheckPath`, and the GH Actions wake-up loop. |
+| GET | `/api/health` | None | Liveness probe: `{"status": "ok", "service": "bingery-api"}`. Used by the Docker `HEALTHCHECK`, Fly's `[[http_service.checks]]`, and the GH Actions wake-up loop. |
 | GET | `/` and `/<path>` | None | SPA serving — real static file if it exists, else `index.html`. |
 | GET | `/api/anilist/search?q=&page=&per_page=` | None | Live AniList title search (results NOT persisted). `per_page` capped at 25. 400 if `q` missing; 502 on AniList failure. |
 | GET | `/api/anilist/anime/<anilist_id>` | None | Live AniList details for one title. 502 on failure. |
@@ -1364,7 +1364,7 @@ Both admin-gated endpoints compare secrets with `hmac.compare_digest` (constant-
 #### Scheduled jobs
 
 - **GitHub Actions** (`.github/workflows/refresh-schedule.yml`): daily 06:00 UTC + manual dispatch; wakes the Fly machine via `/api/health` (5 retries), then `curl`s `/api/admin/sync-dub-sources` with a 10-minute cap (typical run 60–90 s). Runs the syncs *inside* the live gunicorn worker because spawning a fresh `python sync_*.py` interpreter (~100 MB of Flask+SQLAlchemy imports) gets OOM-killed on Fly's 256 MB VM; in-process the peak delta is ~25 MB.
-- **Render cron** (`render.yaml`, alternative deployment): weekly AniList resync (Sun 03:00 UTC, `sync_anilist.py --full --since=<7 days ago>`), Crunchyroll RSS every 6 h, AnimeSchedule daily 04:00 — all as separate cron services against a managed Postgres (`bingery-db`, free plan).
+- **Retired: Render crons** (removed 2026-07-10 along with `render.yaml`): the weekly AniList resync, 6-hourly Crunchyroll RSS, and daily AnimeSchedule jobs ran against a separate Render Postgres the Fly app never read. Their replacements live in the GH Actions workflow above (daily window status refresh, Sunday seasonal pull, daily dub sync via admin endpoints).
 
 ### Data model
 
@@ -1404,14 +1404,14 @@ Fly runtime knobs (`fly.toml`): app `bingery`, region `yyz`, `force_https`, `aut
 - **Production boot guards fail hard.** With production detected, `config.py` raises `SystemExit(2)` with a `FATAL` message listing every problem (dev `SECRET_KEY`/`JWT_SECRET_KEY`, wildcard `CORS_ORIGINS`, non-Brevo email provider, or missing Brevo credentials). The Fly fallback (`FLY_APP_NAME`) means deleting `FLASK_ENV` from `fly.toml` cannot silently disable the guards.
 - **AniList rate limit handling**: 0.7 s pacing targets ~85 of the allowed 90 req/min; on 429 the client waits `Retry-After` (≤ 60 s) and retries at most twice before raising "rate limit persisted after retries".
 - **5000-offset wall + `seasonYear: null` gap.** Year-chunking sidesteps AniList's deep-pagination cap; titles with no `seasonYear` (mostly old specials/OVAs) are unreachable by the main sync and need the `--format` orphan-catcher pass, itself hard-capped at page 100 per format.
-- **`--since` is effectively a no-op.** The catalog query never requests `updatedAt`, and `_normalize_anime()` doesn't carry it, so the cutoff filter (which reads `media["updatedAt"]`) never matches. The CLI help honestly labels it "best-effort"; Render's weekly cron relies on upsert idempotency, not on `--since`, for correctness.
+- **`--since` is effectively a no-op.** The catalog query never requests `updatedAt`, and `_normalize_anime()` doesn't carry it, so the cutoff filter (which reads `media["updatedAt"]`) never matches. The CLI help honestly labels it "best-effort"; callers rely on upsert idempotency, not on `--since`, for correctness.
 - **Sync concurrency is unguarded.** `AniListSyncState.status` is advisory; nothing prevents two simultaneous sync runs. Fine for the manual/cron usage pattern, but worth knowing.
 - **`db.create_all()` is not a migration system** — it creates missing tables but never alters existing columns. Schema changes on a live volume require manual work (cf. `migrate_watchlist.py`).
-- **Postgres support is URL-level only.** `render.yaml` provisions Postgres and `config.py` does the scheme fixup, but `requirements.txt` pins no Postgres driver (`psycopg2` absent) — a Render/Postgres deploy needs the driver added. The shipped production path is SQLite-on-volume.
+- **Postgres support is URL-level only.** `config.py` does the `postgres://` scheme fixup, but `requirements.txt` pins no Postgres driver (`psycopg2` absent) — any future Postgres deploy needs the driver added. The shipped production path is SQLite-on-volume.
 - **Single-worker assumptions.** The relations cache (and other in-process caches) are global only because gunicorn runs one worker; raising `--workers` or adding Fly machines silently splits them, and SQLite-on-volume rules out horizontal scaling anyway (acknowledged trade-off in `docs/DEPLOYMENT.md`).
 - **Cold starts.** `min_machines_running = 0` means the Fly machine stops when idle; the first request takes seconds. The GH Actions job compensates with a 5-attempt `/api/health` wake loop before syncing.
 - **Memory ceiling drives design.** The 256 MB VM is why admin syncs run in-process (POST endpoint) instead of `fly ssh` + a fresh interpreter, and why the daily refresh deliberately excludes the 5–15 min AniList catalog sync.
 - **Synchronous admin sync requests.** `POST /api/anilist/sync` (≤ 10 pages ≈ 500 titles) and `/api/admin/sync-dub-sources` (~60–90 s) block a request thread for their whole duration; gunicorn's 180 s timeout is the de facto ceiling.
 - **Graceful degradation paths**: live-AniList endpoints return 502 (with `logger.exception` server-side) when AniList is down — the local catalog keeps serving; the SPA fallback serves the legacy `static/` bundle if `frontend/dist` is missing; per-source failures in the dub sync are reported per-key in the response instead of aborting the run.
 - **Health checks at three layers**: Docker `HEALTHCHECK` (curl, 30 s interval / 5 s timeout / 20 s start period / 3 retries), Fly HTTP check (same cadence, `GET /api/health`), and Render `healthCheckPath` — all hitting the same endpoint.
-- **Alternative deploy configs are present but secondary**: `Procfile` (Heroku-style, 2 workers) and `render.yaml` (web + 3 crons + Postgres) coexist with the primary Fly setup; `docs/DEPLOYMENT.md` predates parts of the implementation (e.g. it lists email login as deferred, which now exists) — the code and `fly.toml` are authoritative.
+- **Alternative deploy configs are present but secondary**: `Procfile` (Heroku-style, 2 workers) coexists with the primary Fly setup (`render.yaml` was retired 2026-07-10); `docs/DEPLOYMENT.md` predates parts of the implementation (e.g. it lists email login as deferred, which now exists) — the code and `fly.toml` are authoritative.
