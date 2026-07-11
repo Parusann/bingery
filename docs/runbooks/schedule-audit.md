@@ -81,7 +81,7 @@ The cron never corrects. In an attended run:
 
 That means AnimeSchedule (Tier 2) is dark — almost always the missing/expired
 `ANIMESCHEDULE_API_KEY`. Provision a token at animeschedule.net (account
-settings → API), set it on Fly (`fly secrets set ANIMESCHEDULE_API_KEY=...`)
-and on Render (`bingery-dub-animeschedule` cron), then re-run the sync and
+settings → API), set it on Fly (`fly secrets set ANIMESCHEDULE_API_KEY=...`),
+then re-run the sync and
 confirm `dub_doctor` reports the tier `live`. `sync_dub_animeschedule.py`
 exits with code 2 and a `TIER DARK` message when the key is absent.

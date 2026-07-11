@@ -504,6 +504,83 @@ def run_airing_sync(
     }
 
 
+def window_refresh(
+    client,
+    *,
+    days_back: int = 21,
+    days_forward: int = 28,
+    max_ids: int = 60,
+    dry_run: bool = False,
+) -> dict:
+    """Resync the catalog entries the schedule window depends on.
+
+    The standing anti-drift job: finished shows drop out of AniList's
+    airing feed, so an airing-only sync can never flip their status to
+    "Finished Airing" — that gap is how ghost shows built up. This cohort
+    keys off OUR episode rows instead: every anime with a sub episode
+    dated inside [today-days_back, today+days_forward], REGARDLESS of its
+    stored status — a show wrongly marked finished is exactly the case
+    where the serving guards silently hide real episodes, so it must be
+    refreshed too, not skipped. Ordered longest-quiet first (a show whose
+    newest window episode is weeks old is the likeliest to have drifted).
+    Reuses sync_ids, so it is idempotent and rate-limit aware. Returns
+    the sync_ids summary plus cohort accounting; when the cohort exceeds
+    max_ids the cap is reported loudly, never silently.
+
+    max_ids defaults to 60 because the admin endpoint runs this inside a
+    gunicorn worker with --timeout 180 (Dockerfile): ~60 ids is ~100s
+    worst-case at AniList's rate limits. A larger cohort simply drains
+    across consecutive daily runs — longest-quiet shows always go first.
+    """
+    from datetime import timedelta
+
+    from sqlalchemy import func
+    from models import db, Anime, Episode
+
+    now = datetime.now(timezone.utc).replace(tzinfo=None)
+    win_start = now - timedelta(days=days_back)
+    win_end = now + timedelta(days=days_forward)
+
+    rows = (
+        db.session.query(Anime.anilist_id, func.max(Episode.air_date_sub))
+        .join(Episode, Episode.anime_id == Anime.id)
+        .filter(
+            Episode.air_date_sub >= win_start,
+            Episode.air_date_sub < win_end,
+            Anime.anilist_id.isnot(None),
+        )
+        .group_by(Anime.anilist_id)
+        .order_by(func.max(Episode.air_date_sub).asc())
+        .all()
+    )
+    ids = [r[0] for r in rows]
+    capped = len(ids) > max_ids
+    if capped:
+        print(
+            f"window-refresh: COVERAGE CAP max_ids={max_ids} — refreshing "
+            f"{max_ids} of {len(ids)} cohort shows (longest-quiet first); "
+            "the rest roll into the next daily run"
+        )
+        ids = ids[:max_ids]
+
+    summary = sync_ids(client, ids, dry_run=dry_run)
+    summary.update(
+        {
+            "cohort": len(rows),
+            "refreshed": len(ids),
+            "capped": capped,
+            "days_back": days_back,
+            "days_forward": days_forward,
+        }
+    )
+    print(
+        f"window-refresh done: cohort={summary['cohort']} "
+        f"refreshed={summary['refreshed']} failed={summary['failed']} "
+        f"capped={capped} dry_run={dry_run}"
+    )
+    return summary
+
+
 def main(argv: Optional[list] = None) -> int:
     parser = argparse.ArgumentParser(
         description="Full-catalog AniList sync for Bingery."
@@ -586,6 +663,17 @@ def main(argv: Optional[list] = None) -> int:
             "the schedule. Cheap and bounded; intended to run daily."
         ),
     )
+    parser.add_argument(
+        "--window",
+        action="store_true",
+        help=(
+            "Anti-drift refresh: resync every anime with a sub episode "
+            "near today, whatever its stored status (the window cohort). "
+            "Unlike --airing, this catches shows that FINISHED and dropped "
+            "out of the airing feed. Intended to run daily via the admin "
+            "endpoint (mode=window)."
+        ),
+    )
 
     args = parser.parse_args(argv)
 
@@ -623,6 +711,11 @@ def main(argv: Optional[list] = None) -> int:
             client = _AniListClient()
             summary = sync_ids(client, args.ids, dry_run=args.dry_run)
             return 0 if summary["failed"] < summary["requested"] else 1
+        # ── Schedule-window anti-drift branch: --window ─────────────────────
+        if args.window:
+            from utils.anilist import AniListClient as _AniListClient
+            summary = window_refresh(_AniListClient(), dry_run=args.dry_run)
+            return 0 if summary["failed"] < max(summary["requested"], 1) else 1
         # ── Airing-refresh branch: --airing ─────────────────────────────────
         if args.airing:
             from utils.anilist import AniListClient as _AniListClient

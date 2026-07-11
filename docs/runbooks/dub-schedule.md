@@ -24,8 +24,8 @@ NULL/synthetic rows and is itself preserved by the seeder (and feeds learned lag
 ## ⭐ Restore real dub accuracy (do this first)
 
 The daily sync pipeline already exists — GitHub Action
-`.github/workflows/refresh-schedule.yml` (daily 06:00 UTC) plus Render cron
-`bingery-dub-animeschedule`. It has been dark only because the AnimeSchedule key
+`.github/workflows/refresh-schedule.yml` (daily 06:00 UTC), which calls the
+in-process admin endpoints on Fly. It goes dark when the AnimeSchedule key
 is unset/expired. To fix:
 
 1. Create a free AnimeSchedule.net account, then generate an API token at
@@ -33,8 +33,6 @@ is unset/expired. To fix:
 2. Set it on the live server(s):
    - **Fly:** `fly secrets set ANIMESCHEDULE_API_KEY=<token>` (also confirm
      `fly secrets set ADMIN_SYNC_SECRET=<secret>` is set).
-   - **Render:** set `ANIMESCHEDULE_API_KEY` and `ADMIN_SYNC_SECRET` in the
-     dashboard for the web service + the `bingery-dub-animeschedule` cron.
    - **GitHub:** repo Settings → Secrets and variables → Actions →
      `ADMIN_SYNC_SECRET` (same value as the server) so the daily Action can auth.
 3. Verify: with the key in your env, `python sync_dub_animeschedule.py --dry-run`
@@ -89,7 +87,7 @@ automatically, writes `dub-research/<date>.json`, and POSTs them when
     python seed_dub_schedule.py --reset    # wipe synthetic rows, then exit
 
 The seeder's date math uses SQLite's `datetime(...)`, so it runs on the **Fly
-(SQLite)** deployment — manually or via a Fly scheduled machine — not on Render.
+(SQLite)** deployment — the daily admin sync runs it in-process.
 
 ## Health & audit (see docs/runbooks/schedule-audit.md)
 
