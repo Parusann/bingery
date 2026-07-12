@@ -1,5 +1,6 @@
 import { NavLink } from "react-router-dom";
 import { cn } from "@/lib/cn";
+import { useAuth } from "@/stores/auth";
 
 const items = [
   { to: "/discover", label: "Discover" },
@@ -15,9 +16,14 @@ const items = [
 ];
 
 export function NavBar() {
+  // Owner-only destinations (the backend enforces authorization regardless).
+  const isOwner = useAuth((s) => !!s.user?.is_owner);
+  const navItems = isOwner
+    ? [...items, { to: "/admin/waitlist", label: "Waitlist" }]
+    : items;
   return (
     <nav className="flex items-center gap-1 text-sm overflow-x-auto scrollbar-none">
-      {items.map((it) => (
+      {navItems.map((it) => (
         <NavLink
           key={it.to}
           to={it.to}

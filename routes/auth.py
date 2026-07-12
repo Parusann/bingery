@@ -10,7 +10,7 @@ from flask_jwt_extended import (
     jwt_required,
     get_jwt_identity,
 )
-from models import db, PendingSignup, User
+from models import db, PendingSignup, User, Waitlist
 from utils.email_provider import CODE_TTL_MINUTES, EmailSendError, get_email_provider
 
 auth_bp = Blueprint("auth", __name__, url_prefix="/api/auth")
@@ -41,20 +41,6 @@ def _generate_code() -> str:
 def register():
     data = request.get_json(silent=True) or {}
 
-    # Invite-only gate. Defaults to 782414 so production is gated without a
-    # platform secret; set the SIGNUP_INVITE_CODE env var to rotate the code,
-    # or to an empty string to open signup. Read live so tests can toggle it.
-    required_code = os.environ.get("SIGNUP_INVITE_CODE", "782414").strip()
-    if required_code:
-        provided = data.get("invite_code")
-        if not isinstance(provided, str) or provided.strip() != required_code:
-            return jsonify(
-                {
-                    "error": "Sign-ups are invite-only right now. "
-                    "Join the waitlist to request access."
-                }
-            ), 403
-
     # ── Validate (types first: non-string JSON values must 400, not 500;
     #    length caps match the column sizes so Postgres can't 500) ────────
     errors = []
@@ -76,6 +62,37 @@ def register():
 
     username = data["username"].strip()
     email = data["email"].strip().lower()
+
+    # ── Per-person invite gate ────────────────────────────────────────────
+    # Registration requires the one-time code minted when the owner approved
+    # this email's waitlist entry (routes/waitlist.py). The code is bound to
+    # the entry's email and consumed at verify. SIGNUP_OPEN=1 bypasses the
+    # gate for dev/tests only — production refuses to boot with it set
+    # (config.py). Read live so tests can toggle it per-test.
+    if os.environ.get("SIGNUP_OPEN", "").strip().lower() not in ("1", "true", "yes"):
+        provided_raw = data.get("invite_code")
+        provided = provided_raw.strip() if isinstance(provided_raw, str) else ""
+        entry = db.session.query(Waitlist).filter_by(email=email).first()
+        if entry is None or not entry.invite_code:
+            return jsonify(
+                {
+                    "error": "Sign-ups are invite-only right now. Join the "
+                    "waitlist and you'll receive a personal invite code by "
+                    "email once you're approved."
+                }
+            ), 403
+        if not provided or not secrets.compare_digest(entry.invite_code, provided):
+            return jsonify(
+                {
+                    "error": "That invite code doesn't match this email "
+                    "address. Use the code from your invite email, with the "
+                    "email address it was sent to."
+                }
+            ), 403
+        if entry.code_used_at is not None:
+            return jsonify(
+                {"error": "This invite code has already been used."}
+            ), 403
 
     if db.session.query(User).filter_by(username=username).first():
         return jsonify({"error": "Username already taken."}), 409
@@ -210,6 +227,13 @@ def verify():
     )
     db.session.add(user)
     db.session.delete(pending)
+    # Consume the invite code in the same commit that creates the account:
+    # from this moment the code can never mint another account, and a failed
+    # commit leaves it unconsumed (the person can simply retry).
+    wl_entry = db.session.query(Waitlist).filter_by(email=email).first()
+    if wl_entry is not None and wl_entry.status == "approved":
+        wl_entry.status = "registered"
+        wl_entry.code_used_at = _utcnow()
     try:
         db.session.commit()
     except IntegrityError:

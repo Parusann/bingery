@@ -1,4 +1,5 @@
 from datetime import datetime, timezone
+from flask import current_app
 from flask_sqlalchemy import SQLAlchemy
 
 db = SQLAlchemy()
@@ -78,6 +79,8 @@ class User(db.Model):
             "bio": self.bio,
             "display_name": self.display_name,
             "created_at": self.created_at.isoformat(),
+            # Solo-owner app: "admin" is exactly the OWNER_EMAIL account.
+            "is_owner": self.email == current_app.config.get("OWNER_EMAIL"),
         }
         if include_stats:
             data["total_ratings"] = self.ratings.count()
@@ -117,17 +120,34 @@ class PendingSignup(db.Model):
 
 
 class Waitlist(db.Model):
+    """A waitlist signup and its approval state.
+
+    Lifecycle: pending → approved (owner minted + emailed a one-time
+    invite code) → registered (code consumed when the account was
+    created). invite_code is a ~128-bit urlsafe token bound to this row's
+    email; stored plaintext so the owner can re-copy it from the admin
+    page if the invite email is lost.
+    """
+
     id = db.Column(db.Integer, primary_key=True)
     email = db.Column(db.String(120), unique=True, nullable=False, index=True)
     created_at = db.Column(
         db.DateTime, nullable=False, default=lambda: datetime.now(timezone.utc)
     )
+    status = db.Column(db.String(20), nullable=False, default="pending")
+    invite_code = db.Column(db.String(64), unique=True, nullable=True, index=True)
+    approved_at = db.Column(db.DateTime, nullable=True)
+    code_used_at = db.Column(db.DateTime, nullable=True)
 
     def to_dict(self):
         return {
             "id": self.id,
             "email": self.email,
             "created_at": self.created_at.isoformat() if self.created_at else None,
+            "status": self.status,
+            "invite_code": self.invite_code,
+            "approved_at": self.approved_at.isoformat() if self.approved_at else None,
+            "code_used_at": self.code_used_at.isoformat() if self.code_used_at else None,
         }
 
 

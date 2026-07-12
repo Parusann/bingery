@@ -1,7 +1,7 @@
 import { useEffect, useRef } from "react";
 import { AnimatePresence, motion } from "framer-motion";
 import { useNavigate } from "react-router-dom";
-import { Leaf, Library, BarChart3, Activity, Scale, MessageCircle } from "lucide-react";
+import { Leaf, Library, BarChart3, Activity, Scale, MessageCircle, UserCheck } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import { Button } from "@/design/Button";
 import { transitions } from "@/design/motion";
@@ -58,6 +58,11 @@ export function MoreSheet({ open, onClose }: Props) {
     onClose();
   };
 
+  // Owner-only destinations (the backend enforces authorization regardless).
+  const destinations = user?.is_owner
+    ? [...DESTINATIONS, { to: "/admin/waitlist", label: "Waitlist", Icon: UserCheck }]
+    : DESTINATIONS;
+
   return (
     <AnimatePresence>
       {open ? (
@@ -96,7 +101,7 @@ export function MoreSheet({ open, onClose }: Props) {
 
             {/* destinations */}
             <div className="grid grid-cols-3 gap-2 p-4 pt-0">
-              {DESTINATIONS.map(({ to, label, Icon }) => (
+              {destinations.map(({ to, label, Icon }) => (
                 <button
                   key={to}
                   type="button"

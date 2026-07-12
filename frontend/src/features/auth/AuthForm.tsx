@@ -10,14 +10,28 @@ type Step = "form" | "verify";
 
 const RESEND_SECONDS = 60;
 
-export function AuthForm({ onSuccess }: { onSuccess?: () => void }) {
-  const [mode, setMode] = useState<Mode>("login");
+interface AuthFormProps {
+  onSuccess?: () => void;
+  /** Prefill from an invite email link (/auth?invite=<code>&email=<address>). */
+  initialEmail?: string;
+  initialInviteCode?: string;
+}
+
+export function AuthForm({
+  onSuccess,
+  initialEmail,
+  initialInviteCode,
+}: AuthFormProps) {
+  // An invite link lands straight on the sign-up form with code + email set.
+  const [mode, setMode] = useState<Mode>(
+    initialInviteCode ? "register" : "login"
+  );
   const [step, setStep] = useState<Step>("form");
-  const [email, setEmail] = useState("");
+  const [email, setEmail] = useState(initialEmail ?? "");
   const [password, setPassword] = useState("");
   const [username, setUsername] = useState("");
   const [displayName, setDisplayName] = useState("");
-  const [inviteCode, setInviteCode] = useState("");
+  const [inviteCode, setInviteCode] = useState(initialInviteCode ?? "");
   const [code, setCode] = useState("");
   const [resendIn, setResendIn] = useState(RESEND_SECONDS);
   const [resending, setResending] = useState(false);
