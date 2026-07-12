@@ -162,6 +162,15 @@ export const api = {
       body: JSON.stringify(body),
     }),
 
+  // Owner-only waitlist moderation (backend enforces 401/403).
+  waitlistAdmin: () =>
+    request<import("@/types/api").WaitlistAdminListResp>("/waitlist/admin"),
+  waitlistAdminApprove: (id: number) =>
+    request<import("@/types/api").WaitlistAdminEntryResp>(
+      `/waitlist/admin/${id}/approve`,
+      { method: "POST" }
+    ),
+
   getAnime: (q = "") => request<AnimeListResponse>("/anime" + q),
   getAnimeDetail: (id: number) => request<AnimeDetailResponse>(`/anime/${id}`),
   getSimilar: (id: number) => request<SimilarResponse>(`/anime/${id}/similar`),

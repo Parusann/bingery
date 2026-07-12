@@ -1,11 +1,21 @@
-"""Public waitlist endpoint — records an email and sends a confirmation."""
+"""Waitlist endpoints.
+
+Public: POST /api/waitlist records an email and sends a confirmation.
+Owner-only (JWT + OWNER_EMAIL match): GET  /api/waitlist/admin lists every
+entry; POST /api/waitlist/admin/<id>/approve mints a one-time invite code,
+emails it to the person, and marks the entry approved.
+"""
 import logging
 import re
+import secrets
+from datetime import datetime, timezone
+from urllib.parse import urlencode
 
-from flask import Blueprint, request, jsonify
+from flask import Blueprint, current_app, request, jsonify
+from flask_jwt_extended import get_jwt_identity, jwt_required
 
-from models import db, Waitlist
-from utils.email_provider import get_email_provider
+from models import db, User, Waitlist
+from utils.email_provider import EmailSendError, get_email_provider
 
 logger = logging.getLogger(__name__)
 
@@ -53,3 +63,69 @@ def join_waitlist():
             logger.exception("waitlist owner alert failed for %s", email)
 
     return jsonify({"status": "added"}), 200
+
+
+# ─── Owner-only admin endpoints ──────────────────────────────────────────────
+
+def _is_owner() -> bool:
+    """True iff the JWT belongs to the solo-owner account (OWNER_EMAIL)."""
+    user = db.session.get(User, int(get_jwt_identity()))
+    return user is not None and user.email == current_app.config.get("OWNER_EMAIL")
+
+
+def _signup_base_url() -> str:
+    """Public origin for the invite email's signup link.
+
+    Production sets CORS_ORIGINS to the real site origin (required by the
+    config boot guard), so reuse it; dev falls back to this request's host.
+    """
+    for origin in current_app.config.get("CORS_ORIGINS") or []:
+        if origin and origin != "*":
+            return origin.rstrip("/")
+    return request.host_url.rstrip("/")
+
+
+@waitlist_bp.route("/admin", methods=["GET"])
+@jwt_required()
+def admin_list():
+    if not _is_owner():
+        return jsonify({"error": "Not authorized."}), 403
+    entries = db.session.query(Waitlist).order_by(Waitlist.created_at.desc()).all()
+    return jsonify({"entries": [e.to_dict() for e in entries]}), 200
+
+
+@waitlist_bp.route("/admin/<int:entry_id>/approve", methods=["POST"])
+@jwt_required()
+def admin_approve(entry_id: int):
+    if not _is_owner():
+        return jsonify({"error": "Not authorized."}), 403
+    entry = db.session.get(Waitlist, entry_id)
+    if entry is None:
+        return jsonify({"error": "No such waitlist entry."}), 404
+    if entry.status != "pending":
+        return jsonify({"error": f"This entry is already {entry.status}."}), 409
+
+    # ~128-bit urlsafe token: unguessable, and bound to this entry's email
+    # by the register gate (routes/auth.py).
+    code = secrets.token_urlsafe(16)
+    entry.invite_code = code
+    entry.status = "approved"
+    entry.approved_at = datetime.now(timezone.utc)
+
+    query = urlencode({"invite": code, "email": entry.email})
+    signup_url = f"{_signup_base_url()}/auth?{query}"
+    try:
+        get_email_provider().send_waitlist_invite(entry.email, code, signup_url)
+    except EmailSendError:
+        # Unlike the best-effort join emails, the invite IS the deliverable:
+        # roll back so a failed send leaves the entry pending and retryable
+        # (a fresh code is minted on the retry).
+        db.session.rollback()
+        logger.exception("waitlist invite email failed for %s", entry.email)
+        return (
+            jsonify({"error": "Couldn't send the invite email. Nothing was changed — try again."}),
+            503,
+        )
+
+    db.session.commit()
+    return jsonify({"entry": entry.to_dict()}), 200

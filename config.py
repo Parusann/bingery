@@ -66,9 +66,9 @@ class Config:
     BREVO_API_KEY = os.environ.get("BREVO_API_KEY", "")
     EMAIL_FROM = os.environ.get("EMAIL_FROM", "")
 
-    # Invite-only signup gate. When set, /api/auth/register requires a matching
-    # `invite_code`. Empty = open signup (dev/test default).
-    SIGNUP_INVITE_CODE = os.environ.get("SIGNUP_INVITE_CODE", "")
+    # Solo-owner admin identity: the account with this email is the one and
+    # only admin (waitlist approvals). Not a secret — just an address.
+    OWNER_EMAIL = os.environ.get("OWNER_EMAIL", "parusannath@gmail.com").strip().lower()
 
     # Frontend origins allowed to call /api/*. Comma-separated. Default '*'
     # is fine for local dev; production MUST set this to the Pages origin.
@@ -99,8 +99,13 @@ class Config:
             problems.append(
                 "BREVO_API_KEY and EMAIL_FROM must be set when EMAIL_PROVIDER=brevo"
             )
-        # (SIGNUP_INVITE_CODE is NOT a required prod secret — routes/auth.py
-        #  defaults the invite code to 782414; set the env var to rotate it.)
+        # Signup is gated on per-person waitlist invite codes. SIGNUP_OPEN=1
+        # is a dev/test-only bypass and must never reach production.
+        if os.environ.get("SIGNUP_OPEN"):
+            problems.append(
+                "SIGNUP_OPEN is set — it disables the invite gate and is "
+                "dev/test only; unset it in production"
+            )
         if problems:
             sys.stderr.write(
                 "FATAL: production safety checks failed:\n"

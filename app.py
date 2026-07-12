@@ -23,6 +23,38 @@ from config import Config
 from models import db
 
 
+def _ensure_waitlist_columns() -> None:
+    """Add the approval-loop columns to a pre-existing waitlist table.
+
+    db.create_all() creates missing tables but never adds columns to
+    existing ones, and the production SQLite file predates the approval
+    fields. Idempotent: checks what's there before altering.
+    """
+    from sqlalchemy import inspect, text
+
+    existing = {c["name"] for c in inspect(db.engine).get_columns("waitlist")}
+    ddl = {
+        "status": (
+            "ALTER TABLE waitlist ADD COLUMN status VARCHAR(20) "
+            "NOT NULL DEFAULT 'pending'"
+        ),
+        "invite_code": "ALTER TABLE waitlist ADD COLUMN invite_code VARCHAR(64)",
+        # TIMESTAMP (not DATETIME) so the same DDL is valid on Postgres too.
+        "approved_at": "ALTER TABLE waitlist ADD COLUMN approved_at TIMESTAMP",
+        "code_used_at": "ALTER TABLE waitlist ADD COLUMN code_used_at TIMESTAMP",
+    }
+    with db.engine.begin() as conn:
+        for column, stmt in ddl.items():
+            if column not in existing:
+                conn.execute(text(stmt))
+        conn.execute(
+            text(
+                "CREATE UNIQUE INDEX IF NOT EXISTS ix_waitlist_invite_code "
+                "ON waitlist (invite_code)"
+            )
+        )
+
+
 # Serve the new Vite-built frontend from frontend/dist/. If that directory is
 # missing (dev before build or CI stage 1) fall back to the legacy static/
 # bundle so the server still returns usable HTML.
@@ -122,9 +154,41 @@ def create_app(config_class=Config):
     def server_error(e):
         return jsonify({"error": "Internal server error."}), 500
 
+    # ── CLI: one-off owner-account seed ───────────────────────────────────
+    @app.cli.command("seed-owner")
+    def seed_owner():
+        """Create the solo-owner account (OWNER_EMAIL) so the waitlist admin
+        page has a login. The password comes from OWNER_INITIAL_PASSWORD —
+        provided out of band, never committed; rotate it after first login.
+        Idempotent: an existing owner account is never modified."""
+        from models import User
+        from routes.auth import bcrypt as owner_bcrypt
+
+        email = app.config["OWNER_EMAIL"]
+        password = os.environ.get("OWNER_INITIAL_PASSWORD", "")
+        if len(password) < 6:
+            raise SystemExit(
+                "OWNER_INITIAL_PASSWORD must be set (min 6 chars, the same "
+                "rule register applies); refusing to seed."
+            )
+        existing = db.session.query(User).filter_by(email=email).first()
+        if existing is not None:
+            print(f"Owner account {email} already exists (id={existing.id}); nothing to do.")
+            return
+        username = os.environ.get("OWNER_USERNAME", "").strip() or email.split("@", 1)[0]
+        user = User(
+            username=username,
+            email=email,
+            password_hash=owner_bcrypt.generate_password_hash(password).decode("utf-8"),
+        )
+        db.session.add(user)
+        db.session.commit()
+        print(f"Seeded owner account {email} (username={username}, id={user.id}).")
+
     # Create tables on first run
     with app.app_context():
         db.create_all()
+        _ensure_waitlist_columns()
 
     return app
 

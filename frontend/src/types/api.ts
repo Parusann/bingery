@@ -161,3 +161,11 @@ export interface UpdateDubReportRequest {
 }
 
 export interface ScheduleWeekResp extends ScheduleWeekResponse {}
+
+import type { WaitlistEntry } from "./models";
+export interface WaitlistAdminListResp {
+  entries: WaitlistEntry[];
+}
+export interface WaitlistAdminEntryResp {
+  entry: WaitlistEntry;
+}

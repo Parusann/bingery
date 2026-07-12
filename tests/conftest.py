@@ -12,9 +12,10 @@ os.environ.setdefault("JWT_SECRET_KEY", "test-jwt-secret")
 # create_app() time) — so without this, db.drop_all() in the teardown
 # could wipe a real database.
 os.environ["DATABASE_URL"] = "sqlite:///:memory:"
-# The invite code defaults to 782414 in app code; tests run with signup OPEN
-# unless a test sets SIGNUP_INVITE_CODE itself. Empty string disables the gate.
-os.environ["SIGNUP_INVITE_CODE"] = ""
+# Signup is gated on per-person waitlist invite codes; SIGNUP_OPEN=1 is the
+# dev/test-only bypass so suites that aren't about the gate can register
+# freely. Gate tests (test_auth_gating.py) delenv it per-test.
+os.environ["SIGNUP_OPEN"] = "1"
 
 
 @pytest.fixture

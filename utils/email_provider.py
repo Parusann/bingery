@@ -40,6 +40,8 @@ class EmailProvider(Protocol):
 
     def send_waitlist_owner_alert(self, signup_email: str) -> None: ...
 
+    def send_waitlist_invite(self, to_email: str, code: str, signup_url: str) -> None: ...
+
 
 class ConsoleEmailProvider:
     """Dev/test provider: the 'email' is a log line."""
@@ -52,6 +54,11 @@ class ConsoleEmailProvider:
 
     def send_waitlist_owner_alert(self, signup_email: str) -> None:
         logger.info("Waitlist owner alert: %s joined the waitlist", signup_email)
+
+    def send_waitlist_invite(self, to_email: str, code: str, signup_url: str) -> None:
+        logger.info(
+            "Waitlist invite for %s: code=%s url=%s", to_email, code, signup_url
+        )
 
 
 class BrevoEmailProvider:
@@ -126,11 +133,16 @@ class BrevoEmailProvider:
 
     def send_waitlist_owner_alert(self, signup_email: str) -> None:
         # Read at call time (not __init__) so the alert can be turned on/off
-        # without touching code; unset simply means "don't alert".
-        owner = os.environ.get("WAITLIST_ALERT_EMAIL", "").strip()
+        # without touching code. Falls back to the solo-owner identity
+        # (OWNER_EMAIL) so a missing alert var can't silently drop alerts;
+        # both unset means "don't alert".
+        owner = (
+            os.environ.get("WAITLIST_ALERT_EMAIL", "").strip()
+            or os.environ.get("OWNER_EMAIL", "").strip()
+        )
         if not owner:
             logger.info(
-                "WAITLIST_ALERT_EMAIL not set; skipping waitlist owner alert"
+                "WAITLIST_ALERT_EMAIL/OWNER_EMAIL not set; skipping waitlist owner alert"
             )
             return
         # The signup email is attacker-controlled (the route regex allows
@@ -146,6 +158,38 @@ class BrevoEmailProvider:
                 "<h2 style=\"margin:0 0 12px\">New waitlist signup</h2>"
                 f"<p style=\"color:#555\"><strong>{safe_email}</strong> "
                 "just joined the Bingery waitlist.</p></div>"
+            ),
+        )
+
+    def send_waitlist_invite(self, to_email: str, code: str, signup_url: str) -> None:
+        # code is server-generated (urlsafe token) and signup_url is built
+        # from our own origin, but escape for the HTML context anyway —
+        # urlencoded query strings contain '&'.
+        safe_url = html.escape(signup_url, quote=True)
+        safe_code = html.escape(code)
+        self._send(
+            to_email,
+            "You're in — create your Bingery account",
+            (
+                "You've been approved to join Bingery!\n\n"
+                f"Your personal invite code: {code}\n\n"
+                f"Create your account here: {signup_url}\n\n"
+                f"The code works once, and only with this email address "
+                f"({to_email}). If you didn't join the Bingery waitlist, you "
+                "can ignore this email."
+            ),
+            (
+                "<div style=\"font-family:Arial,sans-serif;max-width:420px;"
+                "margin:0 auto;padding:24px\">"
+                "<h2 style=\"margin:0 0 12px\">You're in!</h2>"
+                "<p style=\"color:#555\">You've been approved to join "
+                "Bingery. Your personal invite code:</p>"
+                f"<p style=\"font-size:22px;font-weight:bold;font-family:monospace;"
+                f"letter-spacing:2px;margin:16px 0\">{safe_code}</p>"
+                f"<p><a href=\"{safe_url}\">Create your account</a></p>"
+                f"<p style=\"color:#555\">The code works once, and only with "
+                f"this email address ({html.escape(to_email)}). If you didn't "
+                "join the Bingery waitlist, you can ignore this email.</p></div>"
             ),
         )
 
