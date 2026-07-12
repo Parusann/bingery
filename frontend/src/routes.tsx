@@ -52,6 +52,11 @@ const DubReportsQueue = lazy(() =>
     default: m.DubReportsQueue,
   }))
 );
+const WaitlistAdmin = lazy(() =>
+  import("@/features/admin/WaitlistAdmin").then((m) => ({
+    default: m.WaitlistAdmin,
+  }))
+);
 
 const withSuspense = (node: React.ReactNode) => (
   <Suspense fallback={<RouteSkeleton />}>{node}</Suspense>
@@ -77,6 +82,7 @@ export const router = createBrowserRouter([
       { path: "compare", element: withSuspense(<ComparePage />) },
       { path: "schedule", element: withSuspense(<SchedulePage />) },
       { path: "admin/dub-reports", element: withSuspense(<DubReportsQueue />) },
+      { path: "admin/waitlist", element: withSuspense(<WaitlistAdmin />) },
       { path: "*", element: <Navigate to="/" replace /> },
     ],
   },

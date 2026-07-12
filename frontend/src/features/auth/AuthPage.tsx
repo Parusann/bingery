@@ -1,9 +1,13 @@
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import { GlassCard } from "@/design/GlassCard";
 import { AuthForm } from "./AuthForm";
 
 export function AuthPage() {
   const navigate = useNavigate();
+  // Invite emails link to /auth?invite=<code>&email=<address>.
+  const [params] = useSearchParams();
+  const inviteCode = params.get("invite") ?? undefined;
+  const inviteEmail = params.get("email") ?? undefined;
   return (
     <div className="max-w-md mx-auto mt-8">
       <GlassCard tone="warm" className="p-8" elevated>
@@ -14,7 +18,11 @@ export function AuthPage() {
         <p className="text-text-muted mb-6">
           Sign in to rate, collect, and chat with your taste guide.
         </p>
-        <AuthForm onSuccess={() => navigate("/discover")} />
+        <AuthForm
+          onSuccess={() => navigate("/discover")}
+          initialEmail={inviteEmail}
+          initialInviteCode={inviteCode}
+        />
       </GlassCard>
     </div>
   );

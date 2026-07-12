@@ -6,6 +6,7 @@ export interface User {
   avatar_url: string | null;
   bio: string | null;
   created_at: string;
+  is_owner?: boolean;
 }
 
 export interface Genre {
@@ -220,6 +221,18 @@ export interface DubReport {
   created_at: string;
   reviewed_at: string | null;
   reviewed_by: number | null;
+}
+
+export type WaitlistStatus = "pending" | "approved" | "registered";
+
+export interface WaitlistEntry {
+  id: number;
+  email: string;
+  created_at: string;
+  status: WaitlistStatus;
+  invite_code: string | null;
+  approved_at: string | null;
+  code_used_at: string | null;
 }
 
 export interface ActivityEvent {
