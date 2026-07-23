@@ -13,7 +13,7 @@
 ![Flask](https://img.shields.io/badge/Flask-3.0-000000?logo=flask&logoColor=white)
 ![Python](https://img.shields.io/badge/Python-3.13-3776AB?logo=python&logoColor=white)
 ![Fly.io](https://img.shields.io/badge/deploy-Fly.io-8B5CF6?logo=flydotio&logoColor=white)
-![Tests](https://img.shields.io/badge/tests-301%20passing-3FB950)
+![Tests](https://img.shields.io/badge/tests-596%20passing-3FB950)
 
 </div>
 
@@ -141,9 +141,9 @@ bingery/
 ├── app.py                      # Flask app factory + blueprint registry
 ├── config.py                   # Env-driven config + production safety guards
 ├── models.py                   # SQLAlchemy models (Anime, User, Watchlist, …)
-├── routes/                     # 16 API blueprints (auth, anime, schedule, chatbot, …)
+├── routes/                     # 17 API blueprints (auth, anime, schedule, chatbot, …)
 ├── utils/                      # AniList client, dub sources, AI providers, NSFW, tokens
-├── tests/                      # pytest suite (301 tests)
+├── tests/                      # pytest suite (568 tests)
 │
 ├── sync_anilist.py             # Resumable AniList catalog sync (CLI)
 ├── sync_dub_crunchyroll.py     # Dub schedule from Crunchyroll RSS (CLI)
@@ -229,13 +229,13 @@ All backend config is environment‑driven (`config.py` + `.env`). Key variables
 ## 🧪 Testing
 
 ```bash
-# Backend — 391 tests
+# Backend — 568 tests
 python -m pytest -q
 
 # Frontend — type-check, unit/component, e2e
 cd frontend
 npm run lint          # tsc -b (type-check)
-npm run test:run      # Vitest unit/component tests
+npm run test:run      # Vitest unit/component tests (28)
 npm run e2e           # Playwright end-to-end
 ```
 
