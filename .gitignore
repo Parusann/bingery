@@ -41,6 +41,16 @@ claude.md
 *.bak
 *.log
 demo-captures/
+# Dated DB snapshots (bingery.db.backup-YYYY-MM-DD). `*.db` does NOT match
+# these — the suffix comes after the extension — so an untracked 21MB SQLite
+# file holding real user rows sat one `git add -A` away from this PUBLIC repo.
+*.db.backup*
+*.db-backup*
+*.sqlite
+*.sqlite3
+
+# Knowledge-graph output (regenerated; large, and mirrors source contents)
+graphify-out/
 
 # Design handoff bundles — transient, not versioned with the repo
 Bingery/

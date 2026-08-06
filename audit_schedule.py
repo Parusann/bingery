@@ -259,6 +259,7 @@ def main(argv=None) -> int:
         max_mismatch=args.max_mismatch,
         max_synthetic_fraction=args.max_synthetic_frac,
         max_leaks=args.max_leaks,
+        tiers=report.tiers,
     )
     if breaches:
         print("\nTHRESHOLD BREACHES:")

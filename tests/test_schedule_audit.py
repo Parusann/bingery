@@ -324,6 +324,105 @@ def test_threshold_defaults_documented_values():
     assert evaluate_thresholds(_totals(leaks=0)) == []
 
 
+# ─── two-voice discipline on the synthetic fraction ──────────────────────────
+#
+# The fraction is a proxy for "the real dub tiers went dark"; `tiers` measures
+# that directly. A bulk catalog pull spikes the fraction for one cycle before
+# AnimeSchedule/Crunchyroll upgrade the seeded rows — that is ingest lag, not
+# an outage, and must not alarm.
+
+
+def _tiers(animeschedule="live", crunchyroll_rss="live"):
+    return [
+        {"name": "anilist", "state": "live"},
+        {"name": "myanimelist", "state": "live"},
+        {"name": "animeschedule", "state": animeschedule},
+        {"name": "crunchyroll_rss", "state": crunchyroll_rss},
+        {"name": "web_research", "state": "skipped"},
+    ]
+
+
+def test_elevated_fraction_with_live_dub_tiers_does_not_breach():
+    # The Sunday ingest-lag spike: every real dub tier answered.
+    assert evaluate_thresholds(_totals(synth_frac=0.6744), tiers=_tiers()) == []
+
+
+def test_elevated_fraction_breaches_when_a_dub_tier_is_dark():
+    breaches = evaluate_thresholds(
+        _totals(synth_frac=0.6744), tiers=_tiers(animeschedule="dark")
+    )
+    assert len(breaches) == 1
+    assert "animeschedule" in breaches[0]
+    assert "crunchyroll_rss" not in breaches[0]
+
+
+def test_elevated_fraction_breaches_when_a_dub_tier_errored():
+    breaches = evaluate_thresholds(
+        _totals(synth_frac=0.7), tiers=_tiers(crunchyroll_rss="error")
+    )
+    assert len(breaches) == 1
+    assert "crunchyroll_rss" in breaches[0]
+
+
+def test_hard_ceiling_breaches_even_with_live_dub_tiers():
+    # A runaway seeder must still alarm while the tiers claim health.
+    breaches = evaluate_thresholds(_totals(synth_frac=0.9), tiers=_tiers())
+    assert len(breaches) == 1
+    assert "hard ceiling" in breaches[0]
+
+
+def test_missing_tier_data_fails_safe_to_the_old_behaviour():
+    # No corroborating voice available → the fraction alone still breaches.
+    assert len(evaluate_thresholds(_totals(synth_frac=0.61))) == 1
+    assert len(evaluate_thresholds(_totals(synth_frac=0.61), tiers=[])) == 1
+    # A tier list that omits the dub tiers entirely is not corroboration.
+    unrelated = [{"name": "anilist", "state": "live"}]
+    assert len(evaluate_thresholds(_totals(synth_frac=0.61), tiers=unrelated)) == 1
+
+
+def test_absent_dub_tier_counts_as_not_live():
+    # animeschedule missing from the report is not evidence that it answered.
+    partial = [
+        {"name": "crunchyroll_rss", "state": "live"},
+        {"name": "anilist", "state": "live"},
+    ]
+    breaches = evaluate_thresholds(_totals(synth_frac=0.7), tiers=partial)
+    assert len(breaches) == 1
+    assert "animeschedule" in breaches[0]
+
+
+def test_corroboration_does_not_mask_the_other_axes():
+    # Live dub tiers suppress only the synthetic axis; mismatch/leaks stand.
+    breaches = evaluate_thresholds(
+        _totals(mismatch=6, synth_frac=0.6744, leaks=1), tiers=_tiers()
+    )
+    assert len(breaches) == 2
+    assert not any("synthetic" in b for b in breaches)
+
+
+def test_replays_the_2026_08_02_ci_failure_as_healthy():
+    """Regression: the real totals+tiers from run 30738945453.
+
+    That run failed CI with "real dub tiers look dark" while all four real
+    tiers reported live. The same run's Monday successor measured 6.8%.
+    """
+    totals = {
+        "mismatch_total": 0,
+        "leak_total": 0,
+        "synthetic_dub_fraction": 0.6744,
+    }
+    assert evaluate_thresholds(totals, tiers=_tiers()) == []
+
+
+def test_tier_objects_are_accepted_not_just_dicts():
+    # The CLI passes TierHealth dataclasses straight through.
+    tiers = [TierHealth(name="animeschedule", state="dark"),
+             TierHealth(name="crunchyroll_rss", state="live")]
+    breaches = evaluate_thresholds(_totals(synth_frac=0.7), tiers=tiers)
+    assert len(breaches) == 1
+    assert "animeschedule" in breaches[0]
+
+
 # ─── sunday anchor ───────────────────────────────────────────────────────────
 
 

@@ -21,6 +21,14 @@ name: Daily schedule refresh
 # (documented in docs/runbooks/schedule-audit.md): >5 MISMATCH entries,
 # >60% synthetic dub fraction, or any evidence-backed leak fails the job
 # and opens/updates a `schedule-audit` issue.
+#
+# The synthetic-fraction axis carries two-voice discipline: the fraction is
+# only a proxy for "the real dub tiers went dark", so it alarms only when
+# the tier health in the same report agrees (or above a hard 85% ceiling).
+# The Sunday seasonal pull below ingests a batch the seeder projects onto
+# before AnimeSchedule/Crunchyroll can upgrade it, which spiked the fraction
+# to 56-67% every Sunday against a 60% line — a coin-flip alarm that fired
+# on 2026-07-19, -07-26 and -08-02 while all four real tiers reported live.
 
 on:
   schedule:
@@ -182,9 +190,28 @@ jobs:
           body=$(printf 'Daily schedule audit crossed alert thresholds.\n\nBreaches:\n%s\n\nTotals: `%s`\n\nRun: %s\n\nThresholds and remediation: docs/runbooks/schedule-audit.md. Corrections are attended-only — do not automate a fix from this issue.\n' \
             "$(echo "$breaches" | sed 's/^/- /')" "$totals" \
             "${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}")
+          # The label IS the dedup key, so it has to exist before we rely on
+          # it. It never did: `gh issue create --label schedule-audit` failed,
+          # the old `||` fallback quietly created an UNLABELED issue, and the
+          # next breach's label lookup found nothing — so every breach opened
+          # a fresh duplicate (#17, #18, #19) instead of commenting on one.
+          gh label create schedule-audit \
+            --repo "${{ github.repository }}" \
+            --color d73a4a \
+            --description "Daily schedule audit crossed an alert threshold" \
+            >/dev/null 2>&1 || true
           existing=$(gh issue list --repo "${{ github.repository }}" \
             --label schedule-audit --state open --json number --jq '.[0].number')
+          # Fall back to a title match so an unlabeled issue left by the old
+          # bug is adopted and relabeled rather than duplicated again.
+          if [ -z "$existing" ]; then
+            existing=$(gh issue list --repo "${{ github.repository }}" \
+              --state open --search 'in:title "Schedule audit: threshold breach"' \
+              --json number --jq '.[0].number')
+          fi
           if [ -n "$existing" ]; then
+            gh issue edit "$existing" --repo "${{ github.repository }}" \
+              --add-label schedule-audit >/dev/null 2>&1 || true
             gh issue comment "$existing" --repo "${{ github.repository }}" --body "$body"
           else
             gh issue create --repo "${{ github.repository }}" \

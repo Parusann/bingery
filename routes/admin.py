@@ -191,7 +191,23 @@ def audit_schedule_endpoint():
         sources=[] if offline else None,
     )
     payload = report.to_dict()
-    payload["threshold_breaches"] = evaluate_thresholds(report.totals())
+    totals = report.totals()
+    payload["threshold_breaches"] = evaluate_thresholds(
+        totals, tiers=payload.get("tiers")
+    )
+    # An elevated-but-uncorroborated synthetic fraction is suppressed by the
+    # two-voice rule above. Record it so a quiet run is still legible — a
+    # suppressed alarm nobody can see is worse than a noisy one.
+    frac = totals.get("synthetic_dub_fraction", 0.0)
+    if frac > 0.6 and not any(
+        "synthetic" in b for b in payload["threshold_breaches"]
+    ):
+        payload.setdefault("notes", []).append(
+            f"synthetic dub fraction {frac:.0%} is above the {0.6:.0%} alert "
+            "line but every real dub tier reports live — treated as ingest "
+            "lag (a bulk catalog pull the seeder projected onto before "
+            "AnimeSchedule/Crunchyroll upgraded it), not a tier outage."
+        )
 
     # Best-effort server-side copy for later inspection; the response body
     # is the artifact the CI workflow uploads.
