@@ -578,12 +578,41 @@ class AuditReport:
 # ─── Threshold gate (used by the CLI and CI) ────────────────────────────────
 
 
+# Tiers that actually deliver dub dates. AniList/MAL are sub-track and
+# status voices; web_research is attended-only. Only these two going dark
+# can make the synthetic seeder the last dub voice standing.
+_REAL_DUB_TIERS = ("animeschedule", "crunchyroll_rss")
+
+
+def _dark_dub_tiers(tiers) -> list[str] | None:
+    """Names of real dub tiers that are NOT live, or None if unknowable.
+
+    Returns None when no tier data was supplied — the caller cannot
+    corroborate and must fail safe (treat the fraction alone as a breach).
+    A tier missing from the report counts as not-live: absence of evidence
+    that a source answered is not evidence that it did.
+    """
+    if not tiers:
+        return None
+    states = {}
+    for t in tiers:
+        name = t.get("name") if isinstance(t, dict) else getattr(t, "name", None)
+        state = t.get("state") if isinstance(t, dict) else getattr(t, "state", None)
+        if name is not None:
+            states[name] = state
+    if not any(name in states for name in _REAL_DUB_TIERS):
+        return None
+    return [n for n in _REAL_DUB_TIERS if states.get(n) != "live"]
+
+
 def evaluate_thresholds(
     totals: dict,
     *,
     max_mismatch: int = 5,
     max_synthetic_fraction: float = 0.6,
     max_leaks: int = 0,
+    tiers=None,
+    hard_synthetic_fraction: float = 0.85,
 ) -> list[str]:
     """Return a list of human-readable breaches (empty = healthy).
 
@@ -591,17 +620,42 @@ def evaluate_thresholds(
       * more than 5 MISMATCH entries — sync pipeline is writing bad dates
       * synthetic dub fraction above 60% — real dub tiers are dark
       * any confirmed leak — finished/nonexistent content is being served
+
+    Two-voice discipline on the synthetic fraction: the fraction is only a
+    *proxy* for "the real dub tiers went dark", and `tiers` measures that
+    directly. When every real dub tier reports `live`, an elevated fraction
+    is ingest lag — a bulk catalog pull adds episodes the seeder projects
+    before AnimeSchedule/Crunchyroll get a cycle to upgrade them — not an
+    outage, so it does not alarm. `hard_synthetic_fraction` keeps a ceiling
+    that alarms regardless, so a runaway seeder is still caught even while
+    the tiers claim health. Passing no `tiers` preserves the old
+    fraction-only behaviour.
     """
     breaches = []
     if totals["mismatch_total"] > max_mismatch:
         breaches.append(
             f"MISMATCH count {totals['mismatch_total']} exceeds {max_mismatch}"
         )
-    if totals["synthetic_dub_fraction"] > max_synthetic_fraction:
-        breaches.append(
-            f"synthetic dub fraction {totals['synthetic_dub_fraction']:.0%} "
-            f"exceeds {max_synthetic_fraction:.0%} — real dub tiers look dark"
-        )
+    frac = totals["synthetic_dub_fraction"]
+    if frac > max_synthetic_fraction:
+        dark = _dark_dub_tiers(tiers)
+        if dark is None:
+            breaches.append(
+                f"synthetic dub fraction {frac:.0%} "
+                f"exceeds {max_synthetic_fraction:.0%} — real dub tiers look dark"
+            )
+        elif dark:
+            breaches.append(
+                f"synthetic dub fraction {frac:.0%} "
+                f"exceeds {max_synthetic_fraction:.0%} — real dub tiers are dark: "
+                f"{', '.join(dark)}"
+            )
+        elif frac > hard_synthetic_fraction:
+            breaches.append(
+                f"synthetic dub fraction {frac:.0%} exceeds the hard ceiling "
+                f"{hard_synthetic_fraction:.0%} while every real dub tier reports "
+                f"live — the seeder is over-projecting"
+            )
     if totals["leak_total"] > max_leaks:
         breaches.append(
             f"leak count {totals['leak_total']} exceeds {max_leaks}"

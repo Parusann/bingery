@@ -40,12 +40,33 @@ number). Future sub episodes of two-voice-confirmed finished shows are leaks.
 | metric                      | default | rationale |
 |-----------------------------|---------|-----------|
 | `MISMATCH` entries          | > 5 fails | sync pipeline writing wrong dates |
-| synthetic dub fraction      | > 60% fails | real dub tiers are dark (key missing/expired) |
+| synthetic dub fraction      | > 60% **and** a real dub tier is not `live` | real dub tiers are dark (key missing/expired) |
+| synthetic dub fraction      | > 85% regardless of tier health | seeder over-projecting |
 | evidence-backed leaks       | > 0 fails | finished/nonexistent content is being served |
 
 Overrides: `--max-mismatch`, `--max-synthetic-frac`, `--max-leaks`
 (CLI, with `--fail-on-thresholds`). The admin endpoint always returns
 `threshold_breaches` computed at the defaults; the workflow fails on any.
+
+### Two-voice discipline on the synthetic fraction
+
+The fraction is only a **proxy** for "the real dub tiers went dark", and the
+same report measures that directly in `tiers[].state`. So the 60% line alarms
+only when a real dub tier (`animeschedule`, `crunchyroll_rss`) also reports
+something other than `live` — the same two-voice rule the classifier uses for
+dates. A tier absent from the report counts as not-live, and passing no tier
+data at all falls back to the old fraction-only behaviour, so both failure
+modes stay loud.
+
+Why: the Sunday seasonal catalog pull ingests a batch of episodes that the
+seeder projects onto **before** AnimeSchedule/Crunchyroll get a cycle to
+upgrade them. That spiked the fraction to 56–67% every Sunday and back to
+5–11% by Monday, against a 60% line sitting inside the spike band — a
+coin-flip alarm that failed CI on 2026-07-19, 2026-07-26 and 2026-08-02 while
+all four real tiers reported `live`, and opened a duplicate issue each time.
+The 85% ceiling still catches a genuinely runaway seeder. When the fraction is
+elevated but suppressed, the report's `notes` say so — a quiet run stays
+legible.
 
 ## Running it
 
@@ -78,6 +99,12 @@ The cron never corrects. In an attended run:
    `user:*` without `overwrite: true`.
 
 ## When the synthetic fraction alarms
+
+Because of the two-voice rule above, this now fires only when a real dub tier
+is genuinely not `live` (or the fraction clears 85%). The breach message names
+the dark tier. An elevated fraction with every tier `live` is ingest lag and
+is reported in `notes` instead — check it against the previous day's artifact
+before chasing it.
 
 That means AnimeSchedule (Tier 2) is dark — almost always the missing/expired
 `ANIMESCHEDULE_API_KEY`. Provision a token at animeschedule.net (account
