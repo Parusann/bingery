@@ -78,6 +78,56 @@ def test_window_cap_is_loud_and_keeps_longest_quiet(app, monkeypatch, capsys):
     assert "COVERAGE CAP" in out
 
 
+def _capture_sync(monkeypatch):
+    captured = []
+
+    def fake_sync_ids(client, ids, dry_run=False):
+        captured.append(list(ids))
+        return {"requested": len(ids), "synced": len(ids), "failed": 0}
+
+    monkeypatch.setattr(sync_anilist, "sync_ids", fake_sync_ids)
+    return captured
+
+
+def test_window_cap_rotates_so_every_cohort_show_is_covered(app, monkeypatch):
+    # 10 shows, budget 4: 2 longest-quiet head slots + 2 rotating slots over
+    # an 8-show tail, so 4 consecutive days must cover the whole cohort.
+    with app.app_context():
+        for i in range(10):
+            _mk(f"Show {i}", "Currently Airing", 300 + i, -20 + i)
+        db.session.commit()
+        captured = _capture_sync(monkeypatch)
+        for day in range(1000, 1004):
+            summary = sync_anilist.window_refresh(
+                object(), max_ids=4, rotation_day=day
+            )
+            assert summary["refreshed"] == 4
+            assert summary["capped"] is True
+
+    for run in captured:
+        assert run[:2] == [300, 301]          # head is always refreshed
+        assert len(set(run)) == 4             # no duplicates within a run
+    covered = set().union(*captured)
+    assert covered == {300 + i for i in range(10)}
+
+
+def test_window_cap_reaches_stale_show_with_future_ghost_row(app, monkeypatch):
+    # Regression: a show AniList reports finished but we still mark airing
+    # has a future-dated ghost episode, so it sorts LAST (freshest). A plain
+    # head slice never refreshed it and the leak alarm fired every day.
+    with app.app_context():
+        for i in range(8):
+            _mk(f"Quiet {i}", "Currently Airing", 400 + i, -20 + i)
+        _mk("Stale Airing With Ghost", "Currently Airing", 499, +3)
+        db.session.commit()
+        captured = _capture_sync(monkeypatch)
+        # budget 4 -> 2 rotating slots over a 7-show tail: 4 days suffice.
+        for day in range(2000, 2004):
+            sync_anilist.window_refresh(object(), max_ids=4, rotation_day=day)
+
+    assert any(499 in run for run in captured)
+
+
 def test_sync_endpoint_window_mode(client, monkeypatch):
     monkeypatch.setenv("ADMIN_SYNC_SECRET", "s3cret")
     monkeypatch.setattr("utils.anilist.AniListClient", lambda: object())

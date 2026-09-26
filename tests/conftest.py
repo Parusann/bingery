@@ -33,9 +33,12 @@ def app():
     with flask_app.app_context():
         # Hard safety net: never create/drop tables against a non-memory DB
         # (the bound engine, not just config, is what drop_all() uses).
-        bound_uri = str(db.engine.url)
-        assert ":memory:" in bound_uri, (
-            f"refusing to run tests against non-memory database: {bound_uri}"
+        # Check the parsed database name, not str(url): SQLAlchemy 2.1
+        # percent-encodes it ("sqlite:///%3Amemory%3A"), which broke the
+        # substring check and errored every test before it ran.
+        bound_url = db.engine.url
+        assert bound_url.database == ":memory:", (
+            f"refusing to run tests against non-memory database: {bound_url}"
         )
         db.create_all()
         yield flask_app

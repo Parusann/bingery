@@ -511,6 +511,7 @@ def window_refresh(
     days_forward: int = 28,
     max_ids: int = 60,
     dry_run: bool = False,
+    rotation_day: Optional[int] = None,
 ) -> dict:
     """Resync the catalog entries the schedule window depends on.
 
@@ -529,8 +530,15 @@ def window_refresh(
 
     max_ids defaults to 60 because the admin endpoint runs this inside a
     gunicorn worker with --timeout 180 (Dockerfile): ~60 ids is ~100s
-    worst-case at AniList's rate limits. A larger cohort simply drains
-    across consecutive daily runs — longest-quiet shows always go first.
+    worst-case at AniList's rate limits.
+
+    When the cohort exceeds max_ids, half the budget goes to the
+    longest-quiet head and the other half ROTATES through the rest by
+    calendar day (rotation_day, default today's ordinal), so every cohort
+    member is refreshed within ceil(tail / half-budget) daily runs. A plain
+    head slice picked the same shows every day and starved the tail
+    forever — and the tail is exactly where a stale-"airing" show with a
+    future-dated ghost row sorts, so its status could never flip.
     """
     from datetime import timedelta
 
@@ -555,13 +563,22 @@ def window_refresh(
     )
     ids = [r[0] for r in rows]
     capped = len(ids) > max_ids
+    rotation_offset = None
     if capped:
+        head_n = max_ids // 2
+        head, tail = ids[:head_n], ids[head_n:]
+        rot_n = max_ids - head_n  # < len(tail) because the cohort is capped
+        if rotation_day is None:
+            rotation_day = now.date().toordinal()
+        rotation_offset = (rotation_day * rot_n) % len(tail)
+        rotated = (tail + tail)[rotation_offset:rotation_offset + rot_n]
         print(
             f"window-refresh: COVERAGE CAP max_ids={max_ids} — refreshing "
-            f"{max_ids} of {len(ids)} cohort shows (longest-quiet first); "
-            "the rest roll into the next daily run"
+            f"{max_ids} of {len(ids)} cohort shows ({head_n} longest-quiet + "
+            f"{rot_n} rotating from offset {rotation_offset} of {len(tail)}); "
+            "the rest are covered by the next daily runs"
         )
-        ids = ids[:max_ids]
+        ids = head + rotated
 
     summary = sync_ids(client, ids, dry_run=dry_run)
     summary.update(
@@ -569,6 +586,7 @@ def window_refresh(
             "cohort": len(rows),
             "refreshed": len(ids),
             "capped": capped,
+            "rotation_offset": rotation_offset,
             "days_back": days_back,
             "days_forward": days_forward,
         }
