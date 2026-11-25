@@ -13,6 +13,7 @@ interface HeroProps {
 // stage, poster lifted to e3, display-serif title with the native title as
 // an italic underline. Score is the only amber number.
 export function DetailHero({ anime, actions }: HeroProps) {
+  const synopsis = anime.synopsis || anime.description;
   const genres = (anime.official_genres ?? anime.genres ?? [])
     .map((g) => (typeof g === "string" ? g : g.name))
     .filter(Boolean) as string[];
@@ -61,16 +62,16 @@ export function DetailHero({ anime, actions }: HeroProps) {
           <div className="grid grid-cols-2 md:grid-cols-4 gap-4 max-w-xl">
             <Stat label="Episodes" value={anime.episodes ?? "—"} />
             <Stat label="Year" value={anime.year ?? "—"} />
-            <Stat label="Format" value={anime.format ?? "—"} />
+            {anime.format ? <Stat label="Format" value={anime.format} /> : <Stat label="Status" value={anime.status || "—"} />}
             <Stat
               label="Score"
               value={anime.api_score?.toFixed(1) ?? "—"}
               accent
             />
           </div>
-          {anime.description ? (
-            <p className="mt-5 text-text-muted leading-relaxed max-w-3xl">
-              {anime.description.replace(/<[^>]+>/g, "")}
+          {synopsis ? (
+            <p className="mt-5 text-text-muted leading-relaxed max-w-3xl whitespace-pre-line">
+              {synopsis.replace(/<br\s*\/?\s*>/gi, "\n").replace(/<[^>]+>/g, "")}
             </p>
           ) : null}
         </div>

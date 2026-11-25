@@ -18,6 +18,7 @@ except ImportError:  # pragma: no cover — dotenv is optional in prod
 from flask import Flask, jsonify, send_from_directory, request as flask_request
 from flask_cors import CORS
 from flask_jwt_extended import JWTManager
+from werkzeug.exceptions import NotFound
 
 from config import Config
 from models import db
@@ -55,9 +56,6 @@ def _ensure_waitlist_columns() -> None:
         )
 
 
-# Serve the new Vite-built frontend from frontend/dist/. If that directory is
-# missing (dev before build or CI stage 1) fall back to the legacy static/
-# bundle so the server still returns usable HTML.
 def _static_root() -> str:
     frontend = os.path.join(os.path.abspath(os.path.dirname(__file__)), "frontend", "dist")
     if os.path.isdir(frontend) and os.path.exists(os.path.join(frontend, "index.html")):
@@ -67,7 +65,9 @@ def _static_root() -> str:
 
 def create_app(config_class=Config):
     root = _static_root()
-    app = Flask(__name__, static_folder=root, static_url_path="")
+    # The SPA route owns file delivery so missing assets and client-side
+    # navigation can produce different responses.
+    app = Flask(__name__, static_folder=None)
     app.config.from_object(config_class)
 
     # ── Extensions ────────────────────────────────────────────────────────
@@ -130,23 +130,29 @@ def create_app(config_class=Config):
     def spa(path: str):
         # Unknown /api/* requests must not fall through to the SPA shell —
         # return a JSON 404 so API clients never receive a 200 index.html.
-        if path.startswith("api/"):
+        if path == "api" or path.startswith("api/"):
             return jsonify({"error": "Not found."}), 404
-        full = os.path.join(app.static_folder, path)
-        if path and os.path.exists(full) and os.path.isfile(full):
-            return send_from_directory(app.static_folder, path)
-        return send_from_directory(app.static_folder, "index.html")
+        if path:
+            try:
+                return send_from_directory(root, path)
+            except NotFound:
+                if path.startswith("assets/") or os.path.splitext(path)[1]:
+                    raise
+        try:
+            return send_from_directory(root, "index.html")
+        except NotFound:
+            return jsonify({"error": "The frontend build is missing. Run npm run build in frontend."}), 503
 
     # ── Error handlers ────────────────────────────────────────────────────
     @app.errorhandler(404)
     def not_found(e):
-        if flask_request.path.startswith("/api/"):
+        if flask_request.path == "/api" or flask_request.path.startswith("/api/"):
             return jsonify({"error": "Not found."}), 404
-        return send_from_directory(app.static_folder, "index.html")
+        return e
 
     @app.errorhandler(405)
     def method_not_allowed(e):
-        if flask_request.path.startswith("/api/"):
+        if flask_request.path == "/api" or flask_request.path.startswith("/api/"):
             return jsonify({"error": "Method not allowed."}), 405
         return e
 

@@ -5,7 +5,7 @@ import { Skeleton } from "@/design/Skeleton";
 // AnimeGrid's skeletons (poster + two text lines).
 export function RouteSkeleton() {
   return (
-    <div>
+    <div role="status" aria-label="Loading page" aria-busy="true">
       <div className="mb-6 space-y-2.5">
         <Skeleton className="h-3 w-24" />
         <Skeleton className="h-10 w-64" rounded="md" />

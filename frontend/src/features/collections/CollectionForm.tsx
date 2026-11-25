@@ -30,7 +30,7 @@ export function CollectionForm({ initial, onSuccess }: Props) {
         e.preventDefault();
         const body = {
           name: name.trim(),
-          description: description.trim() || undefined,
+          description: description.trim(),
           is_public: isPublic,
         };
         try {
@@ -49,6 +49,7 @@ export function CollectionForm({ initial, onSuccess }: Props) {
     >
       <Input
         label="Name"
+        maxLength={80}
         value={name}
         onChange={(e) => setName(e.target.value)}
         required
@@ -59,6 +60,7 @@ export function CollectionForm({ initial, onSuccess }: Props) {
         </span>
         <textarea
           value={description}
+          maxLength={500}
           onChange={(e) => setDescription(e.target.value)}
           className={cn(
             "min-h-[80px] px-3.5 py-2.5 rounded-lg text-sm",
@@ -83,7 +85,7 @@ export function CollectionForm({ initial, onSuccess }: Props) {
           {initial ? "Save changes" : "Create collection"}
         </Button>
         {create.isError || update.isError ? (
-          <span className="text-sm text-danger">
+          <span role="alert" className="text-sm text-danger">
             {(create.error || update.error)?.message}
           </span>
         ) : null}

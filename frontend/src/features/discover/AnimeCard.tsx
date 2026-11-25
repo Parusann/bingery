@@ -1,88 +1,59 @@
 import { useState } from "react";
 import { Link } from "react-router-dom";
+import { ArrowUpRight, Star } from "lucide-react";
 import type { AnimeSummary } from "@/types/models";
-import { Badge } from "@/design/Badge";
 import { cn } from "@/lib/cn";
-import { genreColor } from "@/lib/genres";
+import "./catalog.css";
 
 interface Props {
   anime: AnimeSummary;
-  index?: number; // kept for API compatibility; entrances are owned by the grid
+  index?: number;
   compact?: boolean;
+  featured?: boolean;
+  scoreSource?: "api_score" | "community_score";
 }
 
-// The grid (ScrollReveal) owns the entrance — the card only handles
-// hover/press, so cards never double-animate. Hover is the signature:
-// a quiet lift, warm border, slow poster zoom, and a scrim that lets the
-// title glow amber.
-export function AnimeCard({ anime, compact }: Props) {
-  const [loaded, setLoaded] = useState(false);
-  const score = anime.community_score ?? anime.api_score;
+export function AnimeCard({ anime, compact, featured, scoreSource }: Props) {
+  const [failedImages, setFailedImages] = useState<string[]>([]);
+  const title = anime.title_english || anime.title;
+  const artwork = [featured && anime.banner_url, anime.image_url].find(
+    (url): url is string => typeof url === "string" && !!url && !failedImages.includes(url)
+  );
+  const source = scoreSource ?? (anime.community_score != null ? "community_score" : "api_score");
+  const score = anime[source];
+  const scoreName = source === "community_score" ? "Community score" : "Catalog score";
   const genres = (anime.official_genres ?? anime.genres ?? [])
-    .map((g: { name?: string } | string) =>
-      typeof g === "string" ? g : g.name ?? ""
-    )
-    .filter(Boolean)
-    .slice(0, 3);
+    .map((genre) => typeof genre === "string" ? genre : genre.name)
+    .filter(Boolean).slice(0, featured ? 3 : 2);
+  const metadata = [anime.year, anime.episodes ? `${anime.episodes} ep` : null].filter(Boolean);
+
   return (
-    <Link
-      to={`/anime/${anime.id}`}
-      className={cn(
-        "group relative block overflow-hidden rounded-lg border border-border bg-surface",
-        "transition-all duration-base ease-out",
-        "hover:border-amber/35 hover:-translate-y-1 hover:shadow-e2",
-        "focus:outline-none focus-visible:ring-2 focus-visible:ring-amber/60 focus-visible:ring-offset-2 focus-visible:ring-offset-bg"
-      )}
-    >
-      <div
-        className={cn(
-          "relative bg-black/40 overflow-hidden",
-          compact ? "aspect-[3/4]" : "aspect-[2/3]"
-        )}
-      >
-        <div className="absolute inset-0 bg-gradient-to-br from-white/[0.04] to-black/20" />
-        {anime.image_url ? (
-          <img
-            src={anime.image_url}
-            alt={anime.title}
-            loading="lazy"
-            onLoad={() => setLoaded(true)}
-            className={cn(
-              "relative w-full h-full object-cover transition-all duration-slow ease-out",
-              "group-hover:scale-[1.05]",
-              loaded ? "opacity-100 blur-0" : "opacity-0 blur-md"
-            )}
-          />
+    <Link to={`/anime/${anime.id}`}
+      className={cn("catalog-card", compact && "catalog-card--compact", featured && "catalog-card--feature")}>
+      <div className="catalog-card__art">
+        {artwork ? (
+          <img src={artwork} alt="" loading={featured ? "eager" : "lazy"} decoding="async"
+            onError={() => setFailedImages((failed) => [...failed, artwork])} />
         ) : (
-          <div className="relative w-full h-full flex items-center justify-center text-text-dim text-xs">
-            No image
+          <span className="catalog-card__monogram" aria-hidden="true">{title.trim().slice(0, 1)}</span>
+        )}
+        {score != null && (
+          <span className="catalog-card__score" title={scoreName}>
+            <Star size={12} fill="currentColor" aria-hidden="true" />
+            <span className="sr-only">{scoreName} </span>{score.toFixed(1)}
+          </span>
+        )}
+      </div>
+      <div className="catalog-card__caption">
+        {metadata.length > 0 && <div className="catalog-card__meta">{metadata.join(" · ")}</div>}
+        <h3>{title}</h3>
+        {genres.length > 0 && (
+          <div className="catalog-card__genres">
+            {genres.map((genre) => <span key={genre}>{genre}</span>)}
           </div>
         )}
-        <div
-          aria-hidden
-          className="pointer-events-none absolute inset-x-0 bottom-0 h-16 bg-gradient-to-t from-black/50 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-base"
-        />
-        {score ? (
-          <span className="absolute top-2 right-2 px-2 py-0.5 rounded-md bg-bg/70 backdrop-blur-md border border-amber/25 text-xs font-mono tnum text-amber-hi">
-            {Number(score).toFixed(1)}
-          </span>
-        ) : null}
       </div>
-      <div className="p-2.5 sm:p-3">
-        <h3 className="text-xs sm:text-sm font-medium leading-snug line-clamp-2 mb-1.5 transition-colors duration-base group-hover:text-amber-hi">
-          {anime.title_english ?? anime.title}
-        </h3>
-        <div className="flex flex-wrap gap-1">
-          {genres.map((g, i) => (
-            <span
-              key={g}
-              className={i >= 2 ? "hidden sm:inline-flex" : "inline-flex"}
-            >
-              <Badge color={genreColor(g)}>{g}</Badge>
-            </span>
-          ))}
-        </div>
-      </div>
+      {featured && <ArrowUpRight size={21} aria-hidden="true" className="catalog-card__open" />}
     </Link>
   );
 }

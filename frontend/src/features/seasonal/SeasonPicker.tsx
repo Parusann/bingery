@@ -35,6 +35,7 @@ export function SeasonPicker({ year, season, onChange }: Props) {
         {SEASONS.map((s) => (
           <button
             key={s}
+            aria-pressed={season === s}
             onClick={() => onChange(year, s)}
             className={cn(
               "h-8 px-3 rounded-md border text-sm capitalize",

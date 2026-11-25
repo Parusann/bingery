@@ -11,17 +11,17 @@ const WEEKDAYS = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Frida
 export function ActivityHeatmap({ data }: { data: StatsHeatmap }) {
   const byDate = new Map(data.cells.map((c) => [c.date, c.count]));
   const end = new Date();
-  end.setHours(0, 0, 0, 0);
+  end.setUTCHours(0, 0, 0, 0);
   const start = new Date(end);
-  start.setDate(end.getDate() - 364);
+  start.setUTCDate(end.getUTCDate() - 364);
 
   // Zero-filled day series (needed for streaks + weekday shares).
   const days: Array<{ date: string; weekday: number; count: number }> = [];
   const cursor = new Date(start);
   while (cursor <= end) {
     const iso = cursor.toISOString().slice(0, 10);
-    days.push({ date: iso, weekday: cursor.getDay(), count: byDate.get(iso) ?? 0 });
-    cursor.setDate(cursor.getDate() + 1);
+    days.push({ date: iso, weekday: cursor.getUTCDay(), count: byDate.get(iso) ?? 0 });
+    cursor.setUTCDate(cursor.getUTCDate() + 1);
   }
 
   const totalEvents = days.reduce((n, d) => n + d.count, 0);
@@ -79,17 +79,17 @@ export function ActivityHeatmap({ data }: { data: StatsHeatmap }) {
       ) : (
         <>
           <p className="font-display italic text-title text-text-muted mb-6 max-w-2xl">
-            Most of your watching lands on{" "}
+            Your most active day is{" "}
             <span className="text-amber-hi not-italic font-semibold">
-              {WEEKDAYS[peakWeekday]}s
+              {WEEKDAYS[peakWeekday]}
             </span>{" "}
-            — {peakShare}% of the year.
+            with {peakShare}% of your activity.
           </p>
 
-          {/* Twelve months, one strip of film */}
+          {/* Monthly activity */}
           <div className="mb-6">
             <div className="font-mono text-micro uppercase text-text-dim mb-2.5">
-              Twelve months, one strip of film
+              Monthly activity
             </div>
             <div
               className="flex gap-1"

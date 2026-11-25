@@ -15,7 +15,7 @@ function label(ev: ActivityEvent): string {
     case "favorite":
       return `Favorited ${title}`;
     case "collection_item":
-      return `Added ${title} to collection`;
+      return `Added ${title} to ${ev.meta.collection_title || "a collection"}`;
     case "collection_create":
       return `Started a new collection${
         ev.meta.title ? ` — ${ev.meta.title}` : ""

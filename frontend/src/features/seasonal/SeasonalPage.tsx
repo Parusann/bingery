@@ -1,3 +1,5 @@
+import { useAuth } from "@/stores/auth";
+import { SignInPanel, LoadError } from "@/design/PageState";
 import { useState } from "react";
 import { Link } from "react-router-dom";
 import { AnimeGrid } from "@/features/discover/AnimeGrid";
@@ -8,7 +10,11 @@ export function SeasonalPage() {
   const initial = currentSeason();
   const [year, setYear] = useState(initial.year);
   const [season, setSeason] = useState(initial.season);
-  const q = useSeasonal(year, season);
+  const user = useAuth((s) => s.user);
+  const q = useSeasonal(year, season, !!user);
+
+  if (!user) return <SignInPanel section="Seasonal" title="Sign in to browse the season"
+    description="Explore the anime lineup by season and year." />;
 
   return (
     <div>
@@ -27,7 +33,7 @@ export function SeasonalPage() {
           />
         </div>
       </div>
-      <AnimeGrid
+      {q.isError && !q.data ? <LoadError title="This season couldn’t load." retry={() => q.refetch()} /> : <AnimeGrid
         anime={q.data?.anime ?? []}
         loading={q.isLoading}
         empty={
@@ -38,7 +44,7 @@ export function SeasonalPage() {
             </Link>
           </span>
         }
-      />
+      />}
     </div>
   );
 }

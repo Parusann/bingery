@@ -2,6 +2,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api } from "@/lib/api";
 import { useAuth } from "@/stores/auth";
 import type { WatchStatus } from "@/types/models";
+import type { AnimeDetailResponse } from "@/types/api";
 
 export function useWatchlist() {
   const user = useAuth((s) => s.user);
@@ -32,20 +33,33 @@ function invalidateFor(
 ) {
   qc.invalidateQueries({ queryKey: ["watchlist"] });
   qc.invalidateQueries({ queryKey: ["watchlist-stats"] });
-  qc.invalidateQueries({ queryKey: ["anime-detail", animeId] });
+  qc.invalidateQueries({ queryKey: ["schedule-week"] });
+  qc.invalidateQueries({ queryKey: ["activity"] });
+  qc.invalidateQueries({ queryKey: ["stats-overview"] });
+  qc.invalidateQueries({ queryKey: ["stats-heatmap"] });
+  qc.invalidateQueries({ queryKey: ["recommendations"] });
+  return qc.invalidateQueries({ queryKey: ["anime-detail", animeId] });
 }
 
 export function useSetWatchStatus() {
   const qc = useQueryClient();
+  const userId = useAuth((s) => s.user?.id);
   return useMutation({
     mutationFn: ({
       animeId,
       status,
+      episodesWatched,
     }: {
       animeId: number;
       status: WatchStatus;
-    }) => api.setWatchStatus(animeId, { status }),
-    onSuccess: (_data, { animeId }) => invalidateFor(qc, animeId),
+      episodesWatched?: number;
+    }) => api.setWatchStatus(animeId, { status, episodes_watched: episodesWatched }),
+    onSuccess: ({ entry }, { animeId }) => {
+      qc.setQueryData<AnimeDetailResponse>(["anime-detail", animeId, userId], (detail) =>
+        detail && { ...detail, anime: { ...detail.anime, user_watch_status: entry } }
+      );
+      return invalidateFor(qc, animeId);
+    },
   });
 }
 

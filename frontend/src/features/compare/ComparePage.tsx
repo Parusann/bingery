@@ -1,3 +1,4 @@
+import { SignInPanel, LoadError } from "@/design/PageState";
 import { useState } from "react";
 import { Skeleton } from "@/design/Skeleton";
 import { useAuth } from "@/stores/auth";
@@ -17,19 +18,8 @@ export function ComparePage() {
   const q = useCompare(a?.id ?? null, b?.id ?? null);
 
   if (!user) {
-    return (
-      <div className="py-20 text-center">
-        <div className="font-mono text-micro uppercase text-amber mb-3">
-          Compare
-        </div>
-        <h1 className="font-display text-display mb-2">
-          Sign in to compare anime
-        </h1>
-        <p className="text-text-muted">
-          Pick two titles to see overlap, scores, and your own ratings.
-        </p>
-      </div>
-    );
+    return <SignInPanel section="Compare" title="Sign in to compare anime"
+      description="Compare genres, scores, studios, and your own ratings for two titles." />;
   }
 
   return (
@@ -59,9 +49,7 @@ export function ComparePage() {
         ) : q.data ? (
           <CompareSummary data={q.data} />
         ) : q.isError ? (
-          <p className="text-danger text-sm">
-            Couldn't load the comparison — try a different pair.
-          </p>
+          <LoadError title="This comparison couldn’t load." retry={() => q.refetch()} />
         ) : null
       ) : (
         <p className="font-display italic text-body-lg text-text-muted">

@@ -18,7 +18,7 @@ export function DaySection({
   const others = myShowsOnly ? [] : episodes.filter((e) => !e.on_watchlist);
 
   return (
-    <section id={`day-${date}`} data-screen-label={`Schedule ${date}`} className="space-y-4">
+    <section id={`day-${date}`} data-screen-label={`Schedule ${date}`} className="scroll-mt-52 md:scroll-mt-40 space-y-4">
       <DayBanner date={date} episodes={episodes} isToday={isToday} />
       {watchlist.length > 0 && (
         <div className="space-y-2 rounded-xl border border-gold/20 bg-gold/[0.025] p-4 md:p-5">

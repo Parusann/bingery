@@ -1,13 +1,6 @@
 name: CI
 
-# Gates pushes and PRs on the test suites that already exist in the repo.
-# Until this file landed, `refresh-schedule.yml` was the ONLY workflow — the
-# 577-test backend suite and the 28-file frontend suite never ran in CI, so
-# nothing caught a regression before it reached main or Fly.
-#
-# No secrets are required. tests/conftest.py forces an in-memory SQLite DB and
-# defaults every env var it needs, so the backend suite is hermetic — verified
-# by running it with .env absent and the API keys unset.
+# Run the backend, frontend, and browser suites with disposable test data.
 
 on:
   push:
@@ -48,7 +41,7 @@ jobs:
         run: python -m pytest -q
 
   frontend:
-    name: Frontend (vitest + build)
+    name: Frontend and browser workflows
     runs-on: ubuntu-latest
     timeout-minutes: 15
     defaults:
@@ -74,3 +67,17 @@ jobs:
         # `npm run build` is `tsc -b && vite build`, so this covers the
         # type-check gate too — a broken type never reaches Pages.
         run: npm run build
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+          cache: pip
+          cache-dependency-path: requirements.txt
+
+      - name: Install browser test dependencies
+        run: |
+          python -m pip install -r ../requirements.txt
+          npx playwright install --with-deps chromium
+
+      - name: Test browser workflows against Flask
+        run: npm run e2e

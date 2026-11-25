@@ -19,7 +19,7 @@ import type { ChatResponse } from "@/types/models";
 import { useNsfw } from "@/stores/nsfw";
 
 // Endpoints whose anime payloads should respect the global NSFW toggle.
-const NSFW_AWARE_PREFIXES = ["/anime", "/seasonal", "/recommend", "/schedule"];
+const NSFW_AWARE_PREFIXES = ["/anime", "/search", "/seasonal", "/recommend", "/schedule"];
 
 function applyNsfwParam(path: string): string {
   if (!useNsfw.getState().visible) return path;
@@ -33,22 +33,12 @@ function applyNsfwParam(path: string): string {
 // backend). Set it to the backend origin without the /api suffix; we add
 // /api here. Strips trailing slashes so both forms work.
 //
-// When unset, default to localhost:5000 in dev and same-origin /api in prod
-// (the latter matches the Dockerfile setup where Flask serves the SPA).
-const ENV_API_URL = (
-  import.meta.env.VITE_API_URL as string | undefined
-)?.replace(/\/+$/, "");
-
-const BASE =
-  ENV_API_URL && ENV_API_URL.length > 0
-    ? ENV_API_URL.endsWith("/api")
-      ? ENV_API_URL
-      : `${ENV_API_URL}/api`
-    : typeof window !== "undefined" &&
-        (window.location.hostname === "localhost" ||
-          window.location.hostname === "127.0.0.1")
-      ? "http://localhost:5000/api"
-      : window.location.origin + "/api";
+// The Vite dev proxy and the production Flask server both expose /api on
+// the page's origin. An explicit origin is only needed for split deployments.
+const ENV_API_URL = import.meta.env.VITE_API_URL?.replace(/\/+$/, "");
+const BASE = ENV_API_URL
+  ? ENV_API_URL.endsWith("/api") ? ENV_API_URL : ENV_API_URL + "/api"
+  : "/api";
 
 const TOKEN_KEY = "bingery_token";
 
@@ -107,18 +97,19 @@ async function request<T>(
     try {
       data = JSON.parse(text);
     } catch {
+      if (res.ok) throw new ApiError("The server returned an unreadable response.", res.status);
       data = {};
     }
   }
   if (!res.ok) {
-    if (res.status === 401 && t && !path.startsWith("/auth/")) {
+    if (res.status === 401 && t && t === getToken() && !path.startsWith("/auth/")) {
       setToken(null);
       unauthorizedHandler?.();
     }
     throw new ApiError(
-      data.error ?? `Request failed (${res.status})`,
+      data?.error ?? `Request failed (${res.status})`,
       res.status,
-      typeof data.stop_reason === "string" ? data.stop_reason : undefined,
+      typeof data?.stop_reason === "string" ? data.stop_reason : undefined,
     );
   }
   return data as T;
@@ -129,7 +120,7 @@ export const api = {
   setToken,
   base: BASE,
 
-  health: () => request<{ ok: boolean }>("/health"),
+  health: () => request<{ status: "ok"; service: string }>("/health"),
 
   login: (body: { email: string; password: string }) =>
     request<AuthResponse>("/auth/login", {
@@ -172,6 +163,7 @@ export const api = {
     ),
 
   getAnime: (q = "") => request<AnimeListResponse>("/anime" + q),
+  getCatalogGenres: () => request<{ all: { name: string }[] }>("/anime/genres?catalog=true"),
   getAnimeDetail: (id: number) => request<AnimeDetailResponse>(`/anime/${id}`),
   getSimilar: (id: number) => request<SimilarResponse>(`/anime/${id}/similar`),
   getRelated: (id: number) => request<RelatedResponse>(`/anime/${id}/related`),

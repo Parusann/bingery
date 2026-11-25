@@ -1,14 +1,16 @@
 import { useEffect, useState } from "react";
 import { api } from "@/lib/api";
+import { useNsfw } from "@/stores/nsfw";
 import type { AnimeSummary } from "@/types/models";
 
 export function useSearch(query: string, minChars = 2, delay = 250) {
+  const visible = useNsfw((state) => state.visible);
   const [results, setResults] = useState<AnimeSummary[]>([]);
   const [loading, setLoading] = useState(false);
 
   useEffect(() => {
+    setResults([]);
     if (query.length < minChars) {
-      setResults([]);
       setLoading(false);
       return;
     }
@@ -33,7 +35,7 @@ export function useSearch(query: string, minChars = 2, delay = 250) {
       cancelled = true;
       clearTimeout(id);
     };
-  }, [query, minChars, delay]);
+  }, [query, minChars, delay, visible]);
 
   return { results, loading };
 }

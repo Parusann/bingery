@@ -1,5 +1,6 @@
 from flask import Blueprint, request, jsonify
-from models import db, Anime, Genre, anime_genres
+from sqlalchemy.orm import selectinload
+from models import db, Anime, Genre, anime_genres, serialize_catalog_page
 from utils.nsfw import maybe_exclude_nsfw
 
 search_bp = Blueprint("search", __name__, url_prefix="/api/search")
@@ -20,18 +21,20 @@ def autocomplete():
 
     results = (
         maybe_exclude_nsfw(Anime.query)
+        .options(selectinload(Anime.official_genres))
         .filter(db.or_(
-            Anime.title.ilike(f"%{q}%"),
-            Anime.title_english.ilike(f"%{q}%"),
+            Anime.title.icontains(q, autoescape=True),
+            Anime.title_english.icontains(q, autoescape=True),
         ))
         .order_by(
             # Prioritize exact prefix matches
             db.case(
-                (Anime.title_english.ilike(f"{q}%"), 0),
-                (Anime.title.ilike(f"{q}%"), 1),
+                (Anime.title_english.istartswith(q, autoescape=True), 0),
+                (Anime.title.istartswith(q, autoescape=True), 1),
                 else_=2,
             ),
             Anime.api_score.desc().nullslast(),
+            Anime.id,
         )
         .limit(limit)
         .all()
@@ -71,9 +74,9 @@ def full_search():
 
     if q:
         query = query.filter(db.or_(
-            Anime.title.ilike(f"%{q}%"),
-            Anime.title_english.ilike(f"%{q}%"),
-            Anime.synopsis.ilike(f"%{q}%"),
+            Anime.title.icontains(q, autoescape=True),
+            Anime.title_english.icontains(q, autoescape=True),
+            Anime.synopsis.icontains(q, autoescape=True),
         ))
 
     if genres_param:
@@ -100,10 +103,11 @@ def full_search():
     else:
         query = query.order_by(Anime.api_score.desc().nullslast())
 
+    query = query.options(selectinload(Anime.official_genres)).order_by(Anime.id)
     paginated = query.distinct().paginate(page=page, per_page=per_page, error_out=False)
 
     return jsonify({
-        "results": [a.to_dict(include_community=True) for a in paginated.items],
+        "results": serialize_catalog_page(paginated.items),
         "total": paginated.total,
         "page": paginated.page,
         "pages": paginated.pages,

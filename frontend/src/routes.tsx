@@ -66,6 +66,11 @@ export const router = createBrowserRouter([
   {
     path: "/",
     element: <AppShell />,
+    errorElement: <main className="account-gate">
+      <h1>Bingery couldn’t open this page.</h1>
+      <button type="button" className="gate-primary mt-4" onClick={() => window.location.reload()}>Reload page</button>
+      <a href="/" className="ml-5 text-sm underline">Go home</a>
+    </main>,
     children: [
       { index: true, element: <LandingPage /> },
       { path: "auth", element: withSuspense(<AuthPage />) },
@@ -75,6 +80,7 @@ export const router = createBrowserRouter([
       { path: "for-you", element: withSuspense(<ForYouPage />) },
       { path: "chat", element: withSuspense(<ChatPage />) },
       { path: "collections", element: withSuspense(<CollectionsListPage />) },
+      { path: "collections/share/:token", element: withSuspense(<CollectionDetailPage />) },
       { path: "collections/:id", element: withSuspense(<CollectionDetailPage />) },
       { path: "stats", element: withSuspense(<StatsPage />) },
       { path: "seasonal", element: withSuspense(<SeasonalPage />) },

@@ -1,79 +1,96 @@
-import { useState } from "react";
+import { useRef } from "react";
 import { useSearchParams } from "react-router-dom";
-import { Button } from "@/design/Button";
+import { ArrowLeft, ArrowRight } from "lucide-react";
 import { useAnimeList } from "@/hooks/useAnimeList";
+import { LoadError } from "@/design/PageState";
 import { AnimeGrid } from "./AnimeGrid";
-import { FilterBar } from "./FilterBar";
+import { FilterBar, SORTS } from "./FilterBar";
 import { SearchAutocomplete } from "./SearchAutocomplete";
 
 export function DiscoverPage() {
   const [params, setParams] = useSearchParams();
-  const search = params.get("q") ?? "";
+  const resultsHeading = useRef<HTMLHeadingElement>(null);
+  const search = params.get("q")?.trim() ?? "";
   const genre = params.get("genre") ?? "";
-  const sort = params.get("sort") ?? "api_score";
-  const [page, setPage] = useState(1);
-
-  const { data, isLoading, isFetching } = useAnimeList({
-    page,
-    search,
-    genre,
-    sort,
+  const sort = SORTS.find((option) => option.key === params.get("sort")) ?? SORTS[0];
+  const requestedPage = Number(params.get("page"));
+  const page = Number.isSafeInteger(requestedPage) && requestedPage > 0 ? requestedPage : 1;
+  const { data, isLoading, isError, refetch, isFetching } = useAnimeList({
+    page, search, genre, sort: sort.key, order: sort.key === "title" ? "asc" : "desc",
   });
+  const filtered = Boolean(genre || search || sort.key !== SORTS[0].key);
+  const featureFirst = page === 1 && !search && !genre && sort.key === "api_score";
+  const beyondLastPage = Boolean(data && page > Math.max(1, data.pages));
 
-  const update = (key: string, value: string) => {
+  function update(key: string, value: string) {
     const next = new URLSearchParams(params);
+    if (key !== "page") next.delete("page");
     if (value) next.set(key, value);
     else next.delete(key);
-    setParams(next);
-    setPage(1);
-  };
+    setParams(next, { preventScrollReset: true });
+  }
+
+  function resetFilters() {
+    setParams({}, { preventScrollReset: true });
+  }
+
+  function changePage(next: number) {
+    update("page", next === 1 ? "" : String(next));
+    resultsHeading.current?.focus({ preventScroll: true });
+    resultsHeading.current?.scrollIntoView?.({ block: "start" });
+  }
+
+  const heading = search ? `Results for “${search}”` : genre || "Browse titles";
 
   return (
-    <div>
-      <div className="flex flex-col md:flex-row gap-4 mb-6 md:mb-8 items-start md:items-end">
-        <div>
-          <div className="font-mono text-micro uppercase text-amber mb-2">Catalog</div>
-          <h1 className="font-display text-display">Discover</h1>
-        </div>
-        <div className="flex-1 w-full md:ml-auto md:max-w-xl md:pb-1">
-          <SearchAutocomplete
-            onSubmit={(q) => update("q", q)}
+    <div className="catalog">
+      <header className="catalog-masthead">
+        <h1>Discover</h1>
+        <SearchAutocomplete value={search} onSubmit={(query) => update("q", query)} />
+      </header>
+      <section aria-labelledby="catalog-results">
+        <div className="catalog-toolbar">
+          <div className="catalog-summary">
+            <h2 id="catalog-results" ref={resultsHeading} tabIndex={-1}>{heading}</h2>
+            {data && !isError && (
+              <span aria-live="polite" className="catalog-count">
+                {data.total.toLocaleString()} {data.total === 1 ? "title" : "titles"}
+              </span>
+            )}
+          </div>
+          <FilterBar genre={genre} sort={sort.key}
+            onGenre={(next) => update("genre", next)}
+            onSort={(next) => update("sort", next === SORTS[0].key ? "" : next)}
+            onReset={filtered ? resetFilters : undefined}
           />
         </div>
-      </div>
-      <FilterBar
-        genre={genre}
-        onGenre={(g) => update("genre", g)}
-        sort={sort}
-        onSort={(s) => update("sort", s)}
-      />
-      <AnimeGrid anime={data?.anime ?? []} loading={isLoading} />
-      {data && data.pages > 1 ? (
-        <nav
-          className="flex justify-center items-center gap-3 mt-10 text-sm"
-          aria-label="Pagination"
-        >
-          <Button
-            variant="glass"
-            size="sm"
-            disabled={page <= 1}
-            onClick={() => setPage((p) => Math.max(1, p - 1))}
-          >
-            Prev
-          </Button>
-          <span className="font-mono text-caption text-text-muted tnum">
-            {data.page} / {data.pages}
-          </span>
-          <Button
-            variant="glass"
-            size="sm"
-            disabled={page >= data.pages || isFetching}
-            onClick={() => setPage((p) => p + 1)}
-          >
-            Next
-          </Button>
-        </nav>
-      ) : null}
+        {isError && !data ? (
+          <LoadError title="The catalog couldn’t load." retry={() => refetch()} />
+        ) : (
+          <AnimeGrid anime={data?.anime ?? []} loading={isLoading} featureFirst={featureFirst}
+            scoreSource={sort.key === "community_score" ? "community_score" : "api_score"}
+            empty={
+              <>
+                <h3>{beyondLastPage ? "This page is empty." : filtered ? "No matching titles." : "The catalog is empty."}</h3>
+                {beyondLastPage
+                  ? <button type="button" className="catalog-action" onClick={() => changePage(1)}>Go to the first page</button>
+                  : filtered && <button type="button" className="catalog-action" onClick={resetFilters}>Clear filters</button>}
+              </>
+            }
+          />
+        )}
+        {data && !beyondLastPage && data.pages > 1 && (
+          <nav className="catalog-pagination" aria-label="Pagination">
+            <button type="button" disabled={page <= 1 || isFetching} onClick={() => changePage(page - 1)}>
+              <ArrowLeft size={16} aria-hidden="true" /> Previous
+            </button>
+            <span>Page {page.toLocaleString()} of {data.pages.toLocaleString()}</span>
+            <button type="button" disabled={page >= data.pages || isFetching} onClick={() => changePage(page + 1)}>
+              Next <ArrowRight size={16} aria-hidden="true" />
+            </button>
+          </nav>
+        )}
+      </section>
     </div>
   );
 }

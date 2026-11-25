@@ -42,11 +42,11 @@ def _utcnow() -> datetime:
 
 
 def _airing_at_to_dt(airing_at: Optional[int]) -> Optional[datetime]:
-    """Convert AniList's epoch-seconds airingAt to a UTC datetime."""
+    """Use naive UTC, matching Episode.air_date_sub after a database round-trip."""
     if airing_at is None:
         return None
     try:
-        return datetime.fromtimestamp(int(airing_at), tz=timezone.utc)
+        return datetime.fromtimestamp(int(airing_at), tz=timezone.utc).replace(tzinfo=None)
     except (TypeError, ValueError, OverflowError):
         return None
 

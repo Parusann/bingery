@@ -1,35 +1,39 @@
+import { SignInPanel, LoadError } from "@/design/PageState";
 import { useEffect, useMemo } from "react";
-import { useSearchParams, useNavigate } from "react-router-dom";
+import { useSearchParams } from "react-router-dom";
 import { Skeleton } from "@/design/Skeleton";
 import { useAuth } from "@/stores/auth";
 import { useScheduleWeek } from "@/hooks/useScheduleWeek";
 import { ScheduleHeader } from "./ScheduleHeader";
 import { DayStrip } from "./DayStrip";
 import { DaySection } from "./DaySection";
-import { getSundayOfWeek, shiftWeek, todayIsoDate } from "./utils";
+import { getSundayOfWeek, shiftWeek, todayIsoDate, toLocalIsoDate } from "./utils";
 
 type Lang = "sub" | "dub" | "both";
 
 export function SchedulePage() {
   const user = useAuth((s) => s.user);
   const [params, setParams] = useSearchParams();
-  const navigate = useNavigate();
-
-  const week = params.get("week");
-  const lang = (params.get("lang") as Lang) || "both";
+  const rawWeek = params.get("week");
+  const parsed = rawWeek && /^\d{4}-\d{2}-\d{2}$/.test(rawWeek)
+    ? new Date(rawWeek + "T12:00:00") : null;
+  const week = parsed && !Number.isNaN(parsed.getTime()) && toLocalIsoDate(parsed) === rawWeek &&
+    parsed.getFullYear() >= 1000 && parsed.getFullYear() <= 9998
+    ? getSundayOfWeek(parsed) : getSundayOfWeek(new Date());
+  const rawLang = params.get("lang");
+  const lang: Lang = rawLang === "sub" || rawLang === "dub" ? rawLang : "both";
   const mine = params.get("mine") === "1";
 
   useEffect(() => {
-    if (!week) {
-      const sun = getSundayOfWeek(new Date());
-      const p = new URLSearchParams(params);
-      p.set("week", sun);
-      navigate({ search: `?${p}` }, { replace: true });
-    }
-  }, [week, navigate, params]);
+    if (rawWeek === week && (!rawLang || rawLang === lang)) return;
+    const next = new URLSearchParams(params);
+    next.set("week", week);
+    if (rawLang) next.set("lang", lang);
+    setParams(next, { replace: true, preventScrollReset: true });
+  }, [rawWeek, week, rawLang, lang, params, setParams]);
 
   const today = todayIsoDate();
-  const q = useScheduleWeek(week ?? getSundayOfWeek(new Date()), lang, mine);
+  const q = useScheduleWeek(week, lang, mine);
 
   const episodeCounts = useMemo(() => {
     const out: Record<string, number> = {};
@@ -46,21 +50,20 @@ export function SchedulePage() {
   function setLang(next: Lang) {
     const p = new URLSearchParams(params);
     p.set("lang", next);
-    setParams(p, { replace: true });
+    setParams(p, { replace: true, preventScrollReset: true });
   }
 
   function toggleMine() {
     const p = new URLSearchParams(params);
     p.set("mine", mine ? "0" : "1");
-    setParams(p, { replace: true });
+    setParams(p, { replace: true, preventScrollReset: true });
   }
 
   function shift(weeks: number) {
-    if (!week) return;
     const next = shiftWeek(week, weeks);
     const p = new URLSearchParams(params);
     p.set("week", next);
-    setParams(p, { replace: true });
+    setParams(p, { replace: true, preventScrollReset: true });
   }
 
   function scrollToDay(date: string) {
@@ -69,19 +72,8 @@ export function SchedulePage() {
   }
 
   if (!user) {
-    return (
-      <div className="py-20 text-center">
-        <div className="font-mono text-micro uppercase text-amber mb-3">
-          Schedule
-        </div>
-        <h1 className="font-display text-display mb-2">
-          Sign in to see the schedule
-        </h1>
-        <p className="text-text-muted">
-          Track sub and dub episode releases for shows you're following.
-        </p>
-      </div>
-    );
+    return <SignInPanel section="Schedule" title="Sign in to see the schedule"
+      description="Follow weekly sub and dub releases and see when your shows air." />;
   }
 
   return (
@@ -93,7 +85,7 @@ export function SchedulePage() {
         onMineToggle={toggleMine}
       />
       <DayStrip
-        weekStart={week ?? getSundayOfWeek(new Date())}
+        weekStart={week}
         todayIso={today}
         episodeCounts={episodeCounts}
         onChipClick={scrollToDay}
@@ -101,7 +93,8 @@ export function SchedulePage() {
         onNextWeek={() => shift(1)}
       />
       <div className="mt-10 space-y-14">
-        {q.isLoading || !q.data
+        {q.isError && !q.data ? <LoadError title="This week’s schedule couldn’t load." retry={() => q.refetch()} />
+          : q.isLoading || !q.data
           ? Array.from({ length: 7 }).map((_, i) => (
               // Mirrors the real day anatomy: banner (232px, xl radius) +
               // two episode rows.

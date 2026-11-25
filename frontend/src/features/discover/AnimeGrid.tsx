@@ -1,51 +1,39 @@
 import type { AnimeSummary } from "@/types/models";
 import { Skeleton } from "@/design/Skeleton";
-import { ScrollReveal } from "@/design/ScrollReveal";
 import { AnimeCard } from "./AnimeCard";
 
 interface Props {
   anime: AnimeSummary[];
   loading?: boolean;
   empty?: React.ReactNode;
+  featureFirst?: boolean;
+  scoreSource?: "api_score" | "community_score";
 }
 
-const GRID = "grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-x-4 gap-y-6";
-
-export function AnimeGrid({ anime, loading, empty }: Props) {
+export function AnimeGrid({ anime, loading, empty, featureFirst, scoreSource }: Props) {
   if (loading) {
-    // Skeletons mirror the final card anatomy: poster, two title lines.
     return (
-      <div className={GRID}>
-        {Array.from({ length: 12 }).map((_, i) => (
-          <div key={i}>
-            <Skeleton className="aspect-[2/3]" rounded="lg" />
-            <div className="px-0.5 pt-2.5 space-y-1.5">
-              <Skeleton className="h-3.5 w-11/12" />
-              <Skeleton className="h-3 w-3/5" />
-            </div>
+      <div className="catalog-grid" aria-busy="true" aria-label="Loading titles">
+        {Array.from({ length: 12 }, (_, index) => (
+          <div key={index} className={featureFirst && index === 0 ? "catalog-grid__lead" : undefined}>
+            <Skeleton className={featureFirst && index === 0 ? "aspect-[1.5] h-full" : "aspect-[2/3]"} rounded="lg" />
+            {!(featureFirst && index === 0) && (
+              <div className="pt-2.5 space-y-2">
+                <Skeleton className="h-3 w-3/5" /><Skeleton className="h-4 w-11/12" />
+              </div>
+            )}
           </div>
         ))}
       </div>
     );
   }
   if (!anime.length) {
-    return (
-      <div className="py-24 text-center">
-        <div className="font-mono text-micro uppercase text-text-dim mb-3">
-          No results
-        </div>
-        <p className="font-display italic text-title text-text-muted max-w-md mx-auto">
-          {empty ?? "No anime found."}
-        </p>
-      </div>
-    );
+    return <div className="catalog-empty">{empty ?? "No anime found."}</div>;
   }
   return (
-    <div className={GRID}>
-      {anime.map((a, i) => (
-        <ScrollReveal key={a.id} delay={Math.min(i, 14) * 0.03}>
-          <AnimeCard anime={a} />
-        </ScrollReveal>
+    <div className="catalog-grid">
+      {anime.map((item, index) => (
+        <AnimeCard key={item.id} anime={item} featured={featureFirst && index === 0} scoreSource={scoreSource} />
       ))}
     </div>
   );

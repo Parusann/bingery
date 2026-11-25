@@ -60,6 +60,11 @@ export function WatchlistCard({
         >
           {a.title_english ?? a.title}
         </h3>
+        {(entry.status === "watching" || entry.episodes_watched > 0) && (
+          <p className="my-1 text-xs text-text-muted">
+            {entry.episodes_watched ?? 0}{a.episodes ? ` / ${a.episodes}` : ""} episodes watched
+          </p>
+        )}
         {!compact ? (
           genres.length > 0 ? (
             <div className="flex flex-wrap gap-1">

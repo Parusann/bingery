@@ -13,7 +13,7 @@
 ![Flask](https://img.shields.io/badge/Flask-3.0-000000?logo=flask&logoColor=white)
 ![Python](https://img.shields.io/badge/Python-3.13-3776AB?logo=python&logoColor=white)
 ![Fly.io](https://img.shields.io/badge/deploy-Fly.io-8B5CF6?logo=flydotio&logoColor=white)
-![Tests](https://img.shields.io/badge/tests-596%20passing-3FB950)
+[![CI](https://github.com/Parusann/bingery/actions/workflows/ci.yml/badge.svg)](https://github.com/Parusann/bingery/actions/workflows/ci.yml)
 
 </div>
 
@@ -24,7 +24,7 @@
 > 🔗 **Live:** **[bingery.fly.dev](https://bingery.fly.dev)** &nbsp;·&nbsp; Try the **Guide** chat, open any title for its **fan‑genres** and **"watch the rest in order"** strip, or check the **Schedule** for this week's sub & dub episodes.
 
 <div align="center">
-  <img src="screenshots/landing.png" alt="Bingery — landing page" width="90%" />
+  <img src="screenshots/home.webp" alt="Bingery — landing page" width="90%" />
 </div>
 
 ---
@@ -43,16 +43,13 @@
 
 ### Personalize
 - **For You** recommendations driven by a **taste profile** and behavioral **rec signals**.
-- **Ratings** — score titles and talk a rating through with the AI.
+- **Ratings** — score titles, write a short review, and vote on fan genres.
 - **Collections** — build custom, shareable lists.
 
 ### The AI Guide 🤖
-A conversational assistant with three modes:
-- **Recommend** — describe a mood, get a curated handful of picks.
-- **Rate with AI** — talk through how a show felt and land on a score.
-- **Onboard** — build your taste profile in a few questions.
+The guide can find titles similar to a favorite, suggest anime for a mood, and refine its picks as the conversation continues. Signed-in viewers get recommendations informed by their ratings and watchlist.
 
-Backed by **pluggable providers** — cloud **Anthropic (Claude)** or a local/tunneled **Ollama** model — with structured **tool‑calling** so the model can search the catalog and act on your library.
+Bingery supports Anthropic (Claude) and local or tunneled Ollama models. The guide uses read-only tools to search the catalog, retrieve title details, and explain its recommendations.
 
 ### Rich detail pages
 - **Community fan‑genres** — vote on the genres that *actually* describe a show.
@@ -66,7 +63,7 @@ Backed by **pluggable providers** — cloud **Anthropic (Claude)** or a local/tu
 ### Thoughtful touches
 - **NSFW toggle** — show/hide Ecchi‑tagged titles (Hentai is always hidden).
 - **JWT auth** with a one‑command **demo user**.
-- **Fully mobile‑optimized** — native‑feel bottom‑tab navigation, a "More" sheet, and modals that become bottom sheets below 768px, with the desktop experience preserved pixel‑for‑pixel.
+- **Fully mobile‑optimized** — bottom tabs on phones, a shared navigation menu, and responsive dialogs with keyboard and touch controls.
 
 ---
 
@@ -83,7 +80,7 @@ Backed by **pluggable providers** — cloud **Anthropic (Claude)** or a local/tu
   </tr>
   <tr>
     <td valign="top"><img src="screenshots/seasonal.png" alt="Seasonal"/><br/><sub><b>Seasonal</b> — browse by airing season</sub></td>
-    <td valign="top"><img src="screenshots/chat.png" alt="AI Guide chat"/><br/><sub><b>AI Guide</b> — recommend, rate &amp; onboard</sub></td>
+    <td valign="top"><img src="screenshots/chat.png" alt="AI Guide chat"/><br/><sub><b>AI Guide</b> — conversational anime recommendations</sub></td>
   </tr>
   <tr>
     <td valign="top"><img src="screenshots/stats.png" alt="Stats"/><br/><sub><b>Stats</b> — heatmap, genre breakdown &amp; rating histogram</sub></td>
@@ -143,7 +140,7 @@ bingery/
 ├── models.py                   # SQLAlchemy models (Anime, User, Watchlist, …)
 ├── routes/                     # 17 API blueprints (auth, anime, schedule, chatbot, …)
 ├── utils/                      # AniList client, dub sources, AI providers, NSFW, tokens
-├── tests/                      # pytest suite (568 tests)
+├── tests/                      # Backend regression suite
 │
 ├── sync_anilist.py             # Resumable AniList catalog sync (CLI)
 ├── sync_dub_crunchyroll.py     # Dub schedule from Crunchyroll RSS (CLI)
@@ -159,7 +156,7 @@ bingery/
 │   │   ├── design/             # design system — tokens, GlassCard, Modal, motion
 │   │   ├── hooks/ · stores/    # TanStack Query hooks + Zustand stores
 │   │   └── routes.tsx
-│   └── public/landing.html     # standalone marketing landing page (iframed)
+│   └── public/landing.html     # compatibility redirect to the React homepage
 │
 ├── docs/                       # DEPLOYMENT.md + design specs & implementation plans
 ├── Dockerfile · fly.toml       # Fly.io deployment (multi-stage build)
@@ -229,14 +226,16 @@ All backend config is environment‑driven (`config.py` + `.env`). Key variables
 ## 🧪 Testing
 
 ```bash
-# Backend — 568 tests
+# Backend
 python -m pytest -q
 
 # Frontend — type-check, unit/component, e2e
 cd frontend
 npm run lint          # tsc -b (type-check)
-npm run test:run      # Vitest unit/component tests (28)
-npm run e2e           # Playwright end-to-end
+npm run test:run      # Vitest unit and component tests
+npm run build         # Build the app served by the browser test server
+npx playwright install chromium
+npm run e2e           # Chromium against Flask and a temporary seeded database
 ```
 
 ---
@@ -281,9 +280,9 @@ A bespoke dark, glassmorphic aesthetic defined by design tokens in `frontend/src
 
 - **Palette** — near‑black violet background (`#080510`), warm **amber** accent (`#e6a680`), with peach/gold accents for the schedule.
 - **Type** — an elegant serif display (Instrument Serif / Fraunces), clean sans body (Geist / Inter), and a mono for labels (Geist Mono / JetBrains Mono).
-- **Surfaces** — translucent `GlassCard`s with layered inset highlights, ambient gradient blobs, a film‑grain overlay, and a WebGL "liquid glass" hero surface.
+- **Surfaces** — film stills and poster artwork on a dark background, warm amber controls, and translucent cards. Title details use a WebGL surface with a static fallback.
 - **Motion** — Framer Motion springs and eased transitions, with reusable variants and a shared motion vocabulary.
-- **Responsive** — Tailwind's default breakpoints; mobile is the unprefixed base and desktop (`md:`+, ≥768px) is preserved exactly.
+- **Responsive** — a shared header across screen sizes, bottom tabs on phones, and desktop navigation from 768px.
 
 ---
 
@@ -299,7 +298,7 @@ Design specs and phased implementation plans live under [`docs/superpowers/`](do
 
 ## 📄 License
 
-© 2026 Parusann. Personal project — all rights reserved. (No open‑source license is currently granted; add a `LICENSE` file to set redistribution terms.)
+© 2026 Parusan Natheeswaran. Personal project — all rights reserved. (No open‑source license is currently granted; add a `LICENSE` file to set redistribution terms.)
 
 <div align="center">
 

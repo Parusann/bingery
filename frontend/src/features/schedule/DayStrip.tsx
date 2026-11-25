@@ -28,13 +28,14 @@ export function DayStrip({
   const monthLabel = monthOf(weekStart);
   const weekNumber = isoWeekOf(weekStart);
 
-  const Chip = ({ d }: { d: string }) => {
+  const renderDay = (d: string) => {
     const isToday = d === todayIso;
     const count = episodeCounts[d] ?? 0;
     return (
       <button
         key={d}
         type="button"
+        aria-current={isToday ? "date" : undefined}
         data-today={isToday}
         onClick={() => onChipClick(d)}
         className={[
@@ -71,29 +72,19 @@ export function DayStrip({
     );
   };
 
-  const PrevBtn = ({ big }: { big?: boolean }) => (
-    <button
-      type="button"
-      aria-label="previous week"
-      onClick={onPrevWeek}
-      className={`grid ${big ? "h-11 w-11" : "h-9 w-9"} place-items-center rounded-lg border border-line text-ink-2 hover:text-ink hover:border-line-2 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber/60`}
-    >
-      <ChevronLeft className="h-4 w-4" aria-hidden />
-    </button>
-  );
-  const NextBtn = ({ big }: { big?: boolean }) => (
-    <button
-      type="button"
-      aria-label="next week"
-      onClick={onNextWeek}
-      className={`grid ${big ? "h-11 w-11" : "h-9 w-9"} place-items-center rounded-lg border border-line text-ink-2 hover:text-ink hover:border-line-2 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber/60`}
-    >
-      <ChevronRight className="h-4 w-4" aria-hidden />
-    </button>
-  );
+  function weekButton(direction: "previous" | "next", large = false) {
+    const previous = direction === "previous";
+    const Icon = previous ? ChevronLeft : ChevronRight;
+    return (
+      <button type="button" aria-label={direction + " week"} onClick={previous ? onPrevWeek : onNextWeek}
+        className={`grid ${large ? "h-11 w-11" : "h-9 w-9"} place-items-center rounded-lg border border-line text-ink-2 hover:text-ink hover:border-line-2 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber/60`}>
+        <Icon className="h-4 w-4" aria-hidden />
+      </button>
+    );
+  }
 
   return (
-    <div className="sticky top-14 md:top-0 z-30 -mx-4 px-4 py-3 md:py-3.5 bg-bg/80 md:bg-bg/70 backdrop-blur-xl md:backdrop-blur-md backdrop-saturate-150 border-b border-line">
+    <div className="sticky top-14 md:top-16 z-30 -mx-4 px-4 py-3 md:py-3.5 bg-bg/80 md:bg-bg/70 backdrop-blur-xl md:backdrop-blur-md backdrop-saturate-150 border-b border-line">
       {/* ── Mobile: two stacked rows (md:hidden) ── */}
       <div className="md:hidden flex flex-col gap-2.5">
         <div className="flex items-center justify-between">
@@ -102,30 +93,26 @@ export function DayStrip({
             <span className="font-mono text-[11px] tnum text-mute">Week {weekNumber}</span>
           </div>
           <div className="flex items-center gap-2">
-            <PrevBtn big />
-            <NextBtn big />
+            {weekButton("previous", true)}
+            {weekButton("next", true)}
           </div>
         </div>
         <div className="grid grid-cols-7 gap-1.5">
-          {dates.map((d) => (
-            <Chip key={d} d={d} />
-          ))}
+          {dates.map(renderDay)}
         </div>
       </div>
 
       {/* ── Desktop: single row (hidden md:flex) ── */}
       <div className="hidden md:flex items-center gap-4">
-        <PrevBtn />
+        {weekButton("previous")}
         <div className="flex flex-col items-end border-r border-line-2 pr-4">
           <span className="font-mono text-[10.5px] uppercase tracking-[0.22em] text-peach">{monthLabel}</span>
           <span className="font-mono text-[11.5px] tnum text-mute">Week {weekNumber}</span>
         </div>
         <div className="grid flex-1 grid-cols-7 gap-2">
-          {dates.map((d) => (
-            <Chip key={d} d={d} />
-          ))}
+          {dates.map(renderDay)}
         </div>
-        <NextBtn />
+        {weekButton("next")}
       </div>
     </div>
   );

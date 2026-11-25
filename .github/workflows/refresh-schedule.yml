@@ -62,6 +62,7 @@ jobs:
           echo "machine never woke"; exit 1
 
       - name: Refresh AniList statuses (schedule-window anti-drift)
+        id: window
         # Resyncs every show (any stored status) with an episode near
         # today. Finished shows drop out of AniList's airing feed, so ONLY
         # this cohort-by-our-own-rows refresh can flip them to Finished —
@@ -70,17 +71,26 @@ jobs:
         continue-on-error: true
         run: |
           curl --fail-with-body --max-time 600 \
+            --output anilist-refresh.json \
             -X POST \
             -H "X-Admin-Secret: ${{ secrets.ADMIN_SYNC_SECRET }}" \
             -H "Content-Type: application/json" \
             -d '{"mode": "window"}' \
             "$APP_URL/api/anilist/sync" \
-            | tee anilist-refresh.json \
             || { echo "::warning::AniList window refresh failed — statuses may drift until the next run"; exit 1; }
           echo
-          jq '{cohort, refreshed, synced, failed, capped}' anilist-refresh.json
+          jq -e 'select(.mode == "window" and
+                   ([.requested, .synced, .failed] | all(type == "number" and . >= 0)) and
+                   (.requested == .synced + .failed))
+                 | {cohort, requested, synced, failed, capped}' anilist-refresh.json
+          if jq -e '.failed > 0' anilist-refresh.json >/dev/null; then
+            jq -r '"::warning::AniList window refresh failed for \(.failed) of \(.requested) titles."' anilist-refresh.json
+          fi
+          # A quiet week is valid. A nonempty cohort with no successful updates is a failure.
+          jq -e '.requested == 0 or .synced > 0' anilist-refresh.json >/dev/null
 
       - name: Weekly seasonal catalog pull (Sundays)
+        id: seasonal
         # Replaces the retired Render weekly resync: keeps new-season
         # titles flowing into the catalog. Skips silently on other days.
         continue-on-error: true
@@ -96,26 +106,31 @@ jobs:
             *)        season=FALL ;;
           esac
           curl --fail-with-body --max-time 600 \
+            --output seasonal-result.json \
             -X POST \
             -H "X-Admin-Secret: ${{ secrets.ADMIN_SYNC_SECRET }}" \
             -H "Content-Type: application/json" \
             -d "{\"mode\": \"seasonal\", \"season\": \"$season\", \"year\": $year, \"pages\": 2}" \
             "$APP_URL/api/anilist/sync" \
             || { echo "::warning::seasonal catalog pull failed"; exit 1; }
+          jq -e 'select(.mode == "seasonal" and (.synced | type == "number" and . > 0))
+                 | {mode, synced}' seasonal-result.json \
+            || { echo "::warning::Seasonal pull returned no synced titles or an invalid response"; exit 1; }
 
       - name: Run syncs via admin endpoint
+        id: dub
         # max-time 600 = 10 min cap. Typical run is ~60-90s
         # (CR ~10s, AS ~30-60s, seed ~5s).
         run: |
           curl --fail-with-body --max-time 600 \
+            --output sync-result.json \
             -X POST \
             -H "X-Admin-Secret: ${{ secrets.ADMIN_SYNC_SECRET }}" \
             -H "Content-Type: application/json" \
-            "$APP_URL/api/admin/sync-dub-sources" \
-            | tee sync-result.json
+            "$APP_URL/api/admin/sync-dub-sources"
           echo
           echo "=== Snapshot ==="
-          jq '.snapshot' sync-result.json
+          jq -e '.snapshot | select(.total_dub_eps | type == "number")' sync-result.json
           echo
           echo "=== Dub tier doctor ==="
           jq '.dub_doctor // "doctor unavailable"' sync-result.json
@@ -123,6 +138,27 @@ jobs:
           # ANIMESCHEDULE_API_KEY); the audit job below turns sustained
           # problems into a failed run + issue.
           jq -r '.dub_doctor.alarms[]? | "::warning::dub tier alarm: \(.)"' sync-result.json
+          # The endpoint reports provider failures inside a successful HTTP response.
+          # A source with zero matches is still a completed run.
+          failed_stages=$(jq -re '[
+            (if (.crunchyroll.written | type) != "number" then "Crunchyroll" else empty end),
+            (if (.animeschedule.written | type) != "number" then "AnimeSchedule" else empty end),
+            (if .seed.exit_code != 0 then "Dub projections" else empty end)
+          ]' sync-result.json)
+          jq -r '.[] | "::warning::Dub refresh stage failed: \(.)"' <<< "$failed_stages"
+          if jq -e 'length > 0' <<< "$failed_stages" >/dev/null; then
+            jq -r '"Dub refresh stages that failed: " + join(", ")' <<< "$failed_stages" >> "$GITHUB_STEP_SUMMARY"
+          fi
+          jq -e 'length < 3' <<< "$failed_stages" >/dev/null
+
+      - name: Report refresh failures
+        if: ${{ !cancelled() && (steps.window.outcome == 'failure' || steps.seasonal.outcome == 'failure' || steps.dub.outcome == 'failure') }}
+        run: |
+          {
+            echo "### Schedule refresh failed"
+            echo "Window refresh: ${{ steps.window.outcome }}. Seasonal step: ${{ steps.seasonal.outcome }}. Dub sync: ${{ steps.dub.outcome }}."
+          } >> "$GITHUB_STEP_SUMMARY"
+          exit 1
 
   audit:
     # Verifies what the schedule now serves against independent sources.
@@ -156,17 +192,28 @@ jobs:
         # for attended CLI runs (python audit_schedule.py --weeks 3).
         run: |
           curl --fail-with-body --max-time 600 \
+            --output audit-report.json \
             -X POST \
             -H "X-Admin-Secret: ${{ secrets.ADMIN_SYNC_SECRET }}" \
             -H "Content-Type: application/json" \
             -d '{"weeks": 1, "max_anime": 80}' \
-            "$APP_URL/api/admin/audit-schedule" \
-            | tee audit-report.json
+            "$APP_URL/api/admin/audit-schedule"
           echo
           echo "=== Audit totals ==="
-          jq '.totals' audit-report.json
+          jq -e 'select((.threshold_breaches | type == "array")
+                     and (.tiers | type == "array")
+                     and (.totals.sub.entries | type == "number")
+                     and (.totals.dub.entries | type == "number"))
+                 | .totals' audit-report.json
           echo "=== Source tiers ==="
           jq '[.tiers[] | {name, state, detail}]' audit-report.json
+          {
+            echo '### Schedule audit coverage'
+            echo '| Track | Entries | Confirmed | Estimated | Mismatch | Unverifiable |'
+            echo '| --- | ---: | ---: | ---: | ---: | ---: |'
+            jq -r '.totals | ("sub", "dub") as $track | .[$track]
+                   | "| \($track) | \(.entries) | \(.confirmed) | \(.estimated) | \(.mismatch) | \(.unverifiable) |"' audit-report.json
+          } >> "$GITHUB_STEP_SUMMARY"
 
       - name: Upload audit report artifact
         if: always()
@@ -180,7 +227,7 @@ jobs:
         run: |
           breaches=$(jq -r '.threshold_breaches[]?' audit-report.json)
           if [ -z "$breaches" ]; then
-            echo "audit healthy — no threshold breaches"
+            echo "No audit thresholds exceeded. See the run summary for verification coverage."
             exit 0
           fi
           echo "$breaches" | while read -r b; do

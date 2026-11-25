@@ -4,6 +4,7 @@ import { Button } from "@/design/Button";
 import { GlassCard } from "@/design/GlassCard";
 import { cn } from "@/lib/cn";
 import { transitions } from "@/design/motion";
+import { useAuth } from "@/stores/auth";
 import { useChat } from "@/hooks/useChat";
 import type { Turn } from "@/hooks/useChat";
 import { ChatAnimeCard } from "./ChatAnimeCard";
@@ -17,7 +18,12 @@ const SEED: Turn[] = [
 ];
 
 export function ChatPage() {
-  const { turns, send, loading, error, offline } = useChat(SEED);
+  const userId = useAuth((state) => state.user?.id);
+  return <GuideConversation key={userId ?? "guest"} />;
+}
+
+function GuideConversation() {
+  const { turns, send, retry, loading, error, offline } = useChat(SEED);
   const [input, setInput] = useState("");
   const scroller = useRef<HTMLDivElement | null>(null);
 
@@ -52,6 +58,7 @@ export function ChatPage() {
       {/* ─── Chat surface ────────────────────────────────────────── */}
       <GlassCard tone="warm" elevated className="overflow-hidden">
         <div
+          role="log" aria-label="Conversation"
           ref={scroller}
           className="h-[55dvh] md:h-[68vh] overflow-y-auto px-5 md:px-7 py-6 space-y-5"
         >
@@ -159,12 +166,13 @@ export function ChatPage() {
         >
           <input
             type="text"
+            aria-label="Message the guide"
             placeholder="Tell me what you're in the mood for…"
             value={input}
             onChange={(e) => setInput(e.target.value)}
             disabled={loading}
             className={cn(
-              "flex-1 h-11 px-5 rounded-pill text-sm",
+              "min-w-0 flex-1 h-11 px-5 rounded-pill text-sm",
               "bg-surface border border-amber/35 backdrop-blur-md",
               "placeholder:text-text-dim transition-colors",
               "focus:outline-none focus:border-amber/60 focus:ring-1 focus:ring-amber/35 focus:bg-amber/[0.04]",
@@ -204,6 +212,7 @@ export function ChatPage() {
           {error}
         </p>
       ) : null}
+      {error && <Button className="mt-2" size="sm" variant="ghost" onClick={retry}>Retry message</Button>}
     </div>
   );
 }

@@ -21,7 +21,7 @@ export function RatingHistogram({ buckets }: { buckets: StatsRatingBucket[] }) {
             <div key={score} className="flex h-full flex-col items-center justify-end">
               <div
                 className="w-full rounded-t-sm bg-gradient-to-t from-amber-deep to-amber-hi opacity-90 transition-opacity hover:opacity-100"
-                style={{ height: `${Math.max(2, h)}%` }}
+                style={{ height: `${h}%` }}
                 title={`${count} at ${score}/10`}
               />
             </div>

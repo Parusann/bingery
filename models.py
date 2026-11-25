@@ -204,31 +204,7 @@ class Anime(db.Model):
         [{"genre": "Isekai", "votes": 42, "percentage": 78.5}, ...]
         Sorted by vote count descending.
         """
-        results = (
-            db.session.query(
-                FanGenreVote.genre_tag,
-                db.func.count(FanGenreVote.id).label("vote_count"),
-            )
-            .filter(FanGenreVote.anime_id == self.id)
-            .group_by(FanGenreVote.genre_tag)
-            .order_by(db.func.count(FanGenreVote.id).desc())
-            .all()
-        )
-
-        total_raters = (
-            db.session.query(db.func.count(db.distinct(FanGenreVote.user_id)))
-            .filter(FanGenreVote.anime_id == self.id)
-            .scalar()
-        ) or 1
-
-        return [
-            {
-                "genre": row.genre_tag,
-                "votes": row.vote_count,
-                "percentage": round((row.vote_count / total_raters) * 100, 1),
-            }
-            for row in results
-        ]
+        return _fan_genres_by_anime([self.id]).get(self.id, [])
 
     def to_dict(self, include_community=True):
         data = {
@@ -325,6 +301,54 @@ class FanGenreVote(db.Model):
             "genre_tag": self.genre_tag,
             "created_at": self.created_at.isoformat(),
         }
+
+
+def _fan_genres_by_anime(anime_ids):
+    voters = (
+        db.session.query(
+            FanGenreVote.anime_id,
+            db.func.count(db.distinct(FanGenreVote.user_id)).label("total"),
+        )
+        .filter(FanGenreVote.anime_id.in_(anime_ids))
+        .group_by(FanGenreVote.anime_id)
+        .subquery()
+    )
+    votes = db.func.count(FanGenreVote.id)
+    rows = (
+        db.session.query(FanGenreVote.anime_id, FanGenreVote.genre_tag, votes, voters.c.total)
+        .join(voters, voters.c.anime_id == FanGenreVote.anime_id)
+        .group_by(FanGenreVote.anime_id, FanGenreVote.genre_tag, voters.c.total)
+        .order_by(FanGenreVote.anime_id, votes.desc(), FanGenreVote.genre_tag)
+    )
+    by_anime = {}
+    for anime_id, tag, count, total_voters in rows:
+        by_anime.setdefault(anime_id, []).append({
+            "genre": tag,
+            "votes": count,
+            "percentage": round(count / total_voters * 100, 1),
+        })
+    return by_anime
+
+
+def serialize_catalog_page(anime_list):
+    """Attach community data to a page of anime with preloaded official genres."""
+    if not anime_list:
+        return []
+    ids = [anime.id for anime in anime_list]
+    ratings = {
+        anime_id: (round(float(avg), 1), count)
+        for anime_id, avg, count in db.session.query(
+            Rating.anime_id, db.func.avg(Rating.score), db.func.count(Rating.id)
+        ).filter(Rating.anime_id.in_(ids)).group_by(Rating.anime_id)
+    }
+    fan_genres = _fan_genres_by_anime(ids)
+    results = []
+    for anime in anime_list:
+        row = anime.to_dict(include_community=False)
+        row["community_score"], row["rating_count"] = ratings.get(anime.id, (None, 0))
+        row["fan_genres"] = fan_genres.get(anime.id, [])
+        results.append(row)
+    return results
 
 
 # ─── Watchlist Entry (watch status tracking) ────────────────────────────────

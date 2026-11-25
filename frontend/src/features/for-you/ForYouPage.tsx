@@ -1,3 +1,4 @@
+import { SignInPanel, LoadError } from "@/design/PageState";
 import { AnimeGrid } from "@/features/discover/AnimeGrid";
 import { GlassCard } from "@/design/GlassCard";
 import { Skeleton } from "@/design/Skeleton";
@@ -11,20 +12,11 @@ export function ForYouPage() {
   const recs = useRecommendations(!!user);
 
   if (!user) {
-    return (
-      <div className="py-20 text-center">
-        <div className="font-mono text-micro uppercase text-amber mb-3">
-          For you
-        </div>
-        <h1 className="font-display text-display mb-2">
-          Sign in to see your picks
-        </h1>
-        <p className="text-text-muted">
-          Rate a few anime and your personal recommendations appear here.
-        </p>
-      </div>
-    );
+    return <SignInPanel section="For you" title="Sign in to see your picks"
+      description="Rate a few anime to get recommendations based on your taste." />;
   }
+
+  if (recs.isError && !recs.data) return <LoadError title="Your recommendations couldn’t load." retry={() => recs.refetch()} />;
 
   const items = (recs.data?.recommendations ?? []).map((r) => r.anime);
 
@@ -54,7 +46,7 @@ export function ForYouPage() {
       )}
       {recs.data?.recommendations?.length ? (
         <section>
-          <h2 className="font-display text-title mb-4">Picks for tonight</h2>
+          <h2 className="font-display text-title mb-4">{recs.data.source === "popular" ? "Popular starting points" : "Picks for tonight"}</h2>
           <AnimeGrid anime={items} loading={recs.isLoading} />
           <div className="mt-6 grid md:grid-cols-2 gap-4">
             {(recs.data?.recommendations ?? []).slice(0, 6).map((r) => (
@@ -77,7 +69,7 @@ export function ForYouPage() {
         <AnimeGrid
           anime={[]}
           loading={recs.isLoading}
-          empty="Rate a few anime to get personalized picks."
+          empty="Rate a few titles or browse the catalog for more anime."
         />
       )}
       <BecauseYouLovedRow data={recs.data?.because_you_loved} />

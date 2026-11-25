@@ -1,99 +1,63 @@
 import { useState } from "react";
+import { Check, Plus } from "lucide-react";
 import { Button } from "@/design/Button";
-import {
-  useAddToCollection,
-  useCollections,
-  useCreateCollection,
-} from "@/hooks/useCollections";
+import { Input } from "@/design/Input";
+import { Modal } from "@/design/Modal";
+import { useAddToCollection, useCollections, useCreateCollection } from "@/hooks/useCollections";
 
-interface Props {
-  animeId: number;
-}
-
-export function AddToCollection({ animeId }: Props) {
-  const { data } = useCollections();
+export function AddToCollection({ animeId }: { animeId: number }) {
   const [open, setOpen] = useState(false);
-  const create = useCreateCollection();
-  const [newTitle, setNewTitle] = useState("");
-  const collections = data?.collections ?? [];
-
   return (
-    <div className="relative">
-      <Button size="sm" variant="ghost" onClick={() => setOpen((o) => !o)}>
-        Add to collection
-      </Button>
-      {open ? (
-        <div className="absolute right-0 top-full mt-2 z-10 w-72 rounded-lg border border-border-strong bg-bg-elevated/95 backdrop-blur-xl shadow-e3 p-3 space-y-2">
-          {collections.length === 0 ? (
-            <p className="text-xs text-text-muted px-1 py-2">
-              No collections yet. Create one below.
-            </p>
-          ) : (
-            <div className="max-h-56 overflow-y-auto">
-              {collections.map((c) => (
-                <AddRow key={c.id} collectionId={c.id} title={c.name} animeId={animeId} />
-              ))}
-            </div>
-          )}
-          <form
-            className="flex gap-2 pt-2 border-t border-border"
-            onSubmit={async (e) => {
-              e.preventDefault();
-              if (!newTitle.trim()) return;
-              const r = await create.mutateAsync({ name: newTitle.trim() });
-              setNewTitle("");
-              await new Promise((res) => setTimeout(res, 60));
-              const item = document.querySelector<HTMLButtonElement>(
-                `[data-add-row="${r.collection.id}"]`
-              );
-              item?.click();
-            }}
-          >
-            <input
-              value={newTitle}
-              onChange={(e) => setNewTitle(e.target.value)}
-              placeholder="New collection title…"
-              className="flex-1 h-9 px-2.5 rounded-md bg-surface border border-border text-sm outline-none placeholder:text-text-dim transition-colors focus:border-amber/50 focus:ring-1 focus:ring-amber/35"
-            />
-            <Button size="sm" type="submit" disabled={!newTitle.trim()}>
-              Add
-            </Button>
-          </form>
-        </div>
-      ) : null}
-    </div>
+    <>
+      <Button size="sm" variant="ghost" onClick={() => setOpen(true)}>Add to collection</Button>
+      <Modal open={open} onClose={() => setOpen(false)} label="Add to collection" maxWidth="460px">
+        <CollectionPicker animeId={animeId} />
+      </Modal>
+    </>
   );
 }
 
-function AddRow({
-  collectionId,
-  title,
-  animeId,
-}: {
-  collectionId: number;
-  title: string;
-  animeId: number;
-}) {
-  const add = useAddToCollection(collectionId);
-  const [done, setDone] = useState(false);
+function CollectionPicker({ animeId }: { animeId: number }) {
+  const lists = useCollections();
+  const create = useCreateCollection();
+  const add = useAddToCollection();
+  const [newTitle, setNewTitle] = useState("");
+  const [added, setAdded] = useState<number[]>([]);
+  const busy = create.isPending || add.isPending;
+  function save(id: number) {
+    add.mutate({ id, animeId }, { onSuccess: () => setAdded((prev) => [...prev, id]) });
+  }
+
   return (
-    <button
-      data-add-row={collectionId}
-      onClick={async () => {
-        try {
-          await add.mutateAsync({ anime_id: animeId });
-          setDone(true);
-          setTimeout(() => setDone(false), 1500);
-        } catch {
-          /* toast later */
-        }
-      }}
-      className="w-full text-left text-sm px-2.5 py-2 rounded-md transition-colors hover:bg-surface-strong focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber/60 flex items-center justify-between"
-    >
-      <span className="truncate">{title}</span>
-      <span className={done ? "text-xs text-success" : "text-xs font-mono text-text-muted"}>
-        {add.isPending ? "…" : done ? "✓" : "+"}
-      </span>
-    </button>
+    <div className="p-5 md:p-7">
+      <h2 className="font-display text-2xl mb-4">Add to collection</h2>
+      {lists.isLoading && <p role="status">Loading collections…</p>}
+      {lists.isError && <button type="button" className="text-amber" onClick={() => lists.refetch()}>Collections couldn’t load. Try again</button>}
+      {lists.data?.collections.length === 0 && <p className="text-text-muted">Create your first collection below.</p>}
+      <div className="space-y-1 max-h-56 overflow-auto">
+        {lists.data?.collections.map((c) => (
+          <button key={c.id} type="button" onClick={() => save(c.id)}
+            className="flex items-center w-full gap-3 rounded-md px-3 py-2 text-left hover:bg-surface-strong disabled:opacity-70"
+            disabled={busy || added.includes(c.id)}>
+            <span className="flex-1 truncate">{c.name}</span>
+            {added.includes(c.id) ? <><Check size={15} /> Added</> : <Plus size={16} />}
+          </button>
+        ))}
+      </div>
+      <form className="mt-4 border-t border-border pt-4 space-y-3"
+        onSubmit={(event) => {
+          event.preventDefault();
+          if (!newTitle.trim() || busy) return;
+          create.mutate({ name: newTitle.trim() }, { onSuccess: ({ collection }) => {
+            setNewTitle("");
+            save(collection.id);
+          } });
+        }}>
+        <Input label="New collection name" value={newTitle} onChange={(e) => setNewTitle(e.target.value)} maxLength={80} />
+        <Button type="submit" size="sm" disabled={!newTitle.trim() || busy}>Create and add</Button>
+      </form>
+      {(create.isError || add.isError) && <p role="alert" className="mt-3 text-sm text-danger">{(create.error || add.error)?.message}</p>}
+      {added.length > 0 && <span role="status" className="sr-only">Added to collection</span>}
+    </div>
   );
 }

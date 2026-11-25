@@ -38,7 +38,22 @@ describe("request error handling", () => {
     expect(handler).toHaveBeenCalled();
   });
 
-  it("does not fire the unauthorized handler for auth endpoints", async () => {
+  it("keeps a newer session when an earlier request returns 401", async () => {
+    api.setToken("first-session");
+    vi.stubGlobal("fetch", vi.fn(async () => {
+      api.setToken("next-session");
+      return new Response(null, { status: 401 });
+    }));
+    await expect(api.getWatchlist("")).rejects.toMatchObject({ status: 401 });
+    expect(api.getToken()).toBe("next-session");
+  });
+
+  it("reports an HTML success response as an unreadable API result", async () => {
+    vi.stubGlobal("fetch", vi.fn(async () => new Response("<html></html>", { status: 200 })));
+    await expect(api.getAnime()).rejects.toThrow("unreadable response");
+  });
+
+  it("does not fire the unauthorized handler for auth endpoints for a failed login", async () => {
     api.setToken("stale-token");
     const handler = vi.fn();
     onUnauthorized(handler);

@@ -15,7 +15,9 @@ registerSW({
   immediate: true,
   onRegisteredSW(_swUrl, registration) {
     if (registration) {
-      setInterval(() => registration.update(), 5 * 60 * 1000);
+      setInterval(() => {
+        if (navigator.onLine) void registration.update().catch(() => { /* Retry on the next poll. */ });
+      }, 5 * 60 * 1000);
     }
   },
 });

@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { api, ApiError } from "@/lib/api";
 import type {
   ChatAnimeRef,
@@ -16,6 +16,7 @@ interface Turn {
   role: ChatRole;
   content: string;
   extra?: TurnExtra;
+  failed?: boolean;
 }
 
 export function useChat(seed: Turn[] = []) {
@@ -24,20 +25,24 @@ export function useChat(seed: Turn[] = []) {
   const [error, setError] = useState<string | null>(null);
   const [offline, setOffline] = useState(false);
 
-  async function send(userText: string) {
-    if (!userText.trim()) return;
-    const next: Turn[] = [...turns, { role: "user", content: userText }];
-    setTurns(next);
+  const sending = useRef(false);
+
+  async function requestReply(userText: string, prior: Turn[]) {
+    const message = userText.trim();
+    if (sending.current || !message) return;
+    sending.current = true;
+    const userTurn: Turn = { role: "user", content: message };
+    setTurns([...prior, userTurn]);
     setLoading(true);
     setError(null);
     setOffline(false);
     try {
-      const conversation: ChatMessage[] = next.map((t) => ({
-        role: t.role,
-        content: t.content,
-      }));
+      // Flask appends the current message. Only send completed history here.
+      const conversation: ChatMessage[] = prior.slice(seed.length)
+        .filter((turn) => !turn.failed)
+        .map(({ role, content }) => ({ role, content }));
       const res = await api.chatMessage({
-        message: userText,
+        message,
         conversation,
         mode: "recommend",
       });
@@ -59,6 +64,7 @@ export function useChat(seed: Turn[] = []) {
         },
       ]);
     } catch (e) {
+      setTurns([...prior, { ...userTurn, failed: true }]);
       if (
         e instanceof ApiError &&
         e.status === 503 &&
@@ -68,11 +74,18 @@ export function useChat(seed: Turn[] = []) {
       }
       setError((e as Error).message);
     } finally {
+      sending.current = false;
       setLoading(false);
     }
   }
 
-  return { turns, setTurns, send, loading, error, offline };
+  const send = (text: string) => requestReply(text, turns);
+  function retry() {
+    const last = turns.at(-1);
+    if (last?.failed) return requestReply(last.content, turns.slice(0, -1));
+  }
+
+  return { turns, send, retry, loading, error, offline };
 }
 
 export type { Turn };

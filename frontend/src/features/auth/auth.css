@@ -1,0 +1,53 @@
+.auth-page {
+  display: grid;
+  grid-template-columns: minmax(0, .85fr) minmax(0, 1fr);
+  max-width: 960px;
+  min-height: 530px;
+  margin: clamp(.6rem, 4vw, 3.25rem) auto;
+  overflow: hidden;
+  color: #fff7eb;
+  border: 1px solid rgb(235 203 168 / 18%);
+  border-radius: 16px;
+  background: #1b191d;
+}
+.auth-image { position: relative; isolation: isolate; overflow: hidden; }
+.auth-image img, .auth-image::after { position: absolute; inset: 0; width: 100%; height: 100%; }
+.auth-image img { z-index: -2; object-fit: cover; object-position: 66% center; }
+.auth-image::after { z-index: -1; content: ""; background: linear-gradient(0deg, rgb(18 14 20 / 93%), transparent 55%); }
+.auth-image figcaption { position: absolute; inset: auto 1.7rem 1.7rem; display: grid; gap: .24rem; }
+.auth-image figcaption > span {
+  display: inline-flex;
+  align-items: center;
+  gap: .6rem;
+  color: #ffcea4;
+  font: 500 .64rem "JetBrains Mono", monospace;
+  text-transform: uppercase;
+  letter-spacing: .1em;
+}
+.auth-image strong { font: 400 clamp(1.7rem, 3.5vw, 2.4rem) / 1.2 Fraunces, Georgia, serif; }
+.auth-image a { width: fit-content; font-size: .62rem; color: #d0c7bd; }
+.auth-image a:hover { text-decoration: underline; }
+.auth-panel { align-self: center; min-width: 0; padding: clamp(1.45rem, 4.4vw, 3.6rem); }
+.auth-form h1 { margin-bottom: .5rem; font: 400 clamp(2.15rem, 3.4vw, 3rem) / 1.06 Fraunces, Georgia, serif; letter-spacing: -.055em; }
+.auth-form input { min-width: 0; }
+.auth-form button[type="submit"] { min-height: 46px; margin-top: .2rem; border-radius: 8px; box-shadow: none; }
+.auth-mode {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 3px;
+  padding: 3px;
+  border: 1px solid rgb(242 222 198 / 15%);
+  border-radius: 9px;
+  background: #131216;
+}
+.auth-mode button { min-height: 42px; color: #c8bfb8; border-radius: 6px; font-size: .9rem; }
+.auth-mode button[aria-pressed="true"] { background: #37302e; color: #ffe0bc; font-weight: 600; }
+.auth-mode button:disabled { opacity: .65; }
+@media (max-width: 700px) {
+  .auth-page { max-width: 500px; min-height: 0; grid-template-columns: minmax(0, 1fr); margin: 0 auto; }
+  .auth-image { height: clamp(105px, 30vw, 155px); }
+  .auth-image img { object-position: 50% 48%; }
+  .auth-image figcaption { inset: auto 1.3rem .75rem; }
+  .auth-image strong { font-size: 1.5rem; }
+  .auth-panel { padding: 1.5rem 1.25rem 1.8rem; }
+}

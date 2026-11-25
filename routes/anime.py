@@ -1,7 +1,8 @@
 from flask import Blueprint, request, jsonify
 from flask_jwt_extended import jwt_required, get_jwt_identity, verify_jwt_in_request
 from sqlalchemy import func
-from models import db, Anime, Genre, Rating, FanGenreVote, anime_genres, WatchlistEntry
+from sqlalchemy.orm import selectinload
+from models import db, Anime, Genre, Rating, FanGenreVote, anime_genres, WatchlistEntry, serialize_catalog_page
 from utils.nsfw import HARD_BLOCKED_GENRES, maybe_exclude_nsfw
 
 anime_bp = Blueprint("anime", __name__, url_prefix="/api/anime")
@@ -13,8 +14,8 @@ def list_anime():
     GET /api/anime?page=1&per_page=20&search=&genre=Action&sort=api_score&order=desc
     Returns paginated anime list with community data.
     """
-    page = request.args.get("page", 1, type=int)
-    per_page = min(request.args.get("per_page", 20, type=int), 100)
+    page = max(1, request.args.get("page", 1, type=int))
+    per_page = max(1, min(request.args.get("per_page", 20, type=int), 100))
     search = request.args.get("search", "").strip()
     genre_filter = request.args.get("genre", "").strip()
     sort_by = request.args.get("sort", "api_score")
@@ -26,8 +27,8 @@ def list_anime():
     if search:
         query = query.filter(
             db.or_(
-                Anime.title.ilike(f"%{search}%"),
-                Anime.title_english.ilike(f"%{search}%"),
+                Anime.title.icontains(search, autoescape=True),
+                Anime.title_english.icontains(search, autoescape=True),
             )
         )
 
@@ -38,23 +39,29 @@ def list_anime():
     # Hide NSFW unless the caller opted in via ?include_nsfw=true
     query = maybe_exclude_nsfw(query)
 
-    # Sorting
-    sort_column = {
-        "api_score": Anime.api_score,
-        "year": Anime.year,
-        "title": Anime.title,
-        "episodes": Anime.episodes,
-    }.get(sort_by, Anime.api_score)
-
-    if sort_column is not None:
-        query = query.order_by(
-            sort_column.desc().nullslast() if order == "desc" else sort_column.asc().nullsfirst()
+    if sort_by == "community_score":
+        scores = (
+            db.session.query(Rating.anime_id, func.avg(Rating.score).label("score"))
+            .group_by(Rating.anime_id)
+            .subquery()
         )
+        query = query.outerjoin(scores, scores.c.anime_id == Anime.id)
+        sort_column = scores.c.score
+    else:
+        sort_column = {
+            "api_score": Anime.api_score,
+            "year": Anime.year,
+            "title": func.lower(func.coalesce(func.nullif(Anime.title_english, ""), Anime.title)),
+            "episodes": Anime.episodes,
+        }.get(sort_by, Anime.api_score)
+
+    ordering = sort_column.asc() if order == "asc" else sort_column.desc()
+    query = query.options(selectinload(Anime.official_genres)).order_by(ordering.nullslast(), Anime.id)
 
     paginated = query.paginate(page=page, per_page=per_page, error_out=False)
 
     return jsonify({
-        "anime": [a.to_dict() for a in paginated.items],
+        "anime": serialize_catalog_page(paginated.items),
         "total": paginated.total,
         "page": paginated.page,
         "pages": paginated.pages,
@@ -220,7 +227,11 @@ def get_anime_ratings(anime_id):
 @anime_bp.route("/genres", methods=["GET"])
 def list_genres():
     """All available genres, grouped by category."""
-    genres = db.session.query(Genre).order_by(Genre.category, Genre.name).all()
+    query = db.session.query(Genre)
+    if request.args.get("catalog", "").lower() == "true":
+        visible = maybe_exclude_nsfw(db.session.query(Anime.id))
+        query = query.join(anime_genres).filter(anime_genres.c.anime_id.in_(visible)).distinct()
+    genres = query.order_by(Genre.category, Genre.name).all()
     grouped = {}
     for g in genres:
         grouped.setdefault(g.category, []).append(g.to_dict())

@@ -428,6 +428,8 @@ class AniListClient:
             "year": media.get("seasonYear") or (media.get("startDate") or {}).get("year"),
             "season": season_map.get(media.get("season")),
             "episodes": media.get("episodes"),
+            "next_airing_episode": media.get("nextAiringEpisode"),
+            "airing_schedule": (media.get("airingSchedule") or {}).get("nodes") or [],
             "studio": studio_name,
             "image_url": cover.get("extraLarge") or cover.get("large") or cover.get("medium"),
             "banner_url": media.get("bannerImage"),
@@ -512,16 +514,10 @@ class AniListClient:
         data = self._request(AIRING_QUERY, {"page": page, "perPage": per_page})
         page_data = data["Page"]
 
-        media_list = []
-        for raw in page_data["media"]:
-            normalized = self._normalize_anime(raw)
-            normalized["next_airing_episode"] = raw.get("nextAiringEpisode") or None
-            normalized["airing_schedule"] = (
-                (raw.get("airingSchedule") or {}).get("nodes") or []
-            )
-            media_list.append(normalized)
-
-        return {"media": media_list, "page_info": page_data["pageInfo"]}
+        return {
+            "media": [self._normalize_anime(raw) for raw in page_data["media"]],
+            "page_info": page_data["pageInfo"],
+        }
 
     def fetch_catalog_page(
         self, season_year: int, page: int = 1, per_page: int = 50
@@ -549,17 +545,8 @@ class AniListClient:
         )
         page_data = data["Page"]
 
-        media_list = []
-        for raw in page_data["media"]:
-            normalized = self._normalize_anime(raw)
-            normalized["next_airing_episode"] = raw.get("nextAiringEpisode") or None
-            normalized["airing_schedule"] = (
-                (raw.get("airingSchedule") or {}).get("nodes") or []
-            )
-            media_list.append(normalized)
-
         return {
-            "media": media_list,
+            "media": [self._normalize_anime(raw) for raw in page_data["media"]],
             "page_info": page_data["pageInfo"],
         }
 
@@ -579,17 +566,8 @@ class AniListClient:
         )
         page_data = data["Page"]
 
-        media_list = []
-        for raw in page_data["media"]:
-            normalized = self._normalize_anime(raw)
-            normalized["next_airing_episode"] = raw.get("nextAiringEpisode") or None
-            normalized["airing_schedule"] = (
-                (raw.get("airingSchedule") or {}).get("nodes") or []
-            )
-            media_list.append(normalized)
-
         return {
-            "media": media_list,
+            "media": [self._normalize_anime(raw) for raw in page_data["media"]],
             "page_info": page_data["pageInfo"],
         }
 
@@ -773,6 +751,7 @@ def sync_anime_from_anilist(
         sync_anime_from_anilist(app, mode="search", query="isekai")
     """
     from models import db
+    from sync_anilist import process_media_entry
 
     client = AniListClient()
     total_synced = 0
@@ -794,17 +773,20 @@ def sync_anime_from_anilist(
             else:  # popular
                 result = client.get_popular(page=page, per_page=per_page)
 
+            page_synced = 0
             for anime_data in result["results"]:
                 try:
-                    anime = sync_anime_to_db(anime_data)
-                    total_synced += 1
+                    with db.session.begin_nested():
+                        process_media_entry(anime_data)
+                    page_synced += 1
                 except Exception as e:
                     print(f"    Error syncing {anime_data.get('title', '?')}: {e}")
                     continue
 
             db.session.commit()
+            total_synced += page_synced
             page_info = result["page_info"]
-            print(f"    Synced {len(result['results'])} anime (page {page_info['currentPage']}/{page_info['lastPage']})")
+            print(f"    Synced {page_synced} anime (page {page_info['currentPage']}/{page_info['lastPage']})")
 
             if not page_info["hasNextPage"]:
                 break

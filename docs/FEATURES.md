@@ -39,18 +39,18 @@ The verification endpoints are deliberately designed against account enumeration
 
 ### User flow
 
-1. User opens `/auth` (the `AuthPage` route) and toggles between **Sign in** and **Sign up** tabs on a single form.
-2. **Sign up:** user enters username, optional display name, email, password. Submit calls `POST /api/auth/register`. On `202` the form swaps to the **verify step** ("Check your email") with a 6-digit code input and a 60-second resend countdown.
+1. Open `/auth` to sign in. Visitors can request an invitation through the waitlist at `/auth?mode=waitlist`. An invitation link fills in the email address and personal invite code for registration.
+2. To register, enter a username, optional display name, email, password and any required invite code. A successful `POST /api/auth/register` returns 202 and opens the verification form with a six-digit code input and a 60-second resend countdown.
 3. User types the code from the email (input strips non-digits, caps at 6, uses `autoComplete="one-time-code"`; the Verify button stays disabled until exactly 6 digits). Submit calls `POST /api/auth/verify`.
-4. On success (`201`) the client stores the JWT, sets the user in the auth store, and navigates to `/discover`. On failure the uniform error "Invalid or expired code." is shown.
+4. Successful verification (201) stores the JWT and returns the user to the local page that requested sign-in, with `/discover` as the default destination. An invalid or expired code displays an error in the form.
 5. If the email never arrives, **Resend code** becomes clickable after the 60s countdown and calls `POST /api/auth/resend` (always appears to succeed). **"Wrong email? Go back"** returns to the form step so the user can re-register with a corrected email — re-registering overwrites the previous pending signup, since the prior holder never proved ownership.
 6. **Sign in:** email + password to `POST /api/auth/login`; on `200` the token is stored and the user is signed in.
-7. On every app boot, `main.tsx` calls `restore()`: if a token exists in `localStorage` it is validated via `GET /api/auth/me`; an invalid/expired token is silently cleared. Sign-out buttons in the header and mobile "More" sheet clear the token and reset the store.
+7. On startup, `main.tsx` calls `restore()` to validate any saved token with `GET /api/auth/me`. Sign out through the account controls in **More**.
 
 ### Frontend
 
-- `frontend/src/features/auth/AuthPage.tsx` — page shell (GlassCard, heading), lazily mounted at the `auth` route in `frontend/src/routes.tsx`; redirects to `/discover` on success.
-- `frontend/src/features/auth/AuthForm.tsx` — the whole flow in one component. Two axes of state: `mode` (`"login" | "register"`) and `step` (`"form" | "verify"`). Owns the client-side resend countdown (`RESEND_SECONDS = 60`, mirroring the server cooldown), the "Code sent." notice (cleared on verify submit), and normalizes email (`trim().toLowerCase()`) before `signUp`/`verifyEmail`/`resendCode` so client and server agree on the key.
+- `frontend/src/features/auth/AuthPage.tsx` handles invite links, the waitlist entry point and the return destination after sign-in.
+- `frontend/src/features/auth/AuthForm.tsx` contains sign-in, registration, email verification and waitlist forms. It manages the resend countdown and normalizes the registration email address.
 - `frontend/src/stores/auth.ts` — Zustand store `useAuth` with `user`, `status` (`"idle" | "loading" | "authenticated" | "error"`), `error`, and actions `signIn`, `signUp` (sends the code, does *not* authenticate), `verifyEmail` (exchanges email+code for token and signs in), `resendCode`, `signOut`, `restore`.
 - `frontend/src/lib/api.ts` — `api.login`, `api.register`, `api.verifyEmail`, `api.resendCode`, `api.me`, plus `getToken`/`setToken` persisting the JWT in `localStorage` under the key `bingery_token`. Every request attaches `Authorization: Bearer <token>` when a token exists.
 - Response types in `frontend/src/types/api.ts`: `AuthResponse` (`{ token, user }`) and `RegisterPendingResponse` (`{ verification_required: true, email }`).
@@ -128,34 +128,23 @@ Production guard (`config.py`): with `FLASK_ENV=production` the app **refuses to
 
 ## Discover & Search
 
-Discover is the main catalog-browsing surface of Bingery: a paginated grid of anime cards that can be filtered by genre, narrowed by title search, and re-sorted, plus a debounced typeahead search box for jumping straight to a title's detail page. It exists so users can explore the locally-synced catalog (seeded from MAL/AniList data) without needing an account — all of its endpoints are public.
-
-The feature also owns the app-wide NSFW policy: a two-tier genre filter (`Hentai` hard-blocked always, `Ecchi` soft-blocked behind an opt-in toggle) that is applied centrally to every list-style endpoint via `utils/nsfw.py` and surfaced in the UI as a persisted eye-icon toggle in the header.
+Discover is a public browser for the locally synced anime catalog. Each card links to its title page at `/anime/:id`.
 
 ### User flow
 
-1. User lands on `/discover` (linked from the desktop `NavBar`, the mobile `BottomTabBar`, the mobile header's search icon, and as the post-login redirect from `AuthPage`).
-2. The grid loads page 1 of the catalog, sorted by API score descending, NSFW-filtered per the global toggle. While loading, 12 skeleton cards render.
-3. **Typeahead:** typing 2+ characters into the search box fires a debounced (250 ms) call to `/api/search/autocomplete`; a dropdown shows up to 8 suggestions (poster thumbnail, English-preferred title, year). Clicking a suggestion navigates to `/anime/:id` and clears the box.
-4. **Full search:** pressing Enter instead submits the query — it is written to the URL as `?q=...` and the grid refetches `/api/anime?search=...`.
-5. **Genre filter:** a horizontally-scrollable pill row (`All` + every tag in `FAN_GENRES`) sets `?genre=...`; the backend matches it against official genre names.
-6. **Sort:** four sort buttons (`API score`, `Community score`, `Year`, `Title`) set `?sort=...`.
-7. Changing any filter resets to page 1. Prev/Next buttons page through results (24 per page); the page number is component state, not URL state, so a refresh keeps `q`/`genre`/`sort` but returns to page 1.
-8. **NSFW toggle:** the eye icon in the desktop `Header` (or mobile `MoreSheet`) flips Ecchi visibility app-wide. The tooltip states explicitly that Hentai is always hidden.
-9. Clicking any `AnimeCard` navigates to the detail route `/anime/:id`.
+1. Open `/discover` to browse titles ranked by API score. The first page of the unfiltered catalog features its highest-ranked title. Pages contain up to 24 titles.
+2. Type two or more characters for autocomplete suggestions. Use the arrow keys and Enter to open a suggestion, or Escape to close the list. Submitting the text without selecting a suggestion searches the catalog.
+3. Choose a genre represented among visible catalog titles. Sort by **Top rated**, **Community score**, **Newest releases** or **Title (A–Z)**.
+4. The URL records the search (`q`), genre, sort and page. Changing any filter returns to the first page. Reloading, bookmarking and browser history preserve the selected view.
+5. Use the Ecchi visibility control to include or hide soft-blocked titles. Hentai-tagged titles are always excluded from catalog results and suggestions.
 
 ### Frontend
 
-- `frontend/src/features/discover/DiscoverPage.tsx` — route component at `/discover` (registered lazily in `frontend/src/routes.tsx`). Holds `q`/`genre`/`sort` in URL search params via `useSearchParams` and `page` in local state; composes the four components below.
-- `frontend/src/features/discover/SearchAutocomplete.tsx` — controlled input + animated dropdown (framer-motion). Uses `useSearch`; outside-click closes the dropdown; Enter submits the trimmed query to the parent; suggestion click navigates to `/anime/{id}`.
-- `frontend/src/features/discover/FilterBar.tsx` — genre pill row built from `FAN_GENRES` (`frontend/src/lib/genres.ts`) with per-genre colors from `genreColor()`, plus the four-button sort selector.
-- `frontend/src/features/discover/AnimeGrid.tsx` — responsive 2/3/4/6-column grid; skeleton state (12 placeholders), empty state ("No anime found."), staggered `ScrollReveal` entrance per card.
-- `frontend/src/features/discover/AnimeCard.tsx` — poster card with blur-up image load, score badge (community score preferred, falling back to `api_score`), English-preferred title, and up to 3 genre badges. Reused by other features (watchlist, seasonal, etc.).
-- `frontend/src/hooks/useAnimeList.ts` — TanStack Query wrapper around `api.getAnime()`; builds the query string (`page`, `per_page=24`, `sort`, `order=desc`, optional `search`/`genre`); query key `["anime-list", page, perPage, search, genre, sort, order]`.
-- `frontend/src/hooks/useSearch.ts` — debounced autocomplete hook (`minChars=2`, `delay=250` ms); errors silently resolve to an empty result list.
-- `frontend/src/stores/nsfw.ts` — zustand store with `persist` (localStorage key `bingery-nsfw`); `visible` defaults to `false`.
-- `frontend/src/layout/NsfwToggle.tsx` — shared toggle button (`aria-pressed`, eye/eye-off icon) rendered by `frontend/src/layout/Header.tsx` (desktop, `size="sm"`) and `frontend/src/layout/MoreSheet.tsx` (mobile, `size="lg"` with an On/Off label).
-- `frontend/src/lib/api.ts` — `applyNsfwParam()` appends `include_nsfw=true` to any request whose path starts with one of `NSFW_AWARE_PREFIXES` (`/anime`, `/seasonal`, `/recommend`, `/schedule`) whenever the store says visible. The autocomplete path (`/search/autocomplete`) is deliberately not in that list.
+- `frontend/src/features/discover/DiscoverPage.tsx` reads and updates URL parameters and shows loading, empty and retry states.
+- `SearchAutocomplete.tsx` and `frontend/src/hooks/useSearch.ts` provide keyboard-accessible suggestions after a 250 ms debounce.
+- `FilterBar.tsx` gets its genre options from the catalog genres endpoint. `AnimeGrid.tsx` and `AnimeCard.tsx` display featured and standard cards, including artwork fallbacks.
+- `frontend/src/hooks/useAnimeList.ts` includes content visibility in the catalog cache key. The persisted `useNsfw` preference defaults to hiding Ecchi.
+- `frontend/src/lib/api.ts` sends `include_nsfw=true` on content-aware API requests when the user enables Ecchi.
 
 ### Backend
 
@@ -163,18 +152,18 @@ Blueprints: `routes/anime.py` (`anime_bp`, prefix `/api/anime`) and `routes/sear
 
 | Method | Path | Auth | Purpose |
 |---|---|---|---|
-| GET | `/api/anime` | None | Paginated catalog list. Params: `page`, `per_page` (default 20, max 100), `search` (ilike on `title`/`title_english`), `genre` (exact official-genre name), `sort` (`api_score`\|`year`\|`title`\|`episodes`, anything else falls back to `api_score`), `order` (`asc`\|`desc`), `include_nsfw`. NSFW-filtered via `maybe_exclude_nsfw`. |
+| GET | `/api/anime` | None | Paginated catalog. Supports `search`, `genre`, `include_nsfw`, `page` and `per_page` (default 20, maximum 100). Sorts by `api_score`, `community_score`, `year`, `title` or `episodes` in ascending or descending order. |
 | GET | `/api/anime/top` | None | Top anime by average community rating (subquery over `Rating`, `HAVING count >= 1`); `limit` default 10, max 50. NSFW-filtered. |
-| GET | `/api/anime/genres` | None | All genres, both grouped by `category` and flat. Not called by the current frontend (FilterBar uses the static `FAN_GENRES` list instead). |
-| GET | `/api/search/autocomplete` | None | Typeahead. `q` (min 2 chars, else empty 200), `limit` (default 8, max 20). Ranks exact-prefix matches on `title_english` first, then prefix on `title`, then substring; tie-break `api_score` desc nullslast. Returns minimal payload (id, titles, image, year, score, episodes, first 3 official genres). **No NSFW filtering.** |
-| GET | `/api/search/full` | None | Advanced search: `q` (title/English title/synopsis ilike), `genres` (comma-separated, `IN` match), `year_min`/`year_max`, `min_score`, `status`, `sort` (`score`\|`year`\|`title`\|`newest`), `page`, `per_page` (default 24, max 100). Returns full `to_dict(include_community=True)` payloads. **No NSFW filtering. Not called by the current frontend** — `frontend/src/lib/api.ts` has no method for it. |
+| GET | `/api/anime/genres` | None | Returns grouped and flat lists of genres. Discover uses `catalog=true` to request genres attached to visible titles. |
+| GET | `/api/search/autocomplete` | None | Suggests visible titles for queries of at least two characters. Prefix matches take priority over substring matches. The result limit defaults to 8 and caps at 20. |
+| GET | `/api/search/full` | None | Searches visible titles and synopses with optional genre, year, score and status filters. Returns paginated results with community data. |
 
 All endpoints query the local SQLite catalog only — no external API calls in the request path (the catalog is populated offline by `seed.py` / `sync_anilist.py`). All search matching uses SQL `ilike` substring matching; there is no full-text index.
 
 NSFW logic lives in `utils/nsfw.py`:
 - `HARD_BLOCKED_GENRES = ("Hentai",)` — excluded unconditionally, even with `?include_nsfw=true`.
 - `SOFT_BLOCKED_GENRES = ("Ecchi",)` — excluded unless the request carries `?include_nsfw=true`.
-- `maybe_exclude_nsfw(query)` applies both tiers via `NOT IN (subquery of anime_ids tagged with the blocked genres)` and is shared by `/api/anime`, `/api/anime/top`, `/api/seasonal`, `/api/schedule`, and the recommendation/chat pipelines.
+- `maybe_exclude_nsfw(query)` removes titles carrying blocked official genres. Catalog, autocomplete, full search, seasonal and schedule queries share the visibility policy.
 
 ### Data model
 
@@ -182,31 +171,26 @@ Owned/read tables (`models.py`):
 - `Anime` — the catalog row: `mal_id`, `anilist_id`, `title`, `title_english`, `title_japanese`, `synopsis`, `api_score`, `popularity`, `year`, `season`, `episodes`, `studio`, `image_url`, `banner_url`, `status`, `source`. Search/sort operate on `title`, `title_english`, `synopsis`, `api_score`, `year`, `episodes`.
 - `Genre` — `name` (unique), `category` (`standard` | `demographic` | `theme`, seeded in `seed.py`; AniList sync creates new ones as `standard` in `utils/anilist.py`).
 - `anime_genres` — association table joining the two; genre filtering and NSFW blocking both go through it.
-- `Rating` — read by `/api/anime/top` and by `to_dict(include_community=True)` to compute `community_score`/`rating_count` per row.
+- `Rating` supplies community averages and counts. Catalog pages load these aggregates in batches.
 
 Client state:
 - `useNsfw` zustand store (persisted to localStorage as `bingery-nsfw`): `{ visible: boolean }`, default `false`.
 - TanStack Query cache: `["anime-list", ...]` entries with global defaults `staleTime: 30s`, `gcTime: 5min`, `refetchOnWindowFocus: false`, `retry: 1` (`frontend/src/lib/queryClient.ts`).
-- URL search params `q`, `genre`, `sort` on `/discover` (shareable/bookmarkable); `page` is ephemeral component state.
+- `q`, `genre`, `sort` and `page` are shareable URL parameters on `/discover`.
 
 ### Configuration
 
-- `VITE_API_URL` (frontend, optional) — backend origin when the SPA is hosted on a different origin; `/api` is appended automatically. Default: `http://localhost:5000/api` on localhost, same-origin `/api` otherwise (`frontend/src/lib/api.ts`).
+- `VITE_API_URL` optionally specifies a separate API host. The default is same-origin `/api`. During local development Vite proxies that path to Flask.
 - `HARD_BLOCKED_GENRES = ("Hentai",)`, `SOFT_BLOCKED_GENRES = ("Ecchi",)` — module constants in `utils/nsfw.py`; changing the policy means editing these tuples.
-- `NSFW_AWARE_PREFIXES = ["/anime", "/seasonal", "/recommend", "/schedule"]` — which API paths get the `include_nsfw=true` opt-in appended (`frontend/src/lib/api.ts`).
+- `NSFW_AWARE_PREFIXES` includes `/anime`, `/search`, `/seasonal`, `/recommend` and `/schedule`.
 - `useSearch(query, minChars = 2, delay = 250)` — autocomplete trigger threshold and debounce.
 - Page sizes: backend `/api/anime` default `per_page=20` (cap 100); the Discover grid requests 24. Autocomplete default `limit=8` (cap 20); `/api/search/full` default `per_page=24` (cap 100); `/api/anime/top` default `limit=10` (cap 50).
 
 ### Edge cases & limits
 
-- **Autocomplete bypasses the NSFW filter.** `routes/search.py` never calls `maybe_exclude_nsfw`, so Hentai/Ecchi-tagged titles can surface in the typeahead dropdown (and in `/api/search/full`) even though the grid hides them. The hard-block is only as wide as the endpoints that use `utils/nsfw.py`.
-- **The "Community score" sort button is a silent no-op alias.** `FilterBar.tsx` offers `community_score`, but the backend's sort map in `routes/anime.py` only knows `api_score`/`year`/`title`/`episodes`; unknown keys fall back to `api_score`, so "API score" and "Community score" currently return identical ordering.
-- **Genre pills can produce guaranteed-empty results.** `FilterBar` renders all ~80 `FAN_GENRES` tags, but `/api/anime?genre=` matches the official `Genre` table by exact name (about 29 seeded names). Picking a fan-only tag like "Wholesome" or "Mind-Bending" yields zero rows and the "No anime found." empty state.
-- **Toggling NSFW does not invalidate the query cache.** The nsfw flag is injected at fetch time and is not part of any query key, and no `invalidateQueries` fires on toggle — so an already-rendered grid keeps showing the pre-toggle result set until the query refetches (remount after the 30 s `staleTime`; window-focus refetch is disabled).
-- **Autocomplete dropdown shows a blank format.** `SearchAutocomplete` renders `a.format`, but the autocomplete endpoint doesn't return a `format` field, so only the year appears in the suggestion subtitle.
-- Queries shorter than 2 characters return `{"results": []}` with 200 and never hit the network from the client; autocomplete network errors are swallowed and rendered as "no results".
-- Pagination uses Flask-SQLAlchemy `paginate(error_out=False)`: out-of-range pages return an empty `anime` list with 200 rather than 404.
-- Ascending sorts use `nullsfirst()`, so rows missing the sort field (e.g. no `year`) lead ascending result sets; descending sorts push them last via `nullslast()`.
+- A title with no community ratings has no community score. Missing sort values come last, and the catalog uses the anime ID to break ties.
+- Search terms containing `%` or `_` match those literal characters. Autocomplete waits for at least two characters.
+- Out-of-range pages return an empty list with HTTP 200 from Flask-SQLAlchemy pagination.
 - No rate limiting on any of these endpoints, and every keystroke past 2 chars (after debounce) is a live DB query — acceptable for the current SQLite-backed catalog size.
 - `/api/search/full` applies `.distinct()` to avoid duplicate rows when multiple genres match; the multi-genre match is OR semantics (`Genre.name IN (...)`), not AND.
 - Hard-block behavior is regression-tested in `tests/test_schedule_week.py::test_nsfw_hentai_excluded`.
@@ -221,7 +205,7 @@ The franchise strip ("Watch the rest in order!") sits under the fan-genre sectio
 
 ### User flow
 1. User clicks any anime card (discover, watchlist, search, etc.) and lands on `/anime/:id`. Skeleton placeholders show while the detail query loads.
-2. The hero renders: banner image (faded), poster, English title (romaji subtitle if different), up to 6 genre badges, and a stat grid (Episodes / Year / Format / Score). Logged-in users also see the watch-status selector and "add to collection" actions in the hero, a dub-report button below it.
+2. The hero shows artwork, the English-preferred title, genre badges, episode count, year and score. It shows format when available and otherwise displays the airing status. Signed-in users can manage watch status, collections and dub reports.
 3. Below the hero: next-episode widget, then a two-column layout — "Community fan genres" bars on the left, "Your rating" panel on the right.
 4. The franchise strip loads independently (separate query). When the title belongs to a multi-entry franchise, "Watch the rest in order!" appears under the fan-genre card with one poster card per franchise entry, sorted oldest-first. Each card shows poster, format badge (TV / Movie / OVA / …), title, and release label ("Apr 2013"-style month+year, bare year, or "TBA").
 5. The currently viewed title carries an amber "Current" badge and ring and is not clickable. Cards for catalog entries navigate to that entry's detail page; cards for titles not in the catalog are static (slightly dimmed, `opacity-90`).
@@ -275,7 +259,7 @@ No environment variables are specific to this feature; tuning is via constants i
 - `FRANCHISE_RELATION_TYPES = {PREQUEL, SEQUEL, PARENT, SIDE_STORY, ALTERNATIVE}` — single source of truth for what counts as "same franchise".
 - `FORMAT_LABELS` — AniList `MediaFormat` → display label (`TV_SHORT` → "TV Short", `MOVIE` → "Movie", etc.; unmapped formats become `null` and show no badge).
 - HTTP timeout per AniList call: 15 s (hardcoded in `_execute`).
-The frontend API base honors the app-wide `VITE_API_URL` (defaults to `http://localhost:5000/api` in dev, same-origin `/api` in prod).
+The frontend uses same-origin `/api` by default. Set `VITE_API_URL` to target a separate API host.
 
 ### Edge cases & limits
 - **Upstream isolation**: any AniList error on `/related` yields `[]` with 200 — the strip silently hides; the rest of the page is unaffected because it's a separate query.
@@ -285,9 +269,9 @@ The frontend API base honors the app-wide `VITE_API_URL` (defaults to `http://lo
 - **Cache scope**: `_RELATIONS_CACHE` is in-process and unbounded (entries only expire lazily by TTL check). It's "effectively global" only because deployment runs a single gunicorn worker; scaling to multiple workers means per-worker caches (spec defers Redis).
 - **Date handling**: `release_date` is emitted only when year, month, and day are all known; sort places undated entries last (`9999/99/99`); the card label falls back release_date → year → "TBA".
 - **NSFW**: neither `/api/anime/<id>` nor `/api/anime/<id>/related` applies the NSFW filter (`maybe_exclude_nsfw` is only used on list endpoints), so any title is viewable by direct URL and franchise entries appear regardless of NSFW classification; the `include_nsfw` param the client appends is ignored here.
-- **Unknown id**: the API returns 404, but `AnimeDetailPage` only branches on `isLoading || !data` — a failed detail query leaves the page on the skeleton state indefinitely (no error UI).
+- Invalid IDs and missing titles display a title-not-found page. A failed detail request displays a retry action.
 - **Similar strip**: `GET /api/anime/<id>/similar` (`routes/anime.py`) ranks the catalog against the seed via `utils/similarity.py` — rank-weighted AniList tag overlap + genres + fan genres + format + era + a quality prior, blended 70/30 with the per-user `rec_signals` score when a JWT is present. Same-franchise entries are excluded from results (returned separately in `franchise`), and `SimilarStrip` renders the top 6 with shared-tag badges. The older genre-overlap route `GET /api/recommend/similar/<int:anime_id>` (`routes/recommend.py`) still exists but has no frontend consumers.
-- **Hero field mismatches**: `DetailHero` reads `anime.format` and `anime.description`, but the backend sends `synopsis` and the `Anime` table has no format column — so the "Format" stat always shows "—" and the synopsis paragraph never renders on the detail page. (Format *is* shown correctly on franchise-strip cards, which get it live from AniList.)
+- The hero renders `synopsis` with `description` as a fallback and strips markup for display.
 - **Title display differs by source**: catalog entries on the strip show `title_english or title` (romaji); non-catalog entries show AniList's english-then-romaji choice — the same franchise can mix title languages.
 
 ---
@@ -298,7 +282,7 @@ Seasonal Browsing lets a signed-in user view the anime lineup for any anime seas
 
 ### User flow
 
-1. The user clicks **Seasonal** in the desktop nav bar (`NavBar`) or the mobile **More** sheet (`MoreSheet`, leaf icon) and lands on `/seasonal`.
+1. Open **More** and select **Seasonal** to visit `/seasonal`.
 2. The page opens on the *current* season, derived client-side from the browser clock: months Jan–Mar → winter, Apr–Jun → spring, Jul–Sep → summer, Oct–Dec → fall, plus the current year.
 3. A heading shows "<season> <year>" (e.g. "spring 2026"); next to it the `SeasonPicker` offers `‹`/`›` buttons to step the year down/up one at a time and four toggle buttons (winter / spring / summer / fall) to switch season.
 4. Every change triggers a fresh `GET /api/seasonal?year=…&season=…`; while loading, a 12-card skeleton grid renders.
@@ -313,7 +297,7 @@ Seasonal Browsing lets a signed-in user view the anime lineup for any anime seas
 - `frontend/src/hooks/useSeasonal.ts` — `useSeasonal(year, season)` wraps a TanStack Query with key `["seasonal", year, season]` calling `api.getSeasonal`; also exports `currentSeason(now)` (the month→season mapping above). No per-hook `staleTime` override, so global defaults from `frontend/src/lib/queryClient.ts` apply: `staleTime` 30 s, `gcTime` 5 min, `retry: 1`, no refetch on window focus.
 - `frontend/src/lib/api.ts` — `api.getSeasonal(year?, season?)` issues `GET /seasonal?year=…&season=…` (query string only added when both are set). `/seasonal` is listed in `NSFW_AWARE_PREFIXES`, so when the global NSFW store (`frontend/src/stores/nsfw.ts`, persisted as `bingery-nsfw`) has `visible: true`, the client appends `include_nsfw=true`.
 - Shared rendering: `frontend/src/features/discover/AnimeGrid.tsx` (responsive 2–6 column grid, skeleton + empty states) and `frontend/src/features/discover/AnimeCard.tsx` (poster card; shows `community_score ?? api_score` — seasonal payloads omit `community_score`, so cards display the AniList score).
-- Navigation entries: `frontend/src/layout/NavBar.tsx` and `frontend/src/layout/MoreSheet.tsx`.
+- `frontend/src/layout/navigation.ts` defines the Seasonal destination in **More**.
 
 ### Backend
 
@@ -347,14 +331,14 @@ No env vars are specific to this feature. Relevant constants:
 - `VALID_SEASONS = {"WINTER", "SPRING", "SUMMER", "FALL"}` and `AIRING_STATUSES = {"releasing", "currently_airing", "currently airing"}` — `routes/seasonal.py`.
 - `HARD_BLOCKED_GENRES = ("Hentai",)`, `SOFT_BLOCKED_GENRES = ("Ecchi",)` — `utils/nsfw.py`.
 - `PAGE_SLEEP_SECONDS = 0.7` — `sync_anilist.py` (ingestion pacing, not request-time).
-- `NSFW_AWARE_PREFIXES = ["/anime", "/seasonal", "/recommend", "/schedule"]` — `frontend/src/lib/api.ts`.
+- The shared API client applies the Ecchi visibility preference to `/seasonal`.
 - React Query defaults (`staleTime: 30_000`, `gcTime: 5 * 60_000`, `retry: 1`, `refetchOnWindowFocus: false`) — `frontend/src/lib/queryClient.ts`.
 - `VITE_API_URL` — general API base-URL override (frontend-wide, not seasonal-specific).
 
 ### Edge cases & limits
 
 - **Status codes**: 400 for invalid season, missing year, or non-integer year; 401 without a valid JWT. All 400 paths are covered in `tests/test_seasonal.py`.
-- **No route guard**: `/seasonal` is reachable without logging in; the JWT-protected fetch then fails with 401, React Query retries once, and the page falls through to the empty state ("No anime found for this season.") rather than redirecting to `/auth` — there is no global 401 handler in `frontend/src/lib/api.ts`.
+- Guests see a sign-in action that preserves the Seasonal destination. The private query runs when a user is signed in. A failed request offers a retry.
 - **Unbounded year navigation**: `SeasonPicker` has no min/max on the year steppers; far-past or far-future years simply return empty lists.
 - **No pagination or result cap**: the endpoint returns every matching row in one response, ordered alphabetically by `Anime.title`. A dense modern season is a few hundred rows at most, but nothing limits it.
 - **Unindexed, non-sargable filter**: `func.lower(Anime.season)` defeats any index; both endpoints effectively table-scan `anime` (~25k rows for a full catalog sync).
@@ -375,7 +359,7 @@ The same backend blueprint also powers the "next episode" pill on the anime deta
 
 ### User flow
 
-1. User clicks "Schedule" in the top nav (`frontend/src/layout/NavBar.tsx`) or the mobile bottom tab bar (`frontend/src/layout/BottomTabBar.tsx`).
+1. Open **Schedule** from the desktop header or the mobile bottom navigation. If signed out, use the sign-in action to return to this page after authenticating.
 2. If not signed in, the page renders a "Sign in to see the schedule" placeholder instead of the calendar (both schedule endpoints are JWT-protected).
 3. On first load with no `?week` param, the page computes the Sunday of the current week **in the user's local timezone** and rewrites the URL to `?week=YYYY-MM-DD` (replace, not push). Full URL state is `?week=YYYY-MM-DD&lang=sub|dub|both&mine=0|1`, so any view is deep-linkable and survives refresh.
 4. The header offers a `SUB | DUB | BOTH` segmented control plus a "My shows" star toggle (`mine`). Changing either rewrites the search params, which re-keys the React Query fetch.
@@ -495,19 +479,19 @@ Watchlist entries reference the **local** anime catalog (`Anime` rows), which is
 2. Clicking a pill optimistically highlights it, then fires `POST /api/watchlist/anime/:id` with the chosen status. Clicking the **already-active** pill removes the anime from the watchlist entirely (`DELETE`). On a failed save the pill reverts to the last server value.
 3. Toggling Favorite flips `is_favorite`; if the anime wasn't tracked yet, this silently creates a `plan_to_watch` entry.
 4. Rating an anime (the rating/review flow) auto-creates a `completed` watchlist entry, or upgrades an existing `plan_to_watch` entry to `completed`. The review endpoint additionally accepts an explicit `watch_status` override.
-5. The user visits `/watchlist` (linked from `NavBar` and `BottomTabBar`). They see status tabs ("All" + one per status, each with a live count) and a responsive grid of poster cards showing their personal score and the fan-genres they assigned. Clicking a tab filters server-side; clicking a card returns to the detail page.
+5. Open **Watchlist** to browse the saved library. Status, favorites, search, genre and sort controls act on the loaded entries. Grid and list views display saved episode progress. Selecting a title opens its detail page.
 6. Elsewhere, the weekly schedule page highlights airing episodes whose anime is on the user's watchlist (`on_watchlist` flag) and offers a "my shows only" filter.
 
-Signed-out users hitting `/watchlist` get an inline "Sign in to track" prompt rather than a redirect.
+Guests see a sign-in action that returns them to the watchlist after authentication.
 
 ### Frontend
 
 - `frontend/src/routes.tsx` — lazy-loads `WatchlistPage` at path `watchlist`.
-- `frontend/src/features/watchlist/WatchlistPage.tsx` — page shell: reads the user from `useAuth` (`frontend/src/stores/auth`), holds the selected status tab in local state, renders skeletons / empty state / card grid.
+- `frontend/src/features/watchlist/WatchlistPage.tsx` reads the view and filters from URL parameters, applies them to the loaded library and renders account, loading, error and empty states.
 - `frontend/src/features/watchlist/StatusTabs.tsx` — exports the canonical `STATUSES` array (key, label, accent color per status) used by both the tabs and the selector; renders "All" plus per-status pill buttons with counts from the stats query.
-- `frontend/src/features/watchlist/WatchlistCard.tsx` — poster tile with a `★ n/10` badge (or "unrated"), up to 6 fan-genre `Badge`s with a `+N` overflow indicator, linking to `/anime/:id`.
+- `frontend/src/features/watchlist/WatchlistCard.tsx` links to the anime detail page and shows the personal rating, genres and saved episode progress.
 - `frontend/src/features/watchlist/WatchStatusSelector.tsx` — inline status pills + favorite toggle rendered on `frontend/src/features/details/AnimeDetailPage.tsx`. Keeps optimistic local state (`selected`, `fav`), re-syncs from props when the detail query refetches, reverts on mutation error.
-- `frontend/src/hooks/useWatchlist.ts` — TanStack Query layer: `useWatchlist(status?)` (key `["watchlist", status ?? "all"]`), `useWatchlistStats()` (key `["watchlist-stats"]`), and mutations `useSetWatchStatus`, `useToggleFavorite`, `useRemoveFromWatchlist`. Every mutation invalidates `["watchlist"]`, `["watchlist-stats"]`, **and** `["anime-detail", animeId]` so the detail page's pills reflect saved changes.
+- `frontend/src/hooks/useWatchlist.ts` requests `/watchlist?all=1` for signed-in users. Watchlist mutations refresh the library, counts, title details and related personal views.
 - `frontend/src/lib/api.ts` — `getWatchlist`, `getWatchlistStats`, `setWatchStatus` (body accepts optional `episodes_watched`), `toggleFavorite`, `removeFromWatchlist`.
 - `frontend/src/types/models.ts` — `WatchStatus` union, `WatchEntry`, `WatchStats`, and `AnimeDetail.user_watch_status`.
 - Consumers outside the feature: `frontend/src/features/schedule/DaySection.tsx`, `DayBanner.tsx`, `EpisodeRow.tsx` read the per-episode `on_watchlist` flag to group/highlight the user's shows.
@@ -569,8 +553,8 @@ No feature-specific environment variables. Tuning lives in code constants:
 
 ### Edge cases & limits
 
-- **`sort=score` is a no-op**: `routes/watchlist.py` accepts it but the branch is identical to the default — it sorts by `updated_at` descending, not by score. Only `title` and `updated` actually differ.
-- **Episode tracking is API-only today**: `episodes_watched` exists in the model, the upsert endpoint, and the API client signature, but no frontend component sends or displays it — it stays 0 unless written directly via the API. There is also no upper-bound check against `Anime.episodes`.
+- The watchlist API accepts `sort=score` to order entries by the title’s API score, with the most recently updated first when scores tie. The watchlist page sorts its complete library locally.
+- **Episode tracking** is available on the title detail page after adding a title to the watchlist. Enter the number of episodes watched and select **Save progress**. The form accepts whole numbers from zero through the known series total. Titles with an unknown total accept non-negative whole numbers. Watchlist cards and list rows show saved progress.
 - **Bulk add has no frontend caller**: it exists for onboarding/import scripts. It silently skips ids that don't resolve to an `Anime` and never modifies the status of entries that already exist.
 - **Removing = clicking the active pill**: deselecting a status deletes the whole row, which also discards `is_favorite`, `notes`, and `episodes_watched` for that anime.
 - **Favorite-first tracking**: favoriting an untracked anime creates a `plan_to_watch` entry — favorites are counted across all statuses in `/stats`.
@@ -589,25 +573,25 @@ Collections are user-curated, named lists of anime — distinct from the watchli
 
 ### User flow
 
-1. Signed-out users hitting `/collections` see a static "Sign in to build collections" prompt; nothing loads.
-2. Signed-in users reach `/collections` from the top nav (`NavBar`) or the mobile "More" sheet. The page shows a responsive card grid of their collections, newest-updated first, each card showing name, Public/Private badge, item count, and last-updated date.
+1. Guests opening `/collections` can sign in and return to their collections.
+2. Open **More → Collections** to browse collections by most recent update. Cards show each collection’s name, visibility, size and update date.
 3. **Create**: the "New collection" button opens a modal with `CollectionForm` (name, description, "Public" checkbox). On success the app navigates to the new collection's detail page.
-4. **Add items**: on an anime detail page (`/anime/:id`), signed-in users get an "Add to collection" popover listing all their collections; clicking a row adds the anime (a brief checkmark confirms). The popover also has an inline "New collection title…" field that creates a collection and then auto-adds the current anime to it.
-5. **Detail page** (`/collections/:id`): grid of `AnimeCard`s for each item. Owners get a hover-revealed "Remove" button per card, an "Edit" button (same form in a modal), and a "Delete" button guarded by a `window.confirm`. Deleting navigates back to `/collections`.
-6. **Share**: ticking "Public" in the edit form generates a share token. A "Copy share link" button then appears (only when a token exists) and copies `{origin}/collections/share/{token}` to the clipboard. Unticking "Public" deletes the token, permanently invalidating the link; re-enabling generates a fresh token.
+4. On an anime detail page, open **Add to collection** to choose a collection or create one and add the current title. A checkmark confirms a successful addition.
+5. The owner can edit the collection, remove titles or delete it from `/collections/:id`. Deleting a collection returns to the collection list.
+6. Enable **Public** on creation or when editing to generate a share link. Recipients can open `/collections/share/:token` without signing in. Making a collection private revokes that link. Publishing it again generates a new token.
 
 ### Frontend
 
 - `frontend/src/features/collections/CollectionsListPage.tsx` — list page; skeleton grid while loading, empty state, create modal.
 - `frontend/src/features/collections/CollectionCard.tsx` — grid card; maps the stored `color` token to one of five Tailwind gradient pairs (`amber`, `violet`, `indigo`, `rose`, `emerald`), falling back to amber.
-- `frontend/src/features/collections/CollectionDetailPage.tsx` — detail page; owner check is `user?.id === c.user_id`; renders edit modal, delete, share button, and the item grid.
+- `frontend/src/features/collections/CollectionDetailPage.tsx` renders editable owner details or a read-only collection according to the route.
 - `frontend/src/features/collections/CollectionForm.tsx` — shared create/edit form. Only sends `name`, `description`, `is_public` (never `color`/`icon`).
-- `frontend/src/features/collections/AddToCollection.tsx` — popover used by `frontend/src/features/details/AnimeDetailPage.tsx` (rendered only when a user is signed in). The create-then-add path waits 60 ms after creation, then finds the new row via a `data-add-row="{id}"` DOM query and programmatically clicks it.
-- `frontend/src/features/collections/ShareButton.tsx` — clipboard copy of the share URL; renders nothing when `share_token` is null.
-- `frontend/src/hooks/useCollections.ts` — TanStack Query hooks: `useCollections`, `useCollection`, `useSharedCollection`, `useCreateCollection`, `useUpdateCollection`, `useDeleteCollection`, `useAddToCollection`, `useRemoveFromCollection`. Mutations invalidate `["collections"]` and/or `["collection", id]`.
+- `frontend/src/features/collections/AddToCollection.tsx` opens a collection picker. Creating a collection uses its returned ID to add the current title and reports the result of the add request.
+- `frontend/src/features/collections/ShareButton.tsx` copies the share URL. If clipboard access fails, the user can select and copy the link manually.
+- `frontend/src/hooks/useCollections.ts` manages account-scoped collection queries, public token lookups and collection mutations.
 - `frontend/src/lib/api.ts` — client methods `getCollections`, `getCollection`, `getSharedCollection`, `createCollection`, `updateCollection`, `deleteCollection`, `addToCollection`, `removeFromCollection`; JWT attached as `Authorization: Bearer` from `localStorage`.
 - `frontend/src/types/models.ts` — `Collection`, `CollectionItem`, `CollectionDetail` interfaces.
-- Routes in `frontend/src/routes.tsx`: `collections` and `collections/:id`, both lazy-loaded inside `AppShell`.
+- `frontend/src/routes.tsx` registers `collections`, `collections/:id` and `collections/share/:token` in `AppShell`.
 
 ### Backend
 
@@ -646,17 +630,15 @@ None specific to collections. The share-token length is the `length: int = 16` d
 
 ### Edge cases & limits
 
-- **Share links are currently dead-ends in the SPA.** `ShareButton` copies `/collections/share/{token}`, but `frontend/src/routes.tsx` defines no matching route — the catch-all `*` redirects to `/`. The backend endpoint and the frontend plumbing (`useSharedCollection`, `api.getSharedCollection`) exist but no routed page consumes them. A recipient who opens a share link lands on the landing page.
-- **`owner` is never populated.** `CollectionDetail.owner` is typed on the frontend and `CollectionDetailPage` renders a "by {owner}" label from it, but no backend serializer emits an `owner` field, so the label never appears.
-- **The detail page is effectively owner-only.** `GET /api/collections/<id>` 404s for non-owners, so the non-owner branches in `CollectionDetailPage` (hidden Edit/Delete, "Nothing here yet" copy) are unreachable through that route today.
-- **No item ordering or notes UI.** `CollectionItem.position` exists in the frontend type but not in the model; items come back in default (insertion) order with no reordering. The API accepts a `note` (truncated to 500 chars) on add, but no UI sends or displays it.
+- The token route opens a read-only collection for any visitor, including its owner. A missing or revoked token displays an unavailable state.
+- The owner route resolves private details by numeric ID. Public responses omit the owner’s user ID and the share token.
+- The API accepts an optional note when adding a title. The collection editor has no item note or manual ordering controls.
 - **`color`/`icon` are write-only via API.** The PATCH/POST endpoints accept them (truncated to 16/32 chars, defaulting to `amber`/`bookmark`), and `CollectionCard` uses `color` for its gradient — but `CollectionForm` never sends either, so all UI-created collections render the amber fallback and `icon` is unused everywhere.
 - **Idempotency**: re-adding an existing anime returns 200 with the existing item (the unique constraint is never hit in practice); removing an absent item returns 204.
 - **Validation**: missing/blank or >80-char `name` → 400; non-integer `anime_id` → 400; unknown `anime_id` → 404; `description` and `note` are silently truncated to 500 chars rather than rejected.
 - **Revoked links never resurrect**: toggling public off→on issues a brand-new token; previously shared URLs 404 permanently.
 - **No pagination or caps**: a user can create unlimited collections with unlimited items; the list endpoint returns everything, and `items_count` runs one `COUNT` query per collection row.
 - **No rate limiting** on the unauthenticated `/api/collections/public/<token>` endpoint; token unguessability (16 URL-safe chars) is the only protection.
-- **Fragile auto-add**: `AddToCollection`'s create-then-add relies on a 60 ms `setTimeout` plus a DOM query for the freshly rendered row; if the query cache hasn't refreshed in time, the new collection is created but the anime is not added.
 
 ---
 
@@ -736,11 +718,10 @@ No environment variables. Tunables are hard-coded constants:
 - **Review truncation is silent** — text beyond 2000 chars is dropped server-side with no error or client-side counter.
 - **There is no way to clear a review from the UI** short of saving an empty string, and no UI calls `DELETE /api/anime/<id>/rate`; rating deletion is API-only.
 - **`/review` silently discards invalid genre tags** rather than erroring, so a stale frontend list would lose votes without feedback. Duplicate tags in one payload are not deduplicated and would trip the `(user, anime, genre_tag)` unique constraint at commit.
-- **"Community score" sort is a no-op.** `FilterBar` offers `sort=community_score`, but the sort map in `routes/anime.py:list_anime` only knows `api_score`/`year`/`title`/`episodes` and silently falls back to `api_score`.
 - **`api.getMyRatings()` is dead and mismatched** — it requests `/ratings/me` while the backend exposes `/api/me/ratings`; nothing in the frontend calls it, so the user-facing "my ratings" listing effectively doesn't exist (watchlist cards and stats fill that role).
 - **Grouped allowlist is lossy.** `/api/fan-genres/allowed` filters its group lists against `ALLOWED_FAN_GENRES`, but some group entries ("Coming of Age", "Workplace", "Urban", …) aren't in the allowlist and the "additional broad tags" block (Iyashikei, Idol, Yuri, …) belongs to no group — those tags appear only in the flat `all` array.
 - **No rate limiting or moderation** on ratings, reviews, or votes; reviews are stored and served verbatim.
-- **Performance note:** community score, count, and fan-genre tallies are recomputed per request, and `to_dict(include_community=True)` is the default — the paginated `/api/anime` list runs these aggregate queries per row.
+- Paginated catalog responses batch community score, rating count and fan-genre lookups across the returned titles.
 - Fan-genre `percentage` cannot exceed 100 (each user votes a tag at most once), and `FanGenreBars` scales bars to the top tag's count, not the percentage.
 
 ---
@@ -749,7 +730,7 @@ No environment variables. Tunables are hard-coded constants:
 
 Three sibling "insight" features that read the user's accumulated data (ratings, fan-genre votes, watchlist entries, collections, dub reports) and present it back: **Compare** puts two anime side-by-side with the caller's own take on each (an older user-vs-user taste comparison endpoint also exists but is no longer wired to the UI), **Stats** is a personal dashboard of aggregate numbers and charts, and **Activity** is a paginated reverse-chronological feed of everything the user has done in the app. None of the three writes data — they are pure read views over tables owned by other features.
 
-All three are top-level navigation destinations (`Stats`, `Activity`, `Compare` in `frontend/src/layout/NavBar.tsx` and the mobile `frontend/src/layout/MoreSheet.tsx`) and all three require a logged-in user.
+**More** links to Stats, Activity and Compare on desktop and mobile. These pages require a signed-in user.
 
 ### User flow
 
@@ -880,7 +861,7 @@ The ranking math lives in a shared multi-signal scorer (`routes/rec_signals.py`)
 - `frontend/src/hooks/useRecommendations.ts` — React Query hook, `queryKey: ["recommendations"]`, `staleTime: 5 * 60_000`, `enabled` only when a user is logged in.
 - `frontend/src/lib/api.ts` — `getRecs()` calls `GET /recommend/for-me`. `/recommend` is in `NSFW_AWARE_PREFIXES`, so when the global NSFW toggle (`frontend/src/stores/nsfw`) is on, `?include_nsfw=true` is appended automatically.
 - Composition reuse: `AnimeGrid` from `frontend/src/features/discover/AnimeGrid` and `GlassCard` from `frontend/src/design/GlassCard`.
-- Navigation: "For you" links in `frontend/src/layout/NavBar.tsx` (desktop) and `frontend/src/layout/BottomTabBar.tsx` (mobile, Sparkles icon).
+- **For you** is a primary destination in the desktop header and the mobile bottom navigation.
 - Types: `Recommendation` and `TasteProfile` in `frontend/src/types/models.ts`; `RecommendationsResponse` in `frontend/src/types/api.ts`.
 
 ### Backend
@@ -961,30 +942,28 @@ No dedicated environment variables. Tuning constants in code:
 
 ## AI Chat Assistant
 
-Bingery's chat assistant ("Guide" in the UI) is a conversational anime advisor backed by a pluggable LLM provider — Anthropic's API or a self-hosted Ollama instance, selected by env var. It runs in three modes (Recommend, Rate-with-AI, Onboard), each with its own mission prompt layered on a shared formatting prompt. The model can call five backend tools against the local anime database, the user's library, and the live AniList API; in authenticated Recommend mode its picks are additionally grounded against a pre-scored candidate set so it cannot recommend anime the user already engaged with.
+Bingery’s Guide recommends anime in a conversation. The backend uses the configured Anthropic or Ollama provider and offers six read-only tools for catalog search, similar titles, anime details, AniList and signed-in library information. Signed-in recommendations can draw on a pre-scored candidate set.
 
 The assistant's replies are post-processed on the server: bold `**Title**` mentions are resolved to real database rows and returned as structured anime-card refs, and `[OPTIONS: a | b | c]` markers (or heuristically detected "X or Y?" questions) become clickable answer pills. The chat itself is stateless on the server — the full conversation is round-tripped from the client on every turn.
 
 ### User flow
 
-1. The user opens `/chat` (route is public; works logged-out with reduced personalization). A mode can be pre-selected via query string, e.g. `/chat?mode=rate`; default is `recommend`.
-2. Each mode seeds the thread with a canned assistant greeting. Switching modes via the pill buttons resets the conversation to that mode's seed (deliberate — stale turns from another mode make small local models ignore the new mission prompt).
-3. The user types a message (or taps a suggested pill). The frontend POSTs the message, the full conversation so far, and the mode to `/api/chat/message`, showing an animated typing indicator while waiting.
-4. The backend builds the system prompt (mode mission + base prompt + user id + optionally the grounding context JSON), then runs a tool loop: the model may call tools (taste profile, watchlist, DB search, AniList search, anime details) up to 5 rounds before producing prose.
-5. The final text is scanned: every `**Title**` is looked up in the local DB (exact match first, then fuzzy substring, ranked by `api_score`); resolved, non-NSFW matches come back as `suggested_anime` cards. `[OPTIONS: …]` markers become `suggested_actions`.
-6. The UI renders the reply bubble (minimal markdown: bold/italic only), up to 6 anime cards linking to `/anime/:id`, and — on the latest assistant turn only — the option pills, which send their label as the next user message when tapped.
-7. If the provider is unreachable, the user sees a dedicated "Taste guide is offline" banner instead of a generic error.
+1. Open `/chat` from **More → AI guide**. Guests can ask for recommendations, and signed-in users can get suggestions based on their library.
+2. Send a question or select a suggested reply. The Guide shows the pending message while it waits for the provider.
+3. The server combines the recommendation prompt, prior conversation and any available personal context. It can use catalog tools for up to five rounds before returning a reply.
+4. Resolved titles appear as cards that link to their detail pages. The latest assistant reply can include suggested follow-up actions.
+5. A failed message offers a retry. A provider outage displays a dedicated offline notice.
 
 ### Frontend
 
-- `frontend/src/features/chat/ChatPage.tsx` — the page component. Owns the mode state (`recommend` | `rate` | `onboard`), per-mode greetings/seeds (`MODE_META`), the scrolling message list, option-pill rendering, the composer form, the typing-dots loader, and the offline banner. Contains a tiny inline `Markdown` renderer supporting only `**bold**` and `*italic*`.
+- `frontend/src/features/chat/ChatPage.tsx` renders the greeting, conversation, suggested actions, composer, loading indicator and offline state.
 - `frontend/src/features/chat/ChatAnimeCard.tsx` — compact recommendation card (poster thumb, title, year, up to 3 genre badges); links to `/anime/:id` when the ref has an id, renders un-linked otherwise.
-- `frontend/src/hooks/useChat.ts` — conversation state hook. Keeps `turns` in React state, appends the user turn optimistically, calls `api.chatMessage`, attaches `suggested_anime`/`suggested_actions` as `extra` on the assistant turn, and resets the thread when the mode changes. Maps a 503 with code `provider_unavailable` to an `offline` flag.
+- `frontend/src/hooks/useChat.ts` sends the current message once with the preceding completed turns. It omits the local greeting and failed turns from history. Retry resubmits a failed message in place.
 - `frontend/src/lib/api.ts` — `api.chatMessage` POSTs to `/api/chat/message`; `ApiError.code` is populated from the response body's `stop_reason`, which is how the offline state is detected.
 - `frontend/src/types/models.ts` / `frontend/src/types/api.ts` — `ChatAnimeRef`, `ChatMessage`, `ChatResponse`, `ChatRequest` types.
 - Route registration: `frontend/src/routes.tsx` lazily loads `ChatPage` at path `chat` under the `AppShell` layout. There is no auth guard on the route.
 
-There is no chat store — state lives in the `useChat` hook and is lost on refresh or mode switch.
+Guide conversations live in React state and reset when the account changes or the page unmounts.
 
 ### Backend
 
@@ -997,8 +976,8 @@ Blueprint: `chatbot_bp` in `routes/chatbot.py`, registered in `app.py` with pref
 
 #### Request handling (`routes/chatbot.py`)
 
-- Accepts `message` (required, 400 if missing), `conversation` (or legacy `history`), and `mode`. Client-supplied `system`-role messages are silently dropped — only `user`/`assistant` roles are accepted, so callers cannot inject instructions above the real system prompt.
-- The system prompt is composed by `build_system_prompt(mode)` in `routes/chatbot_tools.py`: the per-mode mission (`MODE_PROMPTS`) is placed *before* the shared `BINGERY_SYSTEM` base (small local models anchor on whatever comes first). Unknown/missing modes fall back to `recommend`. For authenticated users, `[authenticated user id: N]` is appended.
+- The endpoint accepts a required `message` and prior `conversation` (or legacy `history`). Only user and assistant roles are accepted from the client. The server appends the current user message to the completed history.
+- `build_system_prompt` supplies the recommendation mission and shared system prompt. The server uses the recommendation mode for all requests and appends the authenticated user ID when available.
 - **Grounding (authenticated `recommend` mode only):** `build_llm_context` (`routes/chat_context.py`) is appended as a `# CONTEXT JSON` block. It contains the user's cached signal profile (cache-only fields stripped) and a `candidates` array of pre-scored anime — 40 normally, 80 for cold-start users with zero ratings. After generation, resolved card refs are filtered to that candidate id set, so even if the model names something outside the list it never surfaces as a card.
 - **Tool loop:** up to `MAX_TOOL_LOOPS = 5` provider round-trips. Tool calls are executed by `execute_tool` in `routes/chatbot_tools.py` and fed back as `tool`-role messages. Exhausting the loop returns a friendly "ask a narrower question" reply with `stop_reason: "loop_limit"` (HTTP 200).
 - **Card extraction:** the model's hallucination-prone `[ANIME_ID:N]` markers are stripped and ignored; instead each `**Title**` is resolved via `_resolve_title` (case-insensitive exact match on `title`/`title_english`, then `ilike` substring fallback, ordered by `api_score` desc). Anime tagged Hentai *or* Ecchi are unconditionally excluded from cards regardless of the user's NSFW toggle (the toggle governs list views, not chat cards).
@@ -1015,6 +994,7 @@ Provider-neutral `ToolSchema` definitions, single source of truth in `ALL_TOOLS`
 | `get_user_watchlist` | The user's ratings ordered by score desc, limit clamped to 100 (default 50). Used to avoid duplicate recommendations. |
 | `get_anime_details` | Full `Anime.to_dict(include_community=True)` by internal id. |
 | `search_anilist` | Live AniList GraphQL search via `utils/anilist.AniListClient` (5 results); any exception is caught and returned as a JSON error string so the loop continues. |
+| `find_similar_anime` | Finds catalog titles similar to a seed anime. |
 
 All tools return JSON strings; unknown tool names return `{"error": "Unknown tool: …"}` rather than raising.
 
@@ -1035,7 +1015,7 @@ Coarse, not adaptive: every provider call uses the default `max_tokens = 2048` o
 
 ### Data model
 
-The chat feature owns no tables. Conversation history is pure client state (React state in `useChat`), discarded on refresh or mode switch and replayed to the server each turn. It depends on:
+Conversation history lives in the client. The server replays completed turns with each message and uses the following data for recommendations.
 
 - `anime` (+ `genres`, `anime_genres`, fan-genre data) — title resolution, tool searches, candidate scoring.
 - `ratings`, `watchlist_entries`, `fan_genre_votes` — taste profile and signal profile inputs.
@@ -1070,7 +1050,6 @@ The chat feature owns no tables. Conversation history is pure client state (Reac
 - **Pills:** capped at 5, each ≤ 40 chars; the heuristic fallback only triggers on replies ending in `?` containing "or", and bails unless it extracts 2–5 clean choices. Pills render only on the latest assistant turn and disable while a request is in flight.
 - **Cards:** the UI renders at most 6 per turn (`slice(0, 6)`); the system prompt caps the model at 3 per reply.
 - **No persistence / no streaming:** conversations are not stored server-side, and replies arrive as a single blocking JSON response; history grows unbounded within a session since no trimming is applied.
-- **Mode switch wipes the thread** by design, including any cards/pills from the previous mode.
 - **Ollama specifics:** 502/503/504 from the gateway and connection/timeout errors all surface as the friendly offline state; non-native-tool models get one prompt-based fallback attempt per call, which supports only a single tool invocation per turn.
 
 ---
@@ -1187,47 +1166,18 @@ Client state: React Query caches `["dub-reports", <status|"all">]` and `["anime-
 
 ## Mobile Experience & Design System
 
-Bingery's UI is built on a "dark cozy liquid glass" design system (introduced in the 2026-04-17 revamp, `docs/superpowers/specs/2026-04-17-bingery-revamp-design.md`): a near-black violet background, glassy translucent surfaces, an amber/peach accent family, serif display type, and a shared framer-motion vocabulary. All of it is driven by a single token module (`frontend/src/design/tokens.ts`) that feeds both Tailwind's theme and runtime code.
+`frontend/src/layout/AppShell.tsx` provides the shared header, a skip-to-content link, the route outlet, mobile bottom navigation, **More** dialog and browser scroll restoration. Desktop and mobile draw their links from `frontend/src/layout/navigation.ts`.
 
-On top of that sits a full mobile optimization pass (2026-06-01, `docs/superpowers/specs/2026-06-01-mobile-optimization-design.md`): below 768px the app gets purpose-built native-feeling chrome — a bottom tab bar, a slim mobile header, a "More" bottom sheet, and modals that dock to the bottom as sheets — under one hard constraint: **at ≥768px the app renders byte-identically to the pre-mobile build**. This is purely a frontend feature; there are no backend changes.
+### Navigation
 
-### User flow
+- **Discover**, **Schedule**, **Watchlist** and **For you** appear in the desktop header and the mobile bottom bar. The mobile header also provides a shortcut to the catalog search.
+- **More** holds Seasonal, Collections, AI guide, Compare, Stats and Activity. It also contains account and content-visibility controls. Authorized owners have access to the waitlist management page.
+- The desktop navigation starts at 768 px. The mobile bar respects device safe areas and reserves space below the page content.
 
-**Mobile (<768px):**
-1. Every route renders inside `AppShell`, which shows the `MobileHeader` (sticky, 56px tall: Bingery wordmark + amber dot on the left, a 44px search icon button on the right that navigates to `/discover`).
-2. The `BottomTabBar` is fixed to the bottom of the viewport with five thumb-sized items: **Discover · Schedule · Watchlist · For you · More**. The active tab is amber with a glowing 2px top-indicator bar.
-3. Tapping **More** slides up the `MoreSheet` (spring animation): a 3-column grid of secondary destinations (Seasonal, Collections, Stats, Activity, Compare, Chat), then an account block (display name + Sign out when signed in; Sign in → `/auth` when signed out) and a 44px NSFW visibility toggle row. The sheet closes via backdrop tap, Escape, navigating, or dragging it down past ~96px.
-4. Any modal in the app (collection forms, anime picker, dub-report dialog) opens as a bottom sheet: full width, rounded top corners, grab handle, slide-up entry, max 85vh.
-5. Page content is padded `pb-24` so it never hides behind the fixed tab bar.
+### Dialogs and shared components
 
-**Desktop (≥768px):** the mobile chrome is `md:hidden`; the original `Header` (wordmark + full 10-link `NavBar` + NSFW toggle + auth controls) renders instead, modals are centered scale-in dialogs, and all layout/spacing/type values are the pre-mobile ones.
-
-### Frontend
-
-#### App shell & routing
-- `frontend/src/layout/AppShell.tsx` — root layout for every route (including `/` landing and `/auth`, per `frontend/src/routes.tsx`). Mounts the atmosphere layers (`AmbientBlobs`, `GrainOverlay`), both headers, `<main className="max-w-7xl mx-auto px-4 py-5 pb-24 md:px-6 md:py-10 md:pb-10">` wrapping `PageTransition`, then `BottomTabBar` and `MoreSheet`. Owns the single piece of chrome state: `moreOpen` (local `useState`).
-- `frontend/src/layout/PageTransition.tsx` — `AnimatePresence mode="wait"` keyed on `location.pathname`; fade/slide (opacity, y: 8 → 0 in, 0 → −8 out) on every route change.
-- `frontend/src/layout/RouteSkeleton.tsx` — Suspense fallback for all lazy-loaded route chunks (heading bar + 12 shimmering 2:3 poster skeletons).
-
-#### Mobile chrome (`<768px`, all `md:hidden`)
-- `frontend/src/layout/BottomTabBar.tsx` — `<nav>` with `fixed inset-x-0 bottom-0 z-40 bg-bg/80 backdrop-blur-xl border-t border-border` and `style={{ paddingBottom: "env(safe-area-inset-bottom)" }}`. Four `NavLink`s (`/discover`, `/schedule`, `/watchlist`, `/for-you`) plus the More button, each `flex-1 min-h-[56px]` with a 22px lucide icon and a `text-[10px] font-mono` label. Active state: `text-amber` plus an absolutely-positioned `h-[2px] w-8` amber bar with a glow shadow; the More button shows the same treatment while the sheet is open.
-- `frontend/src/layout/MoreSheet.tsx` — framer-motion bottom sheet at `z-50`. Backdrop `bg-black/60 backdrop-blur-sm` (click to close); panel `rounded-t-2xl bg-bg-elevated max-h-[85vh] overflow-y-auto glass-edge` with a `w-9 h-1` grab handle, entering with `transitions.spring` (`y: "100%" → 0`). Drag-to-dismiss: `drag="y"`, elastic only downward (`dragElastic: { top: 0, bottom: 0.5 }`), closes when `info.offset.y > 96`. While open it listens for Escape, locks `document.body.style.overflow`, and focuses the panel (`role="dialog" aria-modal="true"`). Reads `useAuth` (`user`, `signOut`) and `useNsfw` (`visible`) and renders `NsfwToggle size="lg"`.
-- `frontend/src/layout/MobileHeader.tsx` — `sticky top-0 z-30 h-14 bg-bg/70 backdrop-blur-xl backdrop-saturate-150 border-b border-border`; wordmark `Link` to `/` and a `w-11 h-11` search button → `/discover`. No nav links, no auth/NSFW controls (those live in the tab bar / More sheet).
-- `frontend/src/layout/Header.tsx` — desktop header, changed only by adding `hidden md:block`; inner markup untouched. `frontend/src/layout/NavBar.tsx` holds the 10 desktop destination links (`overflow-x-auto`). `frontend/src/layout/NsfwToggle.tsx` was extracted from `Header` so both surfaces share it: `size="sm"` = 36px (desktop, byte-identical to the original), `size="lg"` = 44px (mobile touch target). It toggles `useNsfw` with `aria-pressed` and eye/eye-off SVGs.
-
-#### Breakpoint plumbing
-- `frontend/src/lib/useIsDesktop.ts` — `window.matchMedia("(min-width: 768px)")` with a change listener; exists for cases responsive classes can't express, i.e. branching framer-motion variants. Currently its only consumer is `Modal`.
-- **The re-pin rule** (the desktop-preservation mechanic, spec §6): unprefixed Tailwind utilities are the *mobile* value; the previous value is re-pinned at `md:`. Invariants: never edit/delete an existing `md:`/`lg:` utility, never touch desktop-only markup, hide new mobile components with `md:hidden` and the chrome they replace with `hidden md:block`/`md:flex`. Live examples beyond the shell padding: `frontend/src/features/schedule/DayStrip.tsx` (verbatim desktop row kept under `hidden md:flex`, a new two-row mobile branch under `md:hidden`; chips `text-[18px] md:text-[24px]`; chevrons `h-11 w-11` mobile vs `h-9 w-9` desktop; sticky offset `top-14 md:top-0` to clear the h-14 MobileHeader), `frontend/src/features/schedule/EpisodeRow.tsx` (`grid-cols-[52px_1fr_auto] md:grid-cols-[60px_1fr_auto]`, `gap-3 md:gap-[18px]`, title `text-[17px] md:text-[21px]`), and `frontend/src/features/chat/ChatPage.tsx` (scroller `h-[60vh] md:h-[68vh]` so the chat card clears the tab bar).
-
-#### Design system primitives (`frontend/src/design/`)
-- `tokens.ts` — single source of truth: `palette` (core colors plus the 2026-05-24 schedule-revamp additions: peach/sage/gold/ink/mute/line/row tokens), `radius` (sm 6px · md 10px · lg 16px · xl 22px · pill 9999px), `space`, `font` stacks, `motion` (easings, durations, springs), `blur`. Compiled siblings `tokens.js`/`tokens.d.ts` exist so `frontend/tailwind.config.ts` can import the same values into Tailwind's theme — every palette entry becomes a semantic class (`bg-bg`, `bg-bg-elevated`, `bg-surface`, `text-text-muted`, `border-border-strong`, `text-amber`, `text-peach`, `bg-row-bg`, …). Components use these classes, never raw hex.
-- `Modal.tsx` — the responsive modal/bottom-sheet. ≥768px: centered dialog, `scale 0.96→1` + `y 8→0`, `md:rounded-xl md:max-h-[92vh]`, `maxWidth` prop (default `"640px"`). <768px: docks to the bottom (`items-end`), `rounded-t-2xl max-h-[85vh]`, mobile-only grab handle, slide-up `y:"100%"→0` with `transitions.spring`, `env(safe-area-inset-bottom)` padding. The variant branch uses `useIsDesktop`; the desktop values are deliberately identical to the pre-mobile component. All consumers (`features/collections/CollectionsListPage.tsx`, `features/collections/CollectionDetailPage.tsx`, `features/details/DubReportButton.tsx`) were upgraded with zero per-consumer changes.
-- `Button.tsx` — pill-shaped `motion.button`; variants `primary` (glass-peach gradient, amber border, inset highlight), `ghost`, `glass`, `danger`; sizes `sm` h-8 / `md` h-10 / `lg` h-12; built-in hover scale 1.02 / tap scale 0.97 (`transitions.springSnappy`), `loading` spinner, `leading`/`trailing` slots. Intentionally **not** resized for mobile (spec decision: touch-target fixes are surgical, not global).
-- `Input.tsx` — labeled input, h-10, `rounded-lg`, surface fill, amber `focus-within` ring, inline error text (danger border/ring when set).
-- `GlassCard.tsx` — `rounded-xl border border-border glass-edge backdrop-blur-md` with `tone` = `default | warm` (amber gradient) `| cool` (violet gradient) and an `elevated` shadow flag.
-- `Badge.tsx` (hex `color` prop, alpha-suffixed bg/border), `Skeleton.tsx` (shimmer sweep via an inline `@keyframes`), `StarRating.tsx`, `ScrollReveal.tsx` (IntersectionObserver fade-up, `triggerOnce`).
-- `motion.ts` — re-exports tokens as framer-motion `transitions` (`ease`, `easeFast`, `easeSlow`, `spring` = soft 260/28, `springSnappy` = 420/32) and variants (`fadeInUp`, `fadeIn`, `scaleIn`, `pressDown`, `staggerChildren`). New components are expected to import these rather than invent durations.
-- `AmbientBlobs.tsx` + `GrainOverlay.tsx` — the fixed, pointer-events-none atmosphere behind every page: two huge (720px/640px) radial amber/violet blobs at `blur-[160px]` drifting on 18s/22s infinite loops, plus an SVG grain texture (`/grain.svg` via the `bg-grain` Tailwind utility) at 0.14 opacity with `mix-blend-overlay`.
+- `frontend/src/design/Modal.tsx` uses a native modal dialog. It keeps focus within the dialog, restores focus on close and supports Escape, backdrop dismissal and a mobile drag handle. The dialog appears as a bottom sheet on mobile and a centered panel on desktop.
+- `frontend/src/design` contains the shared buttons, inputs, badges, rating controls, cards, skeletons and motion settings. The layout uses a static dark background and warm accent colors.
 
 #### The GL surface
 `frontend/src/design/LiquidGLSurface.tsx` wraps content in a real WebGL refraction surface using the vendored `naughtyduk/liquidGL` script (`frontend/public/vendor/liquidgl.js`):
@@ -1235,48 +1185,9 @@ On top of that sits a full mobile optimization pass (2026-06-01, `docs/superpowe
 - If the user has `prefers-reduced-motion: reduce`, the effect is skipped entirely; if the script fails to load, the error is swallowed and the static fallback styling (`bg-surface-strong backdrop-blur-xl border border-border glass-edge`) — which always renders underneath — remains.
 - Sole consumer today: the anime detail hero (`frontend/src/features/details/DetailHero.tsx`).
 
-#### Fonts & global CSS
-- `frontend/index.html` loads **Geist**, **Geist Mono**, and **Instrument Serif** from Google Fonts and sets `<meta name="theme-color" content="#080510">`.
-- `frontend/src/index.css` additionally imports `@fontsource` **Fraunces** 400/600, **Inter** 400/500/600, and **JetBrains Mono** 400 — but the `font` stacks in `tokens.ts` are `Instrument Serif…`, `Geist…`, `Geist Mono…`, so the Google-Fonts faces win and the @fontsource bundles are loaded-but-unreferenced (a pre-existing mismatch the mobile spec explicitly declared out of scope).
-- Global base styles: `color-scheme: dark`, 15px/1.55 body, `h1–h3` in `font-display` at weight 600 with `-0.01em` tracking, `overflow-x: hidden` on body (guards against page-level horizontal scroll from chip rows), amber `::selection`, and two custom utilities — `.glass-edge` (inset top highlight + inset bottom shade + deep drop shadow, the signature glass look) and `.ring-amber`.
+#### Typography and styles
 
-### Backend
-
-None. This feature is entirely client-side — no endpoints, no server-side logic. (The mobile spec's hard scope rule: "No backend changes.")
-
-### Data model
-
-No server-side tables. Client state it owns or depends on:
-- `moreOpen: boolean` — local `useState` in `AppShell`, threaded to `BottomTabBar` (active styling) and `MoreSheet` (visibility).
-- `useIsDesktop` — derived `matchMedia` state for the 768px boundary.
-- Consumed zustand stores: `useAuth` from `frontend/src/stores/auth.ts` (`user`, `signOut` for the MoreSheet/Header account blocks) and `useNsfw` from `frontend/src/stores/nsfw.ts` (`visible`, `toggle` for the NSFW toggle).
-- Design tokens are static `as const` objects in `frontend/src/design/tokens.ts`; no persistence.
-
-### Configuration
-
-No env vars — everything is constants in code:
-- **Breakpoint:** 768px (Tailwind default `md`; hardcoded as `"(min-width: 768px)"` in `frontend/src/lib/useIsDesktop.ts`). The spec forbids custom Tailwind breakpoints.
-- **LiquidGLSurface defaults:** `refraction = 0.04`, `dispersion = 0.015`, `blur = 6`, `tint = "rgba(255,255,255,0.02)"`; script path `/vendor/liquidgl.js`.
-- **Modal:** `maxWidth = "640px"` default; mobile sheet `max-h-[85vh]`, desktop `max-h-[92vh]`.
-- **MoreSheet:** drag-dismiss threshold 96px; `max-h-[85vh]`.
-- **Tab bar:** items `min-h-[56px]`; main content reserves `pb-24` (6rem) for it.
-- **Z-layering:** headers/DayStrip `z-30` → BottomTabBar `z-40` → MoreSheet/Modal `z-50`; atmosphere layers `z-0` under a `z-10` content wrapper.
-- **Motion constants:** durations 0.18/0.28/0.45/0.7s; springs soft (260, 28) and snappy (420, 32); easings `[0.22,1,0.36,1]` and `[0.16,1,0.3,1]` (all in `tokens.ts`).
-
-### Edge cases & limits
-
-- **Desktop preservation is structural, not tested-in:** because no rule that applies at ≥768px was modified (re-pin rule invariants), the ≥768px render is unchanged by construction. When editing any component, put mobile values in the unprefixed base and re-pin the existing value at `md:` — never edit an existing `md:`/`lg:` utility.
-- **Safe-area padding is currently inert in normal browsers:** `frontend/index.html`'s viewport meta lacks `viewport-fit=cover`, so `env(safe-area-inset-bottom)` resolves to 0 in standard browser contexts; the padding on `BottomTabBar`, `MoreSheet`, and the mobile `Modal` only takes effect where the viewport extends into the home-indicator inset.
-- **LiquidGL failure modes:** a failed script load is cached forever (the module-level rejected promise is reused), so the effect silently stays off for the session and the static glass fallback shows; `prefers-reduced-motion` disables it entirely. `AmbientBlobs`, by contrast, has **no** reduced-motion guard — its drift loops run unconditionally.
-- **Scroll-lock asymmetry:** `MoreSheet` locks body scroll while open; the shared `Modal` does not (it only handles Escape + backdrop click). Background pages remain scrollable behind modals.
-- **Focus return:** `MoreSheet` moves focus into the panel on open but does not restore focus to the More button on close (the spec asked for restoration; the code doesn't implement it).
-- **Landing and `/auth` get mobile chrome too:** both are children of `AppShell`, so the tab bar and mobile header render on them as well.
-- **Touch targets are surgical:** 44px hit areas were applied only where elements were undersized (NsfwToggle `size="lg"`, DayStrip chevrons `big`, MobileHeader search). The shared `Button` keeps `sm` = 32px even on mobile, by design.
-- **`Badge` requires 6-digit hex colors:** it builds backgrounds/borders by string-appending alpha suffixes (`color + "18"`); passing `rgba(...)` produces invalid CSS.
-- **Route transitions block on exit:** `PageTransition` uses `AnimatePresence mode="wait"`, so new route content appears only after the previous page's exit animation completes (~0.28s).
-- **Token duplication hazard:** `tokens.ts` and the compiled `tokens.js` must stay in sync — Tailwind config consumes the compiled copy, runtime code the TypeScript one.
-- **Known accepted patterns:** horizontal-scroll chip rows (Discover FilterBar, Watchlist StatusTabs, Stats heatmap) are intentional on mobile; body-level `overflow-x: hidden` prevents them from causing page scroll. Tablet landscape (768–1023px) intentionally gets the desktop layout — there is no tablet-specific design.
-
+`frontend/src/design/tokens.ts` defines the display, body and monospace font stacks. `frontend/src/index.css` bundles Fraunces, Inter and JetBrains Mono locally. The shared shell styles live in `frontend/src/layout/shell.css`.
 ---
 
 ## Architecture, Data Sync & Deployment
@@ -1298,9 +1209,9 @@ This is an operator/developer-facing feature; the "user" is whoever runs and dep
 
 The frontend's involvement in this feature is build/serving plumbing, not UI:
 
-- `frontend/src/lib/api.ts` — resolves the API base URL. If `VITE_API_URL` is set at build time (documented in `frontend/.env.example`), it is normalized (trailing slashes stripped, `/api` appended unless already present) — this is the split-host mode (e.g. Cloudflare Pages frontend + Fly backend). If unset: `http://localhost:5000/api` when the page is on `localhost`/`127.0.0.1`, otherwise same-origin `${window.location.origin}/api` (matches the Docker setup where Flask serves the SPA).
+- `frontend/src/lib/api.ts` uses same-origin `/api` by default. A build-time `VITE_API_URL` can point at a separate host. The client strips trailing slashes and appends `/api` when needed.
 - `frontend/vite.config.ts` — dev server on port 5173 with a `/api` proxy to `http://127.0.0.1:5000`; production build outputs to `frontend/dist` with sourcemaps.
-- Serving: `_static_root()` in `app.py` picks `frontend/dist/` as Flask's static folder when it exists and contains `index.html`, otherwise falls back to the legacy `static/` bundle. The catch-all route serves real files when they exist and `index.html` for everything else, so SPA deep links work.
+- `app.py` serves assets and deep links from the frontend build or its legacy fallback. Unknown API paths return a JSON 404. Missing assets return 404, and a missing frontend build produces a 503 for SPA routes.
 
 ### Backend
 
@@ -1334,7 +1245,7 @@ Error handlers: 404 on `/api/*` paths returns JSON `{"error": "Not found."}`; 40
 | Method | Path | Auth | Purpose |
 |---|---|---|---|
 | GET | `/api/health` | None | Liveness probe: `{"status": "ok", "service": "bingery-api"}`. Used by the Docker `HEALTHCHECK`, Fly's `[[http_service.checks]]`, and the GH Actions wake-up loop. |
-| GET | `/` and `/<path>` | None | SPA serving — real static file if it exists, else `index.html`. |
+| GET | `/` and `/<path>` | None | Serves static files or the SPA entry for app routes. Unknown API paths and missing assets return 404. |
 | GET | `/api/anilist/search?q=&page=&per_page=` | None | Live AniList title search (results NOT persisted). `per_page` capped at 25. 400 if `q` missing; 502 on AniList failure. |
 | GET | `/api/anilist/anime/<anilist_id>` | None | Live AniList details for one title. 502 on failure. |
 | GET | `/api/anilist/trending?per_page=` | None | Trending straight from AniList (`per_page` clamped 1–50). |
@@ -1363,7 +1274,7 @@ Both admin-gated endpoints compare secrets with `hmac.compare_digest` (constant-
 
 #### Scheduled jobs
 
-- **GitHub Actions** (`.github/workflows/refresh-schedule.yml`): daily 06:00 UTC + manual dispatch; wakes the Fly machine via `/api/health` (5 retries), then `curl`s `/api/admin/sync-dub-sources` with a 10-minute cap (typical run 60–90 s). Runs the syncs *inside* the live gunicorn worker because spawning a fresh `python sync_*.py` interpreter (~100 MB of Flask+SQLAlchemy imports) gets OOM-killed on Fly's 256 MB VM; in-process the peak delta is ~25 MB.
+- `.github/workflows/refresh-schedule.yml` runs daily at 06:00 UTC and supports manual runs. It wakes Fly, refreshes AniList schedule-window statuses, refreshes seasonal data on Sundays and syncs dub sources. The workflow records stage failures and audits the schedule against external sources afterward.
 - **Retired: Render crons** (removed 2026-07-10 along with `render.yaml`): the weekly AniList resync, 6-hourly Crunchyroll RSS, and daily AnimeSchedule jobs ran against a separate Render Postgres the Fly app never read. Their replacements live in the GH Actions workflow above (daily window status refresh, Sunday seasonal pull, daily dub sync via admin endpoints).
 
 ### Data model

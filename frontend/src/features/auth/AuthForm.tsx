@@ -1,12 +1,11 @@
 import { useEffect, useState } from "react";
 import { Input } from "@/design/Input";
 import { Button } from "@/design/Button";
-import { cn } from "@/lib/cn";
 import { useAuth } from "@/stores/auth";
 import { api } from "@/lib/api";
 
 type Mode = "login" | "register" | "waitlist";
-type Step = "form" | "verify";
+type Step = "form" | "verify" | "resume";
 
 const RESEND_SECONDS = 60;
 
@@ -15,16 +14,18 @@ interface AuthFormProps {
   /** Prefill from an invite email link (/auth?invite=<code>&email=<address>). */
   initialEmail?: string;
   initialInviteCode?: string;
+  initialMode?: Mode;
 }
 
 export function AuthForm({
   onSuccess,
   initialEmail,
   initialInviteCode,
+  initialMode = "login",
 }: AuthFormProps) {
   // An invite link lands straight on the sign-up form with code + email set.
   const [mode, setMode] = useState<Mode>(
-    initialInviteCode ? "register" : "login"
+    initialInviteCode ? "register" : initialMode
   );
   const [step, setStep] = useState<Step>("form");
   const [email, setEmail] = useState(initialEmail ?? "");
@@ -48,12 +49,13 @@ export function AuthForm({
 
   // Resend countdown, ticking only on the verify step.
   useEffect(() => {
-    if (step !== "verify" || resendIn <= 0) return;
+    if (step === "form" || resendIn <= 0) return;
     const t = setInterval(() => setResendIn((s) => s - 1), 1000);
     return () => clearInterval(t);
   }, [step, resendIn]);
 
   const submit = async () => {
+    if (loading || resending) return;
     setError(null);
     setLoading(true);
     try {
@@ -63,7 +65,7 @@ export function AuthForm({
         });
         setWaitlistStatus(res.status);
       } else if (mode === "login") {
-        await signIn({ email, password });
+        await signIn({ email: email.trim().toLowerCase(), password });
         onSuccess?.();
       } else if (step === "form") {
         const normEmail = email.trim().toLowerCase();
@@ -92,7 +94,7 @@ export function AuthForm({
   };
 
   const resend = async () => {
-    if (resending) return;
+    if (loading || resending || resendIn > 0) return;
     setError(null);
     setResending(true);
     try {
@@ -106,21 +108,29 @@ export function AuthForm({
     }
   };
 
-  if (step === "verify") {
+  if (step !== "form") {
     return (
       <form
         onSubmit={(e) => {
           e.preventDefault();
           submit();
         }}
-        className="flex flex-col gap-4"
+        className="auth-form flex flex-col gap-4"
+        aria-busy={loading || resending}
       >
         <div>
-          <h2 className="font-display text-title mb-1">Check your email</h2>
+          <h1>{step === "resume" ? "Finish signing up" : "Check your email"}</h1>
           <p className="text-sm text-text-muted">
-            We sent a 6-digit code to <span className="text-text">{email}</span>.
+            {step === "resume" ? "Enter the email and six-digit code from your signup." : <>We sent a 6-digit code to <span className="text-text">{email}</span>.</>}
           </p>
         </div>
+        {step === "resume" && (
+          <Input
+            label="Email" name="email" type="email" autoComplete="email" maxLength={120}
+            value={email} onChange={(e) => { setEmail(e.target.value); setResent(false); }}
+            disabled={loading || resending} required autoFocus
+          />
+        )}
         <Input
           label="Verification code"
           value={code}
@@ -129,21 +139,27 @@ export function AuthForm({
           pattern="[0-9]{6}"
           maxLength={6}
           autoComplete="one-time-code"
+          name="code"
+          autoFocus={step === "verify"}
           className="text-center tracking-[0.4em] font-mono tnum text-lg"
           required
         />
-        {error ? <p className="text-sm text-danger">{error}</p> : null}
+        {error ? <p role="alert" className="text-sm text-danger">{error}</p> : null}
         {resent && !error ? (
-          <p className="text-sm text-success">Code sent.</p>
+          <p role="status" className="text-sm text-success">Code sent.</p>
         ) : null}
-        <Button type="submit" loading={loading} disabled={code.length !== 6}>
+        <Button type="submit" loading={loading} disabled={resending || code.length !== 6}>
           Verify
         </Button>
         <div className="flex items-center justify-between text-sm">
           <button
             type="button"
-            onClick={resend}
-            disabled={resending || resendIn > 0}
+            onClick={(event) => {
+              const input = event.currentTarget.form?.elements.namedItem("email");
+              if (input instanceof HTMLInputElement && !input.reportValidity()) return;
+              void resend();
+            }}
+            disabled={loading || resending || resendIn > 0}
             className="text-text-muted transition-colors hover:text-text disabled:opacity-50 disabled:hover:text-text-muted tnum"
           >
             {resendIn > 0
@@ -154,13 +170,14 @@ export function AuthForm({
           </button>
           <button
             type="button"
+            disabled={loading || resending}
             onClick={() => {
               setStep("form");
               setError(null);
             }}
             className="text-text-muted transition-colors hover:text-text"
           >
-            Wrong email? Go back
+            {step === "resume" ? "Back to sign up" : "Wrong email? Go back"}
           </button>
         </div>
       </form>
@@ -174,17 +191,18 @@ export function AuthForm({
           e.preventDefault();
           submit();
         }}
-        className="flex flex-col gap-4"
+        className="auth-form flex flex-col gap-4"
+        aria-busy={loading}
       >
         <div>
-          <h2 className="font-display text-title mb-1">Join the waitlist</h2>
+          <h1>Join the waitlist</h1>
           <p className="text-sm text-text-muted">
             Leave your email and we'll let you know the moment a spot opens
             up.
           </p>
         </div>
         {waitlistStatus ? (
-          <p className="text-sm text-success">
+          <p role="status" className="text-sm text-success">
             {waitlistStatus === "added"
               ? "You're on the list! We'll email you when a spot opens up."
               : "You're already on the list — we'll be in touch."}
@@ -197,9 +215,11 @@ export function AuthForm({
               value={email}
               onChange={(e) => setEmail(e.target.value)}
               autoComplete="email"
+              name="email"
+              maxLength={120}
               required
             />
-            {error ? <p className="text-sm text-danger">{error}</p> : null}
+            {error ? <p role="alert" className="text-sm text-danger">{error}</p> : null}
             <Button type="submit" loading={loading}>
               Join waitlist
             </Button>
@@ -226,33 +246,29 @@ export function AuthForm({
         e.preventDefault();
         submit();
       }}
-      className="flex flex-col gap-4"
+      className="auth-form flex flex-col gap-4"
+      aria-busy={loading}
     >
-      {/* Mode switch — the system segmented control */}
-      <div className="inline-flex self-start rounded-pill border border-border bg-surface p-1 text-sm">
+      <div>
+        <h1>{mode === "login" ? "Welcome back" : "Create an account"}</h1>
+        <p className="text-sm text-text-muted">
+          {mode === "login" ? "Sign in to your watchlist, ratings, and recommendations." : "Use the invite code sent to your email to join Bingery."}
+        </p>
+      </div>
+      <div className="auth-mode" role="group" aria-label="Account access">
         <button
           type="button"
           disabled={loading}
-          onClick={() => setMode("login")}
-          className={cn(
-            "px-4 min-h-[36px] rounded-pill transition-colors disabled:opacity-50",
-            mode === "login"
-              ? "bg-surface-strong text-text shadow-[inset_0_1px_0_rgba(255,255,255,0.08)]"
-              : "text-text-muted hover:text-text"
-          )}
+          aria-pressed={mode === "login"}
+          onClick={() => { setMode("login"); setError(null); }}
         >
           Sign in
         </button>
         <button
           type="button"
           disabled={loading}
-          onClick={() => setMode("register")}
-          className={cn(
-            "px-4 min-h-[36px] rounded-pill transition-colors disabled:opacity-50",
-            mode === "register"
-              ? "bg-surface-strong text-text shadow-[inset_0_1px_0_rgba(255,255,255,0.08)]"
-              : "text-text-muted hover:text-text"
-          )}
+          aria-pressed={mode === "register"}
+          onClick={() => { setMode("register"); setError(null); }}
         >
           Sign up
         </button>
@@ -265,6 +281,9 @@ export function AuthForm({
             value={username}
             onChange={(e) => setUsername(e.target.value)}
             autoComplete="username"
+            name="username"
+            minLength={3}
+            maxLength={80}
             required
           />
           <Input
@@ -272,12 +291,14 @@ export function AuthForm({
             value={displayName}
             onChange={(e) => setDisplayName(e.target.value)}
             autoComplete="nickname"
+            name="display_name"
           />
           <Input
             label="Invite code"
             value={inviteCode}
             onChange={(e) => setInviteCode(e.target.value)}
             autoComplete="off"
+            name="invite_code"
           />
           <p className="text-xs text-text-muted">
             No invite code?{" "}
@@ -303,6 +324,8 @@ export function AuthForm({
         value={email}
         onChange={(e) => setEmail(e.target.value)}
         autoComplete="email"
+        name="email"
+        maxLength={120}
         required
       />
       <Input
@@ -311,12 +334,30 @@ export function AuthForm({
         value={password}
         onChange={(e) => setPassword(e.target.value)}
         autoComplete={mode === "login" ? "current-password" : "new-password"}
+        name="password"
+        minLength={mode === "register" ? 6 : undefined}
         required
       />
-      {error ? <p className="text-sm text-danger">{error}</p> : null}
+      {error ? <p role="alert" className="text-sm text-danger">{error}</p> : null}
       <Button type="submit" loading={loading}>
         {mode === "login" ? "Sign in" : "Create account"}
       </Button>
+      {mode === "register" && (
+        <button
+          type="button"
+          className="self-center text-sm text-amber-hi hover:underline"
+          disabled={loading}
+          onClick={() => {
+            setError(null);
+            setResent(false);
+            setCode("");
+            setResendIn(0);
+            setStep("resume");
+          }}
+        >
+          Already have a verification code?
+        </button>
+      )}
     </form>
   );
 }

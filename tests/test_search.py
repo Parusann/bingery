@@ -55,3 +55,15 @@ def test_autocomplete_negative_limit_clamped(client, app):
     assert r.status_code == 200
     # Negative limits must clamp to at least 1 row, never "no limit".
     assert len(r.get_json()["results"]) == 1
+
+
+def test_literal_punctuation_matches_same_title_across_search_routes(client, app):
+    db.session.add_all([Anime(title="100%_Power"), Anime(title="10000 Power")])
+    db.session.commit()
+    for path, parameter, key in [
+        ("/api/anime", "search", "anime"),
+        ("/api/search/autocomplete", "q", "results"),
+        ("/api/search/full", "q", "results"),
+    ]:
+        response = client.get(path, query_string={parameter: "%_"})
+        assert [a["title"] for a in response.get_json()[key]] == ["100%_Power"]

@@ -4,15 +4,17 @@ import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { AuthForm } from "./AuthForm";
 
-const { joinWaitlist, register } = vi.hoisted(() => ({
+const { joinWaitlist, register, verifyEmail } = vi.hoisted(() => ({
   joinWaitlist: vi.fn(),
   register: vi.fn(),
+  verifyEmail: vi.fn(),
 }));
 
 vi.mock("@/lib/api", () => ({
   api: {
     joinWaitlist,
     register,
+    verifyEmail,
     getToken: () => null,
     setToken: () => {},
   },
@@ -118,4 +120,17 @@ describe("AuthForm waitlist", () => {
     );
     expect(screen.getByLabelText("Invite code")).toBeTruthy();
   });
+});
+
+it("lets a returning visitor finish a pending signup with their existing code", async () => {
+  const onSuccess = vi.fn();
+  verifyEmail.mockResolvedValue({ token: "example", user: { id: 1 } });
+  render(<AuthForm onSuccess={onSuccess} />);
+  await userEvent.click(screen.getByRole("button", { name: "Sign up" }));
+  await userEvent.click(screen.getByRole("button", { name: /already have a verification code/i }));
+  await userEvent.type(screen.getByLabelText("Email"), "Fan@example.com");
+  await userEvent.type(screen.getByLabelText("Verification code"), "123456");
+  await userEvent.click(screen.getByRole("button", { name: "Verify" }));
+  expect(verifyEmail).toHaveBeenCalledWith({ email: "fan@example.com", code: "123456" });
+  expect(onSuccess).toHaveBeenCalledOnce();
 });

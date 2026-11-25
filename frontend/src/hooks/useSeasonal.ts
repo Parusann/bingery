@@ -2,10 +2,11 @@ import { useQuery } from "@tanstack/react-query";
 import { api } from "@/lib/api";
 import type { Season } from "@/types/models";
 
-export function useSeasonal(year?: number, season?: Season) {
+export function useSeasonal(year?: number, season?: Season, enabled = true) {
   return useQuery({
     queryKey: ["seasonal", year ?? "current", season ?? "current"],
     queryFn: () => api.getSeasonal(year, season),
+    enabled,
   });
 }
 

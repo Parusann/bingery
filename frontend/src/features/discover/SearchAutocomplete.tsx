@@ -1,100 +1,149 @@
-import { useEffect, useRef, useState } from "react";
-import { useNavigate } from "react-router-dom";
-import { AnimatePresence, motion } from "framer-motion";
-import { Search } from "lucide-react";
-import { Input } from "@/design/Input";
+import { useEffect, useId, useRef, useState } from "react";
+import { useLocation, useNavigate } from "react-router-dom";
+import { ArrowRight, Search, X } from "lucide-react";
 import { useSearch } from "@/hooks/useSearch";
-import { transitions } from "@/design/motion";
 
 interface Props {
-  onSubmit?: (q: string) => void;
+  value: string;
+  onSubmit: (query: string) => void;
 }
 
-export function SearchAutocomplete({ onSubmit }: Props) {
-  const [q, setQ] = useState("");
+export function SearchAutocomplete({ value, onSubmit }: Props) {
+  const [draft, setDraft] = useState(value);
   const [open, setOpen] = useState(false);
-  const wrap = useRef<HTMLDivElement | null>(null);
-  const { results, loading } = useSearch(q);
-  const nav = useNavigate();
+  const [active, setActive] = useState(-1);
+  const input = useRef<HTMLInputElement>(null);
+  const list = useRef<HTMLUListElement>(null);
+  const listId = useId();
+  const query = draft.trim();
+  const { results, loading } = useSearch(open ? query : "");
+  const showList = open && query.length >= 2;
+  const matches = showList && !loading ? results : [];
+  const navigate = useNavigate();
+  const location = useLocation();
 
   useEffect(() => {
-    const h = (e: MouseEvent) => {
-      if (wrap.current && !wrap.current.contains(e.target as Node)) setOpen(false);
-    };
-    document.addEventListener("mousedown", h);
-    return () => document.removeEventListener("mousedown", h);
-  }, []);
+    setDraft(value);
+    setOpen(false);
+    setActive(-1);
+  }, [value]);
+
+  useEffect(() => {
+    if (location.hash === "#catalog-search") input.current?.focus();
+  }, [location.hash, location.key]);
+
+  useEffect(() => {
+    if (active >= 0) list.current?.children[active]?.scrollIntoView?.({ block: "nearest" });
+  }, [active]);
+
+  function submit() {
+    setOpen(false);
+    setActive(-1);
+    if (matches[active]) {
+      navigate(`/anime/${matches[active].id}`);
+    } else {
+      setDraft(query);
+      onSubmit(query);
+    }
+  }
 
   return (
-    <div ref={wrap} className="relative flex-1 max-w-xl">
-      <form
-        onSubmit={(e) => {
-          e.preventDefault();
-          if (q.trim()) {
-            setOpen(false);
-            onSubmit?.(q.trim());
-          }
-        }}
-      >
-        <Input
+    <form
+      className="catalog-search"
+      role="search"
+      aria-label="Catalog search"
+      onSubmit={(event) => { event.preventDefault(); submit(); }}
+      onBlur={(event) => {
+        if (!event.currentTarget.contains(event.relatedTarget)) {
+          setOpen(false);
+          setActive(-1);
+        }
+      }}
+    >
+      <div className="catalog-search__field">
+        <Search size={19} aria-hidden="true" />
+        <input
+          ref={input}
+          id="catalog-search"
+          role="combobox"
+          aria-autocomplete="list"
+          aria-expanded={showList}
+          aria-controls={showList ? listId : undefined}
+          aria-activedescendant={matches[active] ? `${listId}-${active}` : undefined}
+          aria-label="Search anime"
+          autoComplete="off"
+          enterKeyHint="search"
           placeholder="Search anime…"
-          value={q}
-          leading={<Search aria-hidden className="w-4 h-4 text-text-dim shrink-0" />}
+          value={draft}
           onFocus={() => setOpen(true)}
-          onChange={(e) => {
-            setQ(e.target.value);
+          onChange={(event) => {
+            setDraft(event.target.value);
+            setActive(-1);
             setOpen(true);
           }}
+          onKeyDown={(event) => {
+            if (event.nativeEvent.isComposing) return;
+            if (event.key === "Escape") {
+              event.preventDefault();
+              setOpen(false);
+              setActive(-1);
+            }
+            if (query.length >= 2 && ["ArrowDown", "ArrowUp"].includes(event.key)) {
+              event.preventDefault();
+              setOpen(true);
+              if (matches.length) {
+                setActive((previous) => event.key === "ArrowDown"
+                  ? Math.min(previous + 1, matches.length - 1)
+                  : previous < 0 ? matches.length - 1 : Math.max(previous - 1, -1));
+              }
+            }
+          }}
         />
-      </form>
-      <AnimatePresence>
-        {open && (results.length > 0 || loading) ? (
-          <motion.div
-            initial={{ opacity: 0, y: -6 }}
-            animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0, y: -6 }}
-            transition={transitions.easeFast}
-            className="absolute left-0 right-0 mt-2 rounded-lg border border-border-strong bg-bg-elevated/95 backdrop-blur-xl overflow-hidden z-20 shadow-e3"
+        {draft && (
+          <button
+            type="button"
+            aria-label="Clear search"
+            onClick={() => {
+              setDraft(""); setActive(-1); input.current?.focus(); setOpen(false);
+              if (value) onSubmit("");
+            }}
           >
-            {loading ? (
-              <div className="p-3 text-caption text-text-muted animate-pulse">
-                Searching…
-              </div>
-            ) : (
-              results.slice(0, 8).map((a) => (
-                <button
-                  key={a.id}
-                  type="button"
-                  onClick={() => {
-                    setOpen(false);
-                    setQ("");
-                    nav(`/anime/${a.id}`);
-                  }}
-                  className="flex gap-3 w-full text-left p-2.5 transition-colors hover:bg-surface-strong"
-                >
-                  {a.image_url ? (
-                    <img
-                      src={a.image_url}
-                      alt=""
-                      className="w-10 h-14 object-cover rounded-sm"
-                    />
-                  ) : (
-                    <div className="w-10 h-14 rounded-sm bg-surface" />
-                  )}
-                  <div className="flex-1 min-w-0">
-                    <div className="text-sm truncate">
-                      {a.title_english ?? a.title}
-                    </div>
-                    <div className="text-xs text-text-dim truncate tnum">
-                      {a.year ?? ""} {a.format ?? ""}
-                    </div>
+            <X size={16} aria-hidden="true" />
+          </button>
+        )}
+        <button type="submit" aria-label="Search catalog" className="catalog-search__submit">
+          <ArrowRight size={19} aria-hidden="true" />
+        </button>
+      </div>
+      {showList && (
+        <div className="catalog-search__popup">
+          {matches.length === 0 && (
+            <p role="status">{loading ? "Searching…" : "Press Enter to search the catalog."}</p>
+          )}
+          <ul ref={list} id={listId} role="listbox" aria-label="Suggested titles">
+            {matches.map((anime, index) => (
+              <li
+                key={anime.id}
+                id={`${listId}-${index}`}
+                role="option"
+                aria-selected={active === index}
+                onMouseDown={(event) => event.preventDefault()}
+                onClick={() => { setOpen(false); navigate(`/anime/${anime.id}`); }}
+              >
+                <div className="catalog-search__poster">
+                  {anime.image_url && <img src={anime.image_url} alt="" />}
+                </div>
+                <div className="min-w-0">
+                  <div className="truncate text-sm font-medium">{anime.title_english || anime.title}</div>
+                  <div className="text-xs text-text-muted">
+                    {[anime.year, anime.episodes ? `${anime.episodes} ep` : null].filter(Boolean).join(" · ")}
                   </div>
-                </button>
-              ))
-            )}
-          </motion.div>
-        ) : null}
-      </AnimatePresence>
-    </div>
+                </div>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+    </form>
   );
 }

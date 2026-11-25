@@ -93,8 +93,7 @@ describe("DubReportButton", () => {
 
     fireEvent.click(screen.getByRole("button", { name: /^submit$/i }));
 
-    // Wait a microtask for the mutateAsync promise.
-    await Promise.resolve();
+    expect(await screen.findByText(/your report is in the queue/i)).toBeVisible();
     expect(createDubReportMock).toHaveBeenCalledTimes(1);
     const arg = createDubReportMock.mock.calls[0][0];
     expect(arg.episode_id).toBe(12);

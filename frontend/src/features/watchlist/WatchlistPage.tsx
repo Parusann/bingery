@@ -1,5 +1,6 @@
+import { SignInPanel, LoadError } from "@/design/PageState";
 import { useMemo } from "react";
-import { useSearchParams } from "react-router-dom";
+import { Link, useSearchParams } from "react-router-dom";
 import type {
   WatchStatus,
   ViewMode,
@@ -7,7 +8,7 @@ import type {
   WatchlistSort,
 } from "@/types/models";
 import { Skeleton } from "@/design/Skeleton";
-import { StatusTabs } from "./StatusTabs";
+import { STATUSES, StatusTabs } from "./StatusTabs";
 import { WatchlistCard } from "./WatchlistCard";
 import { WatchlistRow } from "./WatchlistRow";
 import { WatchlistToolbar, type ToolbarPatch } from "./WatchlistToolbar";
@@ -32,19 +33,19 @@ export function WatchlistPage() {
   const wl = useWatchlist();
   const [params, setParams] = useSearchParams();
 
-  const status = (params.get("status") as WatchStatus) || null;
+  const status = STATUSES.find((s) => s.key === params.get("status"))?.key ?? null;
   const q = params.get("q") ?? "";
-  const sort = (params.get("sort") as WatchlistSort) || "updated";
+  const sortParam = params.get("sort");
+  const sort: WatchlistSort = sortParam === "created" || sortParam === "title" || sortParam === "score" ? sortParam : "updated";
   const genres = params.get("genres")
     ? params.get("genres")!.split(",").filter(Boolean)
     : [];
   const genreMode: GenreMatchMode = params.get("gmode") === "all" ? "all" : "any";
   const favoritesOnly = params.get("fav") === "1";
-  const view: ViewMode =
-    (params.get("view") as ViewMode) ||
-    ((typeof localStorage !== "undefined" &&
-      (localStorage.getItem("watchlist.view") as ViewMode)) ||
-      "large");
+  let storedView: string | null = null;
+  try { storedView = localStorage.getItem("watchlist.view"); } catch { /* storage unavailable */ }
+  const requestedView = params.get("view") || storedView;
+  const view: ViewMode = requestedView === "compact" || requestedView === "list" ? requestedView : "large";
 
   function update(patch: FilterPatch) {
     const next = new URLSearchParams(params);
@@ -61,10 +62,9 @@ export function WatchlistPage() {
     if ("status" in patch) apply("status", patch.status ?? null);
     if ("view" in patch && patch.view) {
       apply("view", patch.view);
-      if (typeof localStorage !== "undefined")
-        localStorage.setItem("watchlist.view", patch.view);
+      try { localStorage.setItem("watchlist.view", patch.view); } catch { /* The URL retains the selection. */ }
     }
-    setParams(next, { replace: true });
+    setParams(next, { replace: true, preventScrollReset: true });
   }
 
   const allEntries = wl.data?.entries ?? [];
@@ -84,17 +84,8 @@ export function WatchlistPage() {
   );
 
   if (!user) {
-    return (
-      <div className="py-20 text-center">
-        <div className="font-mono text-micro uppercase text-amber mb-3">
-          Library
-        </div>
-        <h1 className="font-display text-display mb-2">Sign in to track</h1>
-        <p className="text-text-muted">
-          Your watching, completed, and plan-to-watch list lives here.
-        </p>
-      </div>
-    );
+    return <SignInPanel section="Watchlist" title="Sign in to track"
+      description="Save anime to watch later and keep your episode progress in one place." />;
   }
 
   return (
@@ -120,7 +111,9 @@ export function WatchlistPage() {
         value={status}
         onChange={(s) => update({ status: s })}
       />
-      {wl.isLoading ? (
+      {wl.isError && !wl.data ? (
+        <LoadError title="Your watchlist couldn’t load." retry={() => wl.refetch()} />
+      ) : wl.isLoading ? (
         <div className={VIEW_GRID[view]}>
           {Array.from({ length: 12 }).map((_, i) => (
             <div key={i}>
@@ -138,8 +131,9 @@ export function WatchlistPage() {
             Empty shelf
           </div>
           <p className="font-display italic text-title text-text-muted max-w-md mx-auto">
-            Nothing here yet — add anime from the discover page.
+            Find a title you love and add it to your watchlist.
           </p>
+          <Link to="/discover" className="gate-primary mt-4">Browse anime</Link>
         </div>
       ) : visible.length === 0 ? (
         <div className="py-24 text-center">
@@ -152,7 +146,7 @@ export function WatchlistPage() {
           <button
             type="button"
             className="inline-flex items-center min-h-[40px] px-5 rounded-pill text-sm border border-amber/35 bg-surface text-text transition-colors hover:bg-amber/[0.08] hover:border-amber/60"
-            onClick={() => setParams(new URLSearchParams(), { replace: true })}
+            onClick={() => setParams(new URLSearchParams(), { replace: true, preventScrollReset: true })}
           >
             Clear filters
           </button>

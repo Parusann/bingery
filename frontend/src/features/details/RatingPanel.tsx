@@ -1,4 +1,5 @@
-import { useEffect, useState } from "react";
+import { Link } from "react-router-dom";
+import { useState } from "react";
 import type { AnimeDetail } from "@/types/models";
 import { StarRating } from "@/design/StarRating";
 import { Button } from "@/design/Button";
@@ -15,16 +16,10 @@ export function RatingPanel({ anime }: { anime: AnimeDetail }) {
   const [saved, setSaved] = useState(false);
   const submit = useSubmitReview(anime.id);
 
-  useEffect(() => {
-    setScore(anime.user_rating?.score ?? 0);
-    setReview(anime.user_rating?.review ?? "");
-    setFgs(anime.user_genre_votes ?? []);
-  }, [anime.id]);
-
   if (!user) {
     return (
       <p className="font-display italic text-text-muted">
-        Sign in to rate, review, and vote on fan-genres.
+        <Link className="underline text-amber" to="/auth" state={{ returnTo: `/anime/${anime.id}` }}>Sign in</Link> to rate, review, and vote on fan-genres.
       </p>
     );
   }
@@ -43,10 +38,10 @@ export function RatingPanel({ anime }: { anime: AnimeDetail }) {
         <StarRating value={score} onChange={setScore} />
       </div>
       <div>
-        <label className="text-caption font-medium text-text-muted block mb-2">
+        <label htmlFor="anime-review" className="text-caption font-medium text-text-muted block mb-2">
           Short review (optional)
         </label>
-        <textarea
+        <textarea id="anime-review"
           value={review}
           onChange={(e) => {
             setReview(e.target.value);
@@ -72,6 +67,7 @@ export function RatingPanel({ anime }: { anime: AnimeDetail }) {
             return (
               <button
                 key={g}
+                aria-pressed={active}
                 onClick={() => toggle(g)}
                 className={cn(
                   "px-3.5 py-2 rounded-pill text-sm border transition-colors min-h-[44px] inline-flex items-center",
@@ -90,12 +86,12 @@ export function RatingPanel({ anime }: { anime: AnimeDetail }) {
       <div className="flex items-center gap-3">
         <Button
           onClick={() =>
-            submit
-              .mutateAsync({ score, review, genres: fgs })
-              .then(() => {
+            submit.mutate({ score, review, genres: fgs }, {
+              onSuccess: () => {
                 setSaved(true);
                 setTimeout(() => setSaved(false), 1800);
-              })
+              },
+            })
           }
           loading={submit.isPending}
           disabled={score === 0}

@@ -7,7 +7,7 @@ const cards: Array<{
   format?: (v: unknown) => string;
 }> = [
   { key: "total_rated", label: "Ratings" },
-  { key: "total_watched", label: "Completed" },
+  { key: "total_watched", label: "Watching or completed" },
   {
     key: "hours_watched",
     label: "Hours watched",

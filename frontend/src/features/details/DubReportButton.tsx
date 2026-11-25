@@ -98,7 +98,7 @@ export function DubReportButton({ animeId }: Props) {
       >
         Report missing dub date
       </Button>
-      <Modal open={open} onClose={close} maxWidth="500px">
+      <Modal label="Report a dub air date" open={open} onClose={close} maxWidth="500px">
         <form onSubmit={submit} className="p-6 space-y-4">
           <header>
             <h2 className="font-display text-title">Report a dub air date</h2>

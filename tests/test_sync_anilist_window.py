@@ -9,6 +9,61 @@ from models import db, Anime, Episode
 NOW = datetime.now(timezone.utc).replace(tzinfo=None)
 
 
+def test_seasonal_ingest_and_window_refresh_keep_next_episode(client, app, monkeypatch):
+    from utils.anilist import AniListClient
+
+    premiere = datetime.now(timezone.utc).replace(microsecond=0) + timedelta(days=1)
+    media = {
+        "id": 701, "title": {"romaji": "Season premiere"}, "status": "RELEASING",
+        "nextAiringEpisode": {"episode": 1, "airingAt": int(premiere.timestamp())},
+    }
+
+    def upstream(self, query, variables):
+        if "page" in variables:
+            return {"Page": {
+                "media": [media],
+                "pageInfo": {"currentPage": 1, "lastPage": 1, "hasNextPage": False},
+            }}
+        assert variables["id"] == media["id"]
+        return {"Media": media}
+
+    monkeypatch.setattr(AniListClient, "_request", upstream)
+    monkeypatch.setenv("ADMIN_SYNC_SECRET", "test-secret")
+
+    def sync(body):
+        response = client.post(
+            "/api/anilist/sync", headers={"X-Admin-Secret": "test-secret"}, json=body,
+        )
+        assert response.status_code == 200 and response.get_json()["synced"] == 1
+
+    sync({"mode": "seasonal", "season": "FALL", "year": 2026})
+    assert Episode.query.one().air_date_sub == premiere.replace(tzinfo=None)
+
+    next_week = premiere + timedelta(days=7)
+    media["nextAiringEpisode"] = {"episode": 2, "airingAt": int(next_week.timestamp())}
+    sync({"mode": "window"})
+    ep = Episode.query.filter_by(episode_number=2).one()
+    old_write = premiere.replace(tzinfo=None) - timedelta(days=30)
+    ep.air_date_dub = next_week.replace(tzinfo=None)
+    ep.dub_source = "animeschedule"
+    ep.updated_at = old_write
+    db.session.commit()
+    sync({"mode": "window"})
+    db.session.expire_all()
+    assert ep.updated_at == old_write
+    episodes = Episode.query.order_by(Episode.episode_number).all()
+    assert [(ep.episode_number, ep.air_date_sub, ep.sub_source) for ep in episodes] == [
+        (1, premiere.replace(tzinfo=None), "anilist"),
+        (2, next_week.replace(tzinfo=None), "anilist"),
+    ]
+    rescheduled = next_week + timedelta(hours=2)
+    media["nextAiringEpisode"]["airingAt"] = int(rescheduled.timestamp())
+    sync({"mode": "window"})
+    db.session.expire_all()
+    assert ep.air_date_sub == rescheduled.replace(tzinfo=None)
+    assert ep.air_date_dub == next_week.replace(tzinfo=None)
+
+
 def _mk(title, status, anilist_id, last_sub_delta_days):
     anime = Anime(title=title, status=status, anilist_id=anilist_id)
     db.session.add(anime)

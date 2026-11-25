@@ -5,9 +5,32 @@ from flask import Blueprint, request, jsonify
 from flask_jwt_extended import jwt_required, get_jwt_identity
 
 from models import db, Collection, Anime, CollectionItem
+from utils.tokens import generate_share_token
 
 
 collections_bp = Blueprint("collections", __name__)
+
+
+def _set_visibility(collection, public):
+    collection.is_public = public
+    if not public:
+        collection.share_token = None
+    elif not collection.share_token:
+        token = generate_share_token()
+        while Collection.query.filter_by(share_token=token).first():
+            token = generate_share_token()
+        collection.share_token = token
+
+
+def _valid_fields(data):
+    if not isinstance(data, dict):
+        return False
+    if "is_public" in data and not isinstance(data["is_public"], bool):
+        return False
+    return all(
+        data.get(key) is None or isinstance(data[key], str)
+        for key in ("name", "description", "color", "icon")
+    )
 
 
 @collections_bp.route("", methods=["GET"])
@@ -22,7 +45,9 @@ def list_collections():
 @jwt_required()
 def create_collection():
     user_id = int(get_jwt_identity())
-    data = request.get_json(silent=True) or {}
+    data = request.get_json(silent=True)
+    if not _valid_fields(data):
+        return jsonify({"error": "Use text for collection details and a boolean for is_public."}), 400
     name = (data.get("name") or "").strip()
     if not name:
         return jsonify({"error": "`name` is required"}), 400
@@ -36,6 +61,7 @@ def create_collection():
         color=(data.get("color") or "amber")[:16],
         icon=(data.get("icon") or "bookmark")[:32],
     )
+    _set_visibility(c, data.get("is_public", False))
     db.session.add(c)
     db.session.commit()
     return jsonify({"collection": c.to_dict()}), 201
@@ -62,7 +88,9 @@ def get_collection(collection_id: int):
 def update_collection(collection_id: int):
     user_id = int(get_jwt_identity())
     c = _owned_or_404(user_id, collection_id)
-    data = request.get_json(silent=True) or {}
+    data = request.get_json(silent=True)
+    if not _valid_fields(data):
+        return jsonify({"error": "Use text for collection details and a boolean for is_public."}), 400
 
     if "name" in data:
         name = (data["name"] or "").strip()
@@ -77,18 +105,7 @@ def update_collection(collection_id: int):
         c.icon = (data["icon"] or "bookmark")[:32]
 
     if "is_public" in data:
-        new_public = bool(data["is_public"])
-        c.is_public = new_public
-        if new_public and not c.share_token:
-            from utils.tokens import generate_share_token
-            # Ensure uniqueness (collision chance is negligible but cheap to check).
-            while True:
-                token = generate_share_token()
-                if not db.session.query(Collection).filter_by(share_token=token).first():
-                    c.share_token = token
-                    break
-        if not new_public:
-            c.share_token = None
+        _set_visibility(c, data["is_public"])
 
     db.session.commit()
     return jsonify({"collection": c.to_dict()})

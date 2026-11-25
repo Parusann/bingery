@@ -1,0 +1,39 @@
+.app-shell {
+  background: radial-gradient(ellipse 65% 35rem at 32% -14rem, #332333, transparent), #0d0b11;
+}
+.site-header {
+  position: sticky; top: 0; z-index: 40; background: #100e14f5;
+  border-bottom: 1px solid #ede2d51d;
+}
+.brand-wordmark { display: inline-flex; align-items: center; gap: .55rem; font: 600 1.65rem/1 Fraunces, Georgia, serif; letter-spacing: -.06em; color: #fbf2e7; }
+.brand-mark { width: 2rem; height: 2rem; display: grid; place-items: center; background: #efab81; color: #21150f; border-radius: 8px; }
+.desktop-nav { align-items: center; gap: .12rem; height: 100%; }
+.desktop-nav > * { display: inline-flex; align-items: center; gap: .25rem; height: 100%; padding: 0 .7rem; position: relative; color: #c4bcb9; font-size: .875rem; white-space: nowrap; }
+.desktop-nav > *:hover, .desktop-nav > [aria-current], .desktop-nav > [data-active="true"] { color: #fff2e4; }
+.desktop-nav > [aria-current]::after, .desktop-nav > [data-active="true"]::after { content: ""; position: absolute; bottom: 0; inset-inline: .65rem; height: 2px; background: #efab81; }
+.nav-signin, .account-avatar { display: inline-flex; align-items: center; justify-content: center; border: 1px solid #efab8159; border-radius: 999px; background: #efab8110; color: #ffd0ad; font-size: .82rem; font-weight: 600; min-height: 2.4rem; }
+.nav-signin { padding: .4rem 1rem; }
+.account-avatar { width: 2.4rem; }
+.nav-signin:hover, .account-avatar:hover { background: #efab8125; }
+.skip-link { position: fixed; top: .5rem; left: .5rem; transform: translateY(-160%); z-index: 60; padding: .65rem 1rem; border-radius: .4rem; background: #ffd0ad; color: #160f0d; }
+.skip-link:focus { transform: none; }
+.bingery-dialog { position: fixed; inset: auto 0 0; margin: 0 auto; width: 100%; max-height: 88dvh; overflow: auto; color: #f3ece4; background: #19151d; border: 1px solid #f5e9da30; border-radius: 1.35rem 1.35rem 0 0; padding-bottom: env(safe-area-inset-bottom); box-shadow: 0 24px 90px #0009; }
+.bingery-dialog::backdrop { background: #08070cba; backdrop-filter: blur(5px); }
+.bingery-dialog h2 { padding-right: 2.4rem; }
+.dialog-close { position: absolute; right: .6rem; top: .65rem; width: 2.65rem; height: 2.65rem; display: grid; place-items: center; border-radius: 50%; color: #c9bfb6; }
+.dialog-close:hover { background: #fff1; color: white; }
+.more-links { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: .5rem; }
+.more-links a { display: flex; align-items: center; gap: .6rem; min-height: 3.2rem; border: 1px solid #f3ece424; background: #f3ece405; border-radius: .65rem; padding: .6rem .75rem; font-size: .86rem; }
+.more-links a svg:first-child { color: #efab81; }
+.more-links a:hover, .more-links a[aria-current] { border-color: #efab8170; background: #efab810c; }
+.account-gate { max-width: 47rem; margin: clamp(1rem, 8vh, 5rem) auto; padding: clamp(1.5rem, 5vw, 3.75rem); border: 1px solid #f3ece422; border-radius: 1.25rem; background: radial-gradient(ellipse at 95% 0%, #4d30293d, transparent 65%), #151219; }
+.account-gate h1 { margin: 1rem 0 .6rem; font-size: clamp(2rem, 5vw, 3.55rem); line-height: 1.05; letter-spacing: -.045em; }
+.gate-actions { display: flex; align-items: center; flex-wrap: wrap; gap: 1.35rem; margin-top: 1.6rem; }
+.gate-primary { display: inline-flex; align-items: center; gap: .65rem; min-height: 2.75rem; padding: .65rem 1.25rem; border-radius: 999px; font-size: .875rem; font-weight: 600; background: #efab81; color: #261910; }
+.gate-primary:hover { background: #ffd0ad; }
+@media (min-width: 768px) {
+  .bingery-dialog { inset: 0; margin: auto; width: calc(100% - 2rem); max-height: 90dvh; border-radius: 1.25rem; }
+}
+@media (max-width: 767px) {
+  #main-content { padding-bottom: calc(6rem + env(safe-area-inset-bottom)); }
+}

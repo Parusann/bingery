@@ -1,5 +1,6 @@
 import { useQuery } from "@tanstack/react-query";
 import { api } from "@/lib/api";
+import { useNsfw } from "@/stores/nsfw";
 
 interface Params {
   page?: number;
@@ -27,9 +28,19 @@ export function useAnimeList(params: Params = {}) {
   });
   if (search) qs.set("search", search);
   if (genre) qs.set("genre", genre);
-  const key = ["anime-list", page, perPage, search, genre, sort, order];
+  const visible = useNsfw((state) => state.visible);
+  const key = ["anime-list", page, perPage, search, genre, sort, order, visible];
   return useQuery({
     queryKey: key,
     queryFn: () => api.getAnime("?" + qs.toString()),
+  });
+}
+
+export function useCatalogGenres() {
+  const visible = useNsfw((state) => state.visible);
+  return useQuery({
+    queryKey: ["catalog-genres", visible],
+    queryFn: api.getCatalogGenres,
+    select: (response) => response.all.map((genre) => genre.name).sort((a, b) => a.localeCompare(b)),
   });
 }

@@ -8,6 +8,9 @@ export function useSubmitReview(animeId: number | undefined) {
       api.submitReview(animeId!, body),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["anime-detail", animeId] });
+      for (const key of ["anime-list", "watchlist", "recommendations", "activity", "stats-overview", "stats-heatmap", "compare"]) {
+        qc.invalidateQueries({ queryKey: [key] });
+      }
     },
   });
 }

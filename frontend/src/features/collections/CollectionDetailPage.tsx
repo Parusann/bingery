@@ -1,5 +1,7 @@
 import { useState } from "react";
-import { useNavigate, useParams } from "react-router-dom";
+import { Link, useNavigate, useParams } from "react-router-dom";
+import { SignInPanel, LoadError } from "@/design/PageState";
+import { ApiError } from "@/lib/api";
 import { Modal } from "@/design/Modal";
 import { Button } from "@/design/Button";
 import { GlassCard } from "@/design/GlassCard";
@@ -8,6 +10,7 @@ import { AnimeCard } from "@/features/discover/AnimeCard";
 import { useAuth } from "@/stores/auth";
 import {
   useCollection,
+  useSharedCollection,
   useDeleteCollection,
   useRemoveFromCollection,
 } from "@/hooks/useCollections";
@@ -15,15 +18,26 @@ import { CollectionForm } from "./CollectionForm";
 import { ShareButton } from "./ShareButton";
 
 export function CollectionDetailPage() {
-  const { id } = useParams();
+  const { id, token } = useParams();
   const nav = useNavigate();
-  const numericId = id ? Number(id) : undefined;
+  const numericId = id && /^[1-9]\d*$/.test(id) && Number.isSafeInteger(Number(id)) ? Number(id) : undefined;
   const user = useAuth((s) => s.user);
-  const { data, isLoading } = useCollection(numericId);
+  const owned = useCollection(user ? numericId : undefined);
+  const shared = useSharedCollection(token);
+  const query = token ? shared : owned;
+  const { data, isLoading } = query;
   const del = useDeleteCollection();
   const remove = useRemoveFromCollection(numericId ?? -1);
   const [editing, setEditing] = useState(false);
 
+  if (!token && !user) return <SignInPanel section="Collections" title="Sign in to see your collection"
+    description="Open your saved list to view, edit, or share it." />;
+  if ((!token && !numericId) || (query.error instanceof ApiError && query.error.status === 404)) {
+    return <div className="account-gate"><h1>Collection unavailable</h1>
+      <p className="text-text-muted">This collection may be private, or its share link may have expired.</p>
+      <Link to="/discover" className="gate-primary mt-6">Browse anime</Link></div>;
+  }
+  if (query.isError && !data) return <LoadError title="This collection couldn’t load." retry={() => query.refetch()} />;
   if (isLoading || !data) {
     // Mirrors the real page: title row, then a poster grid.
     return (
@@ -41,21 +55,16 @@ export function CollectionDetailPage() {
     );
   }
   const c = data.collection;
-  const isOwner = user?.id === c.user_id;
-  const ownerLabel = c.owner
-    ? c.owner.display_name ?? c.owner.username
-    : null;
+  const isOwner = !token && !!user && user.id === c.user_id;
 
   return (
     <article>
       <header className="flex flex-col gap-3 mb-6">
         <div className="flex flex-wrap items-baseline gap-3">
           <h1 className="font-display text-display">{c.name}</h1>
-          {ownerLabel ? (
-            <span className="text-sm text-text-muted">by {ownerLabel}</span>
-          ) : null}
+          {token && <span className="text-sm text-text-muted">Shared collection</span>}
           <div className="ml-auto flex gap-2">
-            <ShareButton token={c.share_token} />
+            <ShareButton token={token || c.share_token || null} />
             {isOwner ? (
               <>
                 <Button size="sm" variant="glass" onClick={() => setEditing(true)}>
@@ -64,10 +73,10 @@ export function CollectionDetailPage() {
                 <Button
                   size="sm"
                   variant="danger"
-                  onClick={async () => {
+                  loading={del.isPending}
+                  onClick={() => {
                     if (!window.confirm("Delete this collection?")) return;
-                    await del.mutateAsync(c.id);
-                    nav("/collections");
+                    del.mutate(c.id, { onSuccess: () => nav("/collections") });
                   }}
                 >
                   Delete
@@ -81,6 +90,7 @@ export function CollectionDetailPage() {
         ) : null}
       </header>
 
+      {(del.isError || remove.isError) && <p role="alert" className="mb-4 text-danger">{(del.error || remove.error)?.message}</p>}
       {c.items.length === 0 ? (
         <GlassCard className="p-10 text-center">
           <div className="font-mono text-micro uppercase text-text-dim mb-3">
@@ -88,21 +98,20 @@ export function CollectionDetailPage() {
           </div>
           <p className="font-display italic text-title text-text-muted">
             This collection is empty.{" "}
-            {isOwner
-              ? "Add anime from the discover or detail page."
-              : "Nothing here yet."}
+            {isOwner && <Link className="text-amber underline" to="/discover">Browse anime to add a title.</Link>}
           </p>
         </GlassCard>
       ) : (
         <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-x-4 gap-y-6">
           {c.items.map((it, i) => (
             <div key={it.id} className="relative group">
-              <AnimeCard anime={it.anime} index={i} />
+              {it.anime ? <AnimeCard anime={it.anime} index={i} /> : <p className="p-4 text-text-muted">Title unavailable</p>}
               {isOwner ? (
                 <button
-                  onClick={() => remove.mutate(it.anime.id)}
-                  className="absolute top-2 left-2 px-2 py-1 text-xs rounded-md bg-bg/80 backdrop-blur-md border border-danger/40 text-danger opacity-0 group-hover:opacity-100 focus-visible:opacity-100 transition-opacity hover:bg-danger/15 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-danger/60"
-                  aria-label="Remove"
+                  disabled={remove.isPending}
+                  onClick={() => remove.mutate(it.anime_id)}
+                  className="absolute top-2 left-2 px-2 py-1 text-xs rounded-md bg-bg/80 backdrop-blur-md border border-danger/40 text-danger md:opacity-0 md:group-hover:opacity-100 focus-visible:opacity-100 transition-opacity hover:bg-danger/15 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-danger/60"
+                  aria-label={`Remove ${it.anime?.title_english || it.anime?.title || "title"} from collection`}
                 >
                   Remove
                 </button>
@@ -112,7 +121,7 @@ export function CollectionDetailPage() {
         </div>
       )}
 
-      <Modal open={editing} onClose={() => setEditing(false)}>
+      <Modal label="Edit collection" open={editing} onClose={() => setEditing(false)}>
         <div className="p-6">
           <h2 className="font-display text-title mb-4">Edit collection</h2>
           <CollectionForm initial={c} onSuccess={() => setEditing(false)} />

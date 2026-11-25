@@ -181,6 +181,29 @@ def test_toggle_public_generates_share_token(client, auth_headers):
     assert body["share_token"]
 
 
+def test_create_public_and_keep_link_on_repeat_update(client, auth_headers):
+    headers, _ = auth_headers
+    collection = _create(client, headers, name="Public at creation", is_public=True)
+    token = collection["share_token"]
+    assert collection["is_public"] is True and token
+    public = client.get(f"/api/collections/public/{token}")
+    assert public.status_code == 200
+    endpoint = f"/api/collections/{collection['id']}"
+    repeat = client.patch(endpoint, headers=headers, json={"is_public": True})
+    assert repeat.get_json()["collection"]["share_token"] == token
+
+
+def test_invalid_visibility_cannot_publish_a_collection(client, auth_headers):
+    headers, _ = auth_headers
+    payload = {"name": "Private", "is_public": "false"}
+    assert client.post("/api/collections", headers=headers, json=payload).status_code == 400
+    collection = _create(client, headers, name="Private")
+    url = f"/api/collections/{collection['id']}"
+    assert client.patch(url, headers=headers, json=payload).status_code == 400
+    result = client.get(url, headers=headers).get_json()["collection"]
+    assert result["is_public"] is False and result["share_token"] is None
+
+
 def test_public_endpoint_returns_collection_without_auth(client, auth_headers, app):
     headers, _ = auth_headers
     c = _create(client, headers, name="Share Me")

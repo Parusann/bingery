@@ -24,6 +24,7 @@ export function FilterPills({
             <button
               key={opt}
               type="button"
+              aria-pressed={active}
               data-active={active}
               onClick={() => onLangChange(opt)}
               className={[
@@ -41,6 +42,7 @@ export function FilterPills({
       <button
         type="button"
         onClick={onMineToggle}
+        aria-pressed={myShowsOnly}
         data-active={myShowsOnly}
         className={[
           "inline-flex items-center gap-2 rounded-pill border px-4 min-h-[44px] font-mono text-[11px] uppercase tracking-[0.16em] transition-colors",

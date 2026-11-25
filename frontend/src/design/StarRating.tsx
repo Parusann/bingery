@@ -19,6 +19,7 @@ export function StarRating({ value, onChange, readOnly, size = 24, className }: 
     <div className={cn("w-full sm:w-auto", className)}>
       <div
         className="flex w-full items-center sm:inline-flex sm:w-auto sm:gap-0.5"
+        role="group"
         aria-label={`Rating ${value} of 10`}
         onMouseLeave={() => setHover(0)}
       >
@@ -37,6 +38,7 @@ export function StarRating({ value, onChange, readOnly, size = 24, className }: 
                 !readOnly && "hover:scale-110 cursor-pointer",
                 readOnly && "cursor-default"
               )}
+              aria-pressed={value === n}
               aria-label={`Rate ${n} of 10`}
             >
               <svg

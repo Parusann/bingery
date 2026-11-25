@@ -27,6 +27,7 @@ export function StatusTabs({ stats, value, onChange }: Props) {
   return (
     <div className="flex gap-2 overflow-x-auto pb-1 mb-6 scrollbar-none [mask-image:linear-gradient(to_right,black,black_calc(100%-40px),transparent)]">
       <button
+        aria-pressed={value === null}
         onClick={() => onChange(null)}
         className={cn(
           "shrink-0 min-h-[44px] px-4 py-2 rounded-pill text-sm border transition-colors",
@@ -43,6 +44,7 @@ export function StatusTabs({ stats, value, onChange }: Props) {
         return (
           <button
             key={s.key}
+            aria-pressed={active}
             onClick={() => onChange(s.key)}
             className={cn(
               "shrink-0 min-h-[44px] px-4 py-2 rounded-pill text-sm border transition-colors",

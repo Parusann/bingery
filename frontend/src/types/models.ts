@@ -24,13 +24,14 @@ export interface AnimeSummary {
   title: string;
   title_english: string | null;
   title_japanese: string | null;
-  description: string | null;
+  synopsis?: string | null;
+  description?: string | null;
   image_url: string | null;
   banner_url: string | null;
   episodes: number | null;
   season: string | null;
   year: number | null;
-  format: string | null;
+  format?: string | null;
   status: string | null;
   api_score: number | null;
   community_score: number | null;
@@ -96,7 +97,7 @@ export interface Rating {
 export interface Recommendation {
   anime: AnimeSummary;
   reason: string;
-  score: number;
+  relevance_score: number | null;
 }
 
 export interface TasteProfile {
@@ -131,13 +132,13 @@ export interface ChatResponse {
 
 export interface Collection {
   id: number;
-  user_id: number;
+  user_id?: number;
   name: string;
   description: string | null;
   color: string;
   icon: string;
   is_public: boolean;
-  share_token: string | null;
+  share_token?: string | null;
   items_count: number;
   created_at: string;
   updated_at: string;
@@ -145,15 +146,15 @@ export interface Collection {
 
 export interface CollectionItem {
   id: number;
-  anime: AnimeSummary;
+  collection_id: number;
+  anime_id: number;
+  anime: AnimeSummary | null;
   note: string | null;
-  position: number;
   added_at: string;
 }
 
 export interface CollectionDetail extends Collection {
   items: CollectionItem[];
-  owner?: { id: number; username: string; display_name: string | null };
 }
 
 export interface StatsOverview {

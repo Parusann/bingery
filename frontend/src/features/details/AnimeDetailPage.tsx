@@ -1,4 +1,5 @@
-import { useParams } from "react-router-dom";
+import { Link, useParams } from "react-router-dom";
+import { ApiError } from "@/lib/api";
 import { GlassCard } from "@/design/GlassCard";
 import { Skeleton } from "@/design/Skeleton";
 import { useAnimeDetail, useSimilar, useRelated } from "@/hooks/useAnimeDetail";
@@ -15,13 +16,25 @@ import { RelatedStrip } from "./RelatedStrip";
 
 export function AnimeDetailPage() {
   const { id } = useParams();
-  const numericId = id ? Number(id) : undefined;
+  const numericId = id && /^\d+$/.test(id) && Number.isSafeInteger(Number(id)) && Number(id) > 0 ? Number(id) : undefined;
   const user = useAuth((s) => s.user);
   const detail = useAnimeDetail(numericId);
   const similar = useSimilar(numericId);
   const related = useRelated(numericId);
 
-  if (detail.isLoading || !detail.data) {
+  const missing = !numericId || (detail.error instanceof ApiError && detail.error.status === 404);
+  if (missing || (detail.isError && !detail.data)) {
+    return (
+      <div className="py-20 text-center">
+        <h1 className="font-display text-display mb-3">{missing ? "Title not found" : "This title couldn’t load."}</h1>
+        <div className="flex justify-center items-center gap-5 text-sm">
+          {!missing && <button type="button" className="text-amber py-2" onClick={() => detail.refetch()}>Try again</button>}
+          <Link className="text-amber py-2 hover:underline" to="/discover">Browse the catalog</Link>
+        </div>
+      </div>
+    );
+  }
+  if (!detail.data) {
     // Skeleton mirrors the hero anatomy: poster + title + meta + description.
     return (
       <div className="space-y-6">
@@ -48,9 +61,12 @@ export function AnimeDetailPage() {
   const actions = user ? (
     <>
       <WatchStatusSelector
+        key={`${anime.id}-${user.id}`}
         animeId={anime.id}
         current={anime.user_watch_status?.status ?? null}
         isFavorite={anime.user_watch_status?.is_favorite ?? false}
+        watched={anime.user_watch_status?.episodes_watched ?? 0}
+        total={anime.episodes}
       />
       <AddToCollection animeId={anime.id} />
     </>
@@ -82,7 +98,7 @@ export function AnimeDetailPage() {
         <aside>
           <h2 className="font-display text-title mb-4">Your rating</h2>
           <GlassCard tone="warm" className="p-4 sm:p-6">
-            <RatingPanel anime={anime} />
+            <RatingPanel key={`${anime.id}-${user?.id || "guest"}`} anime={anime} />
           </GlassCard>
         </aside>
       </div>

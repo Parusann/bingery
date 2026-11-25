@@ -27,6 +27,7 @@ export const useAuth = create<AuthState>((set) => ({
     set({ status: "loading", error: null });
     try {
       const res = await api.login(body);
+      queryClient.clear();
       api.setToken(res.token);
       set({ user: res.user, status: "authenticated" });
     } catch (e) {
@@ -49,6 +50,7 @@ export const useAuth = create<AuthState>((set) => ({
     set({ status: "loading", error: null });
     try {
       const res = await api.verifyEmail(body);
+      queryClient.clear();
       api.setToken(res.token);
       set({ user: res.user, status: "authenticated" });
     } catch (e) {
@@ -72,12 +74,15 @@ export const useAuth = create<AuthState>((set) => ({
     set({ user: null, status: "idle", error: null });
   },
   async restore() {
-    if (!api.getToken()) return;
+    const token = api.getToken();
+    if (!token) return;
     set({ status: "loading" });
     try {
       const res = await api.me();
+      if (api.getToken() !== token) return;
       set({ user: res.user, status: "authenticated" });
     } catch (e) {
+      if (api.getToken() !== token) return;
       // Only discard the token when the server rejected it — a transient
       // network failure must not log the user out.
       if (e instanceof ApiError && (e.status === 401 || e.status === 422)) {

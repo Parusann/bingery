@@ -4,9 +4,13 @@ if (typeof Element !== "undefined" && !Element.prototype.scrollIntoView) {
   Element.prototype.scrollIntoView = function () {};
 }
 
-// jsdom has no matchMedia; useIsDesktop (Modal bottom-sheet branching)
-// needs it. Default to desktop so components behave like the wide
-// viewport the original tests were written against.
+// jsdom does not implement modal presentation. Browser tests exercise native focus.
+if (!HTMLDialogElement.prototype.showModal) {
+  HTMLDialogElement.prototype.showModal = function () { this.open = true; };
+  HTMLDialogElement.prototype.close = function () { this.open = false; };
+}
+
+// Default to the desktop viewport in component tests.
 if (typeof window !== "undefined" && typeof window.matchMedia !== "function") {
   window.matchMedia = (query: string): MediaQueryList =>
     ({

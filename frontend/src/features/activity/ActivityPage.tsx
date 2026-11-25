@@ -1,3 +1,4 @@
+import { SignInPanel, LoadError } from "@/design/PageState";
 import { Fragment, useState } from "react";
 import { Button } from "@/design/Button";
 import { Skeleton } from "@/design/Skeleton";
@@ -27,19 +28,8 @@ export function ActivityPage() {
   const q = useActivity(page, !!user);
 
   if (!user) {
-    return (
-      <div className="py-20 text-center">
-        <div className="font-mono text-micro uppercase text-amber mb-3">
-          Timeline
-        </div>
-        <h1 className="font-display text-display mb-2">
-          Sign in for your timeline
-        </h1>
-        <p className="text-text-muted">
-          See every rating, status change, and collection add.
-        </p>
-      </div>
-    );
+    return <SignInPanel section="Activity" title="Sign in for your timeline"
+      description="Revisit the shows you rated, saved, and added to collections." />;
   }
 
   // Insert a mono day divider whenever the calendar day changes.
@@ -60,7 +50,9 @@ export function ActivityPage() {
           className="absolute left-4 top-2 bottom-2 w-px bg-border"
         />
         <div className="space-y-2">
-          {q.isLoading ? (
+          {q.isError && !q.data ? (
+            <LoadError title="Your activity couldn’t load." retry={() => q.refetch()} />
+          ) : q.isLoading ? (
             Array.from({ length: 10 }).map((_, i) => (
               <div key={i} className="flex gap-3 items-start">
                 <Skeleton className="h-8 w-8 mt-2.5 shrink-0" rounded="md" />

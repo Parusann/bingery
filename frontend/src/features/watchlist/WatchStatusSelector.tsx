@@ -1,4 +1,5 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
+import type { FormEvent } from "react";
 import { Star } from "lucide-react";
 import type { WatchStatus } from "@/types/models";
 import { STATUSES } from "./StatusTabs";
@@ -13,6 +14,8 @@ interface Props {
   animeId: number;
   current: WatchStatus | null;
   isFavorite: boolean;
+  watched: number;
+  total: number | null;
 }
 
 /**
@@ -26,20 +29,44 @@ interface Props {
  *
  * Favorite reads GOLD — the palette's reserved star color.
  */
-export function WatchStatusSelector({ animeId, current, isFavorite }: Props) {
+export function WatchStatusSelector({ animeId, current, isFavorite, watched, total }: Props) {
   const setStatus = useSetWatchStatus();
   const toggleFav = useToggleFavorite();
   const remove = useRemoveFromWatchlist();
 
   const [selected, setSelected] = useState<WatchStatus | null>(current);
   const [fav, setFav] = useState(isFavorite);
+  const [draft, setDraft] = useState<string | null>(null);
+  const [saved, setSaved] = useState(false);
+  const submitting = useRef(false);
   useEffect(() => setSelected(current), [current]);
   useEffect(() => setFav(isFavorite), [isFavorite]);
 
+  const busy = setStatus.isPending || toggleFav.isPending || remove.isPending;
+  const failure = setStatus.error || toggleFav.error || remove.error;
+  const count = Number(draft ?? watched);
+  const limit = total && total > 0 ? total : undefined;
+  const valid = draft !== "" && Number.isSafeInteger(count) && count >= 0 &&
+    (limit === undefined || count <= limit);
+
+  function saveProgress(event: FormEvent) {
+    event.preventDefault();
+    if (!current || selected !== current || !valid || count === watched || busy || submitting.current) return;
+    submitting.current = true;
+    setStatus.mutate({ animeId, status: current, episodesWatched: count }, {
+      onSuccess: () => { setDraft(null); setSaved(true); },
+      onSettled: () => { submitting.current = false; },
+    });
+  }
+
   const pick = (key: WatchStatus) => {
+    setSaved(false);
     if (key === selected) {
       setSelected(null);
-      remove.mutate(animeId, { onError: () => setSelected(current) });
+      remove.mutate(animeId, {
+        onSuccess: () => setDraft(null),
+        onError: () => setSelected(current),
+      });
     } else {
       setSelected(key);
       setStatus.mutate(
@@ -62,6 +89,7 @@ export function WatchStatusSelector({ animeId, current, isFavorite }: Props) {
           <button
             key={s.key}
             type="button"
+            disabled={busy}
             onClick={() => pick(s.key)}
             aria-pressed={active}
             title={
@@ -87,6 +115,7 @@ export function WatchStatusSelector({ animeId, current, isFavorite }: Props) {
 
       <button
         type="button"
+        disabled={busy}
         onClick={onFav}
         aria-pressed={fav}
         aria-label={fav ? "Remove from favorites" : "Add to favorites"}
@@ -106,6 +135,32 @@ export function WatchStatusSelector({ animeId, current, isFavorite }: Props) {
         />
         {fav ? "Favorited" : "Favorite"}
       </button>
+      {current && selected && (
+        <form onSubmit={saveProgress} className="mt-1 flex w-full flex-wrap items-center gap-2 text-sm">
+          <label className="flex items-center gap-2 text-text-muted">
+            Episodes watched
+            <input
+              type="number" min={0} max={limit ?? Number.MAX_SAFE_INTEGER} step={1}
+              inputMode="numeric" required disabled={busy || selected !== current}
+              value={draft ?? watched}
+              onChange={(event) => { setDraft(event.target.value); setSaved(false); }}
+              aria-invalid={draft !== null && !valid}
+              aria-describedby={draft !== null && !valid ? "episode-count-help" : undefined}
+              className="h-10 w-20 rounded-md border border-border bg-bg/70 px-2 font-mono text-text"
+            />
+          </label>
+          {limit !== undefined && <span className="text-text-muted">of {limit}</span>}
+          <button type="submit" disabled={busy || selected !== current || !valid || count === watched}
+            className="h-10 rounded-pill border border-amber/40 px-3 text-xs font-medium text-amber hover:bg-amber/10 disabled:opacity-50">
+            Save progress
+          </button>
+          {saved && <span role="status" className="text-xs text-success">Progress saved</span>}
+          {draft !== null && !valid && <p id="episode-count-help" className="w-full text-xs text-danger">
+            {limit !== undefined ? `Enter a whole number from 0 to ${limit}.` : "Enter a non-negative whole number."}
+          </p>}
+        </form>
+      )}
+      {failure && <p role="alert" className="w-full text-sm text-danger">{failure.message}</p>}
     </div>
   );
 }

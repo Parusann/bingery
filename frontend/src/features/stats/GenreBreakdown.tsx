@@ -7,6 +7,7 @@ export function GenreBreakdown({ slices }: { slices: StatsGenreSlice[] }) {
   return (
     <GlassCard tone="cool" className="p-6">
       <h2 className="font-display text-heading mb-4">Top genres</h2>
+      {slices.length === 0 && <p className="text-sm text-text-muted">Vote on a title’s genres to see your breakdown.</p>}
       <div className="space-y-2.5">
         {slices.slice(0, 8).map((s) => {
           const pct = total > 0 ? (s.count / total) * 100 : 0;

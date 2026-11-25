@@ -94,6 +94,7 @@ export interface RatingsResponse {
 }
 
 export interface RecommendationsResponse {
+  source: "popular" | "personalized";
   recommendations: Recommendation[];
   taste_profile: TasteProfile | null;
   because_you_loved?: {
