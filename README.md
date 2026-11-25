@@ -1,307 +1,106 @@
-<div align="center">
+# Bingery
 
-# 🍿 Bingery
+Bingery is an anime catalog, watchlist, and weekly release calendar. Find a series, save the episode you stopped on, and see when its next subtitled or English-dubbed episode is due.
 
-### An anime discovery, tracking & recommendation app — with an AI guide, community fan‑genres, and sub/dub release tracking.
+[Open Bingery](https://bingery.fly.dev) · [See the catalog](screenshots/discover.png) · [Browse the feature reference](docs/FEATURES.md)
 
-[![Live](https://img.shields.io/badge/live-bingery.fly.dev-e6a680?style=for-the-badge)](https://bingery.fly.dev)
+![Bingery homepage featuring the bathhouse from Spirited Away above a row of top-rated anime](screenshots/home.webp)
 
-![React](https://img.shields.io/badge/React-18-61DAFB?logo=react&logoColor=black)
-![TypeScript](https://img.shields.io/badge/TypeScript-5.6-3178C6?logo=typescript&logoColor=white)
-![Vite](https://img.shields.io/badge/Vite-5-646CFF?logo=vite&logoColor=white)
-![Tailwind](https://img.shields.io/badge/Tailwind-3.4-38BDF8?logo=tailwindcss&logoColor=white)
-![Flask](https://img.shields.io/badge/Flask-3.0-000000?logo=flask&logoColor=white)
-![Python](https://img.shields.io/badge/Python-3.13-3776AB?logo=python&logoColor=white)
-![Fly.io](https://img.shields.io/badge/deploy-Fly.io-8B5CF6?logo=flydotio&logoColor=white)
-[![CI](https://github.com/Parusann/bingery/actions/workflows/ci.yml/badge.svg)](https://github.com/Parusann/bingery/actions/workflows/ci.yml)
+## Using Bingery
 
-</div>
+Start in **Discover**. Search by title, filter by genre, or sort by community score. The URL keeps your search and filters so you can bookmark a shortlist. Open a title for its synopsis, fan-genre votes, and related entries in viewing order.
 
----
+Sign in to track your shows and use the weekly calendar.
 
-**Bingery** is a full‑stack anime companion. Search a full [AniList](https://anilist.co)‑synced catalog, track what you're watching across **both sub and dub**, get picks from a **conversational AI guide**, vote on community **"fan genres,"** and follow a **weekly airing schedule** — all wrapped in a hand‑crafted, glassmorphic dark UI that's fully responsive down to a phone.
-
-> 🔗 **Live:** **[bingery.fly.dev](https://bingery.fly.dev)** &nbsp;·&nbsp; Try the **Guide** chat, open any title for its **fan‑genres** and **"watch the rest in order"** strip, or check the **Schedule** for this week's sub & dub episodes.
-
-<div align="center">
-  <img src="screenshots/home.webp" alt="Bingery — landing page" width="90%" />
-</div>
-
----
-
-## ✨ Features
-
-### Discover & browse
-- **Full catalog** synced from the AniList GraphQL API, with poster grids and rich detail pages.
-- **Fuzzy search** with live autocomplete (powered by `rapidfuzz`) and faceted filters.
-- **Seasonal** browser for what's airing each season.
-
-### Track everything — sub *and* dub
-- **Watchlist** with watch statuses, favorites, and per‑title progress.
-- **Airing Schedule**: a weekly view tracking **sub *and* dub** episode releases, a "my shows only" filter, and per‑day jump navigation.
-- **Dub sourcing** from multiple feeds (Crunchyroll RSS + AnimeSchedule.net), plus crowd‑sourced **dub reports** with an admin moderation queue.
-
-### Personalize
-- **For You** recommendations driven by a **taste profile** and behavioral **rec signals**.
-- **Ratings** — score titles, write a short review, and vote on fan genres.
-- **Collections** — build custom, shareable lists.
-
-### The AI Guide 🤖
-The guide can find titles similar to a favorite, suggest anime for a mood, and refine its picks as the conversation continues. Signed-in viewers get recommendations informed by their ratings and watchlist.
-
-Bingery supports Anthropic (Claude) and local or tunneled Ollama models. The guide uses read-only tools to search the catalog, retrieve title details, and explain its recommendations.
-
-### Rich detail pages
-- **Community fan‑genres** — vote on the genres that *actually* describe a show.
-- **"Watch the rest in order"** — a related‑franchise strip that walks the series chronologically.
-- **Similar titles**, a **next‑episode** widget, and a one‑tap **dub report**.
-
-### Insights & social
-- **Stats** — an activity heatmap, genre breakdown, rating histogram, and overview cards.
-- **Activity** feed and a side‑by‑side **Compare** of any two titles (genres, scores, studios, your ratings).
-
-### Thoughtful touches
-- **NSFW toggle** — show/hide Ecchi‑tagged titles (Hentai is always hidden).
-- **JWT auth** with a one‑command **demo user**.
-- **Fully mobile‑optimized** — bottom tabs on phones, a shared navigation menu, and responsive dialogs with keyboard and touch controls.
-
----
-
-## 📸 Screenshots
-
-<table>
-  <tr>
-    <td width="50%" valign="top"><img src="screenshots/discover.png" alt="Discover"/><br/><sub><b>Discover</b> — search &amp; browse the AniList-synced catalog</sub></td>
-    <td width="50%" valign="top"><img src="screenshots/schedule.png" alt="Schedule"/><br/><sub><b>Schedule</b> — weekly sub &amp; dub episode tracking</sub></td>
-  </tr>
-  <tr>
-    <td valign="top"><img src="screenshots/watchlist.png" alt="Watchlist"/><br/><sub><b>Watchlist</b> — statuses, favorites &amp; progress</sub></td>
-    <td valign="top"><img src="screenshots/for-you.png" alt="For You"/><br/><sub><b>For You</b> — taste-driven recommendations</sub></td>
-  </tr>
-  <tr>
-    <td valign="top"><img src="screenshots/seasonal.png" alt="Seasonal"/><br/><sub><b>Seasonal</b> — browse by airing season</sub></td>
-    <td valign="top"><img src="screenshots/chat.png" alt="AI Guide chat"/><br/><sub><b>AI Guide</b> — conversational anime recommendations</sub></td>
-  </tr>
-  <tr>
-    <td valign="top"><img src="screenshots/stats.png" alt="Stats"/><br/><sub><b>Stats</b> — heatmap, genre breakdown &amp; rating histogram</sub></td>
-    <td valign="top"><img src="screenshots/activity.png" alt="Activity"/><br/><sub><b>Activity</b> — your recent watch history</sub></td>
-  </tr>
-  <tr>
-    <td valign="top"><img src="screenshots/compare.png" alt="Compare"/><br/><sub><b>Compare</b> — two titles side by side</sub></td>
-    <td valign="top"><img src="screenshots/watch-in-order.png" alt="Watch the rest in order"/><br/><sub><b>Watch in order</b> — the related-franchise strip</sub></td>
-  </tr>
-</table>
-
-## 🧱 Tech stack
-
-| Layer | Technologies |
+| What you want to do | Where to go |
 | --- | --- |
-| **Frontend** | React 18 · TypeScript 5.6 · Vite 5 · Tailwind CSS 3.4 · TanStack Query 5 · Zustand · React Router 6 · Framer Motion · lucide‑react |
-| **Backend** | Python 3.13 · Flask 3 · Flask‑SQLAlchemy · Flask‑JWT‑Extended · Flask‑Bcrypt · Flask‑CORS · Marshmallow · RapidFuzz |
-| **Data & AI** | AniList GraphQL · Crunchyroll RSS · AnimeSchedule.net API · Anthropic (Claude) · Ollama |
-| **Database** | SQLite (SQLAlchemy ORM) on a Fly.io persistent volume |
-| **Infra** | Docker (multi‑stage) · Fly.io (region `yyz`) · Gunicorn · GitHub Actions (scheduled syncs) |
-| **Testing** | pytest · pytest‑flask · responses (backend) · Vitest · Testing Library · Playwright (frontend) |
+| Remember where you stopped | Open the title, set its watch status, and save the last episode you watched. **Watchlist** shows your progress across series. |
+| Plan your week | In **Schedule**, choose sub or dub, move between weeks, or narrow the calendar to shows you follow. Estimated dub releases are labeled. |
+| Find your next series | **For You** uses your ratings and watchlist to suggest titles. In **Guide**, describe a mood or ask for something similar to a favorite. |
+| Share a lineup | Group titles in **Collections** and make a collection public to get a share link. Making it private again revokes the link. |
 
----
+Visitors can explore the catalog before signing in. To save your own list on the hosted app, request an invitation from the sign-in page. After approval, follow the invitation and verify your email. To try tracking right away, use the local demo below.
 
-## 🏗️ Architecture
+## Run a local demo
 
-```mermaid
-flowchart LR
-  U["📱 Browser / mobile"] -->|HTTPS| SPA["React SPA<br/>Vite · Tailwind"]
-  SPA -->|/api/*| API["Flask API<br/>(gunicorn)"]
-  API --> DB[("SQLite<br/>Fly volume")]
-  API --> AI{"AI provider"}
-  AI --> ANT["Anthropic<br/>Claude"]
-  AI --> OLL["Ollama<br/>local / tunneled"]
+Use Python 3.13 and Node.js 20 or later. Start in the repository root and activate a Python virtual environment.
 
-  subgraph Sync["Scheduled sync jobs (CLI / cron)"]
-    SY1["sync_anilist.py"]
-    SY2["sync_dub_crunchyroll.py"]
-    SY3["sync_dub_animeschedule.py"]
-  end
-  AniList[("AniList GraphQL")] --> SY1
-  CR[("Crunchyroll RSS")] --> SY2
-  ASN[("AnimeSchedule API")] --> SY3
-  Sync --> DB
+**Windows PowerShell**
+
+```powershell
+py -3.13 -m venv .venv
+.\.venv\Scripts\Activate.ps1
 ```
 
-A single **Flask** application exposes a JSON API under `/api/*` and serves the built **React** SPA. Catalog and release data are kept fresh by **resumable CLI sync jobs** (run daily via a GitHub Actions workflow that calls in-process admin endpoints, followed by a multi-source schedule audit). The AI Guide talks to a **provider abstraction** so the same chat works against Claude in the cloud or a local Ollama model. State lives in **SQLite** on a Fly.io persistent volume.
+**macOS or Linux**
 
----
-
-## 📂 Project structure
-
-```
-bingery/
-├── app.py                      # Flask app factory + blueprint registry
-├── config.py                   # Env-driven config + production safety guards
-├── models.py                   # SQLAlchemy models (Anime, User, Watchlist, …)
-├── routes/                     # 17 API blueprints (auth, anime, schedule, chatbot, …)
-├── utils/                      # AniList client, dub sources, AI providers, NSFW, tokens
-├── tests/                      # Backend regression suite
-│
-├── sync_anilist.py             # Resumable AniList catalog sync (CLI)
-├── sync_dub_crunchyroll.py     # Dub schedule from Crunchyroll RSS (CLI)
-├── sync_dub_animeschedule.py   # Dub schedule from AnimeSchedule.net (CLI)
-├── seed.py · seed_demo_user.py # DB bootstrap / curated demo data
-├── seed_dub_schedule.py        # Synthetic dub-lag seed (also imported by routes)
-├── migrate_watchlist.py        # One-off data migration
-│
-├── frontend/                   # React + TypeScript + Vite SPA
-│   ├── src/
-│   │   ├── features/           # discover, details, schedule, watchlist, chat, stats, …
-│   │   ├── layout/             # AppShell, Header + mobile chrome (BottomTabBar, MoreSheet…)
-│   │   ├── design/             # design system — tokens, GlassCard, Modal, motion
-│   │   ├── hooks/ · stores/    # TanStack Query hooks + Zustand stores
-│   │   └── routes.tsx
-│   └── public/landing.html     # compatibility redirect to the React homepage
-│
-├── docs/                       # DEPLOYMENT.md + design specs & implementation plans
-├── Dockerfile · fly.toml       # Fly.io deployment (multi-stage build)
-├── Procfile                    # process definition
-└── .github/workflows/          # daily schedule refresh + accuracy audit
+```sh
+python3.13 -m venv .venv
+source .venv/bin/activate
 ```
 
----
+Install both sets of dependencies and build the frontend so Flask can serve it.
 
-## 🚀 Getting started
-
-### Prerequisites
-- **Python 3.13+** and **Node.js 20+**
-- (Optional) an **Anthropic API key** *or* a running **Ollama** instance for the AI Guide
-
-### 1 · Backend
-
-```bash
-# from the repo root
-python -m venv .venv && source .venv/bin/activate   # Windows: .venv\Scripts\activate
-pip install -r requirements.txt
-
-cp .env.example .env            # then edit values (see Configuration below)
-python seed.py                  # bootstrap a fresh dev DB with ~20 curated titles
-python app.py                   # dev server → http://localhost:5000
+```sh
+python -m pip install -r requirements.txt
+npm --prefix frontend ci
+npm --prefix frontend run build
 ```
 
-> For a richer dev database, run a catalog sync: `python sync_anilist.py --max-pages 5`
-> (a full sync is large and takes hours — `--max-pages` caps it for local use).
-> Add the curated demo account with `python seed_demo_user.py`.
+Choose the block for your shell. It creates a dedicated SQLite database at `instance/bingery-demo.db` with 20 anime on the first run and reuses it on later starts. Running `seed.py` directly drops and recreates the tables in the selected database.
 
-### 2 · Frontend
+**Windows PowerShell**
 
-```bash
-cd frontend
-npm install
-npm run dev                     # Vite dev server → http://localhost:5173
+```powershell
+$env:DATABASE_URL = 'sqlite:///bingery-demo.db'
+if (-not (Test-Path -LiteralPath 'instance/bingery-demo.db')) {
+    python -X utf8 seed.py
+}
+python app.py
 ```
 
-The Vite dev server proxies `/api/*` to the Flask backend, so run both together.
+**macOS or Linux**
 
----
+```sh
+export DATABASE_URL=sqlite:///bingery-demo.db
+if [ ! -f instance/bingery-demo.db ]; then
+    python seed.py
+fi
+python app.py
+```
 
-## ⚙️ Configuration
+Open [the local app](http://127.0.0.1:5000) and sign in with `demo@bingery.app` and password `demo123`. The catalog and watchlist work without provider credentials.
 
-All backend config is environment‑driven (`config.py` + `.env`). Key variables:
+To start with 19 watchlist entries and four collections, stop Flask and run `python -X utf8 seed_demo_user.py` in that same terminal, then restart `python app.py`. This replaces the demo user's ratings, votes, watchlist, and collections.
 
-| Variable | Purpose | Default |
-| --- | --- | --- |
-| `AI_PROVIDER` | `ollama` or `anthropic` | `ollama` |
-| `ANTHROPIC_API_KEY` / `ANTHROPIC_MODEL` | Claude provider | — / `claude-sonnet-4-6` |
-| `OLLAMA_BASE_URL` / `OLLAMA_MODEL` | Local/tunneled Ollama provider | `localhost:11434` / `gemma4:e4b` |
-| `OLLAMA_CF_ACCESS_CLIENT_ID/SECRET` | Cloudflare Access token for a gated Ollama tunnel | — |
-| `DATABASE_URL` | SQLAlchemy connection string | `sqlite:///bingery.db` |
-| `SECRET_KEY` / `JWT_SECRET_KEY` | Flask session & JWT signing secrets | `change-me` |
-| `CORS_ORIGINS` | Comma‑separated allowed origins for `/api/*` | `*` (dev) |
-| `FLASK_ENV` | Set to `production` on deploy | — |
-| `EMAIL_PROVIDER` | `console` (logs codes) or `brevo` (sends email) | `console` |
-| `BREVO_API_KEY` / `EMAIL_FROM` | Brevo API key + verified sender — required when `EMAIL_PROVIDER=brevo` | — |
-| `ADMIN_SYNC_SECRET` | Shared secret (`X-Admin-Secret`) for the admin sync endpoints | — |
-| `ANIMESCHEDULE_API_KEY` | Bearer token for the AnimeSchedule dub sync | — |
+For frontend development, keep Flask running and use `npm --prefix frontend run dev` from the repository root in a second terminal. Open [the Vite development server](http://localhost:5173) for live updates. Vite forwards API requests to Flask on port 5000.
 
-> 🔒 **Production safety guards:** when `FLASK_ENV=production`, the app **refuses to boot** unless `DATABASE_URL` is set, the `change-me` secrets are replaced, `CORS_ORIGINS` is not a wildcard (`*`), and `EMAIL_PROVIDER=brevo` with `BREVO_API_KEY` + `EMAIL_FROM` set — misconfiguration fails fast instead of shipping insecure.
+## How Bingery gets its data
 
----
+- **Catalog and recommendations.** AniList supplies title metadata, artwork, and scores. Bingery combines catalog information with ratings and watchlist activity to personalize recommendations. The conversational Guide can use Anthropic or Ollama. [Catalog backfill](docs/runbooks/catalog-backfill.md) · [Provider settings](.env.example)
+- **Release dates.** Crunchyroll and AnimeSchedule supply dub release data. When a series has evidence of an English dub, Bingery can use the median delay between that series' subtitled and dubbed episodes to estimate upcoming dub dates. The daily refresh audits the published schedule against independent sources. [Dub schedule](docs/runbooks/dub-schedule.md) · [Schedule audit](docs/runbooks/schedule-audit.md)
+- **Application and hosting.** React, TypeScript, and Vite build the browser app. Flask serves it alongside the JSON API. SQLAlchemy stores application data in SQLite, backed by a persistent volume on Fly.io. [Frontend settings](frontend/.env.example) · [Deployment guide](docs/DEPLOYMENT.md) · [Fly configuration](fly.toml)
 
-## 🧪 Testing
+## Run the tests
 
-```bash
-# Backend
+With the virtual environment active and dependencies installed, run these commands from the repository root.
+
+```sh
 python -m pytest -q
+npm --prefix frontend run test:run
+npm --prefix frontend run build
+```
 
-# Frontend — type-check, unit/component, e2e
+The build runs the TypeScript checks. To test complete browser workflows, install Chromium and run Playwright against the built app. Its Flask server starts with a temporary database. [CI workflow](.github/workflows/ci.yml)
+
+```sh
 cd frontend
-npm run lint          # tsc -b (type-check)
-npm run test:run      # Vitest unit and component tests
-npm run build         # Build the app served by the browser test server
 npx playwright install chromium
-npm run e2e           # Chromium against Flask and a temporary seeded database
+npm run e2e
 ```
 
----
+## Credits and license
 
-## 📡 API overview
+Homepage film stills come from Studio Ghibli's official galleries. Each slide credits its film's rights holders. [Film credits and gallery references](frontend/src/features/landing/films.ts)
 
-The Flask backend exposes JSON under `/api/*`. Blueprints by domain:
-
-| Area | Mount | Area | Mount |
-| --- | --- | --- | --- |
-| Auth | `/api/auth` | Stats | `/api/stats` |
-| Anime & detail | `/api/anime` | Activity | `/api/activity` |
-| Search | `/api/search` | Seasonal | `/api/seasonal` |
-| Ratings | `/api` | Compare | `/api/compare` |
-| Watchlist | `/api/watchlist` | Schedule | `/api` |
-| Collections | `/api/collections` | Dub reports | `/api/dub-reports` |
-| Recommendations | `/api/recommend` | Admin | `/api/admin` |
-| AI Guide (chat) | `/api/chat` | Health | `/api/health` |
-
-Auth is **JWT** (`Flask-JWT-Extended`) with **bcrypt**‑hashed passwords.
-
----
-
-## 🚢 Deployment
-
-The production app runs on **[Fly.io](https://fly.io)** (region `yyz` / Toronto) from a multi‑stage **Docker** image — the frontend is built with Vite and served by the Flask/gunicorn backend, with **SQLite on a persistent volume**.
-
-```bash
-fly deploy                      # build image, release, health-check
-fly status -a bingery
-curl https://bingery.fly.dev/api/health    # → {"status":"ok"}
-```
-
-- **`.github/workflows/refresh-schedule.yml`** runs the daily pipeline: AniList status refresh (anti-drift), weekly seasonal catalog pull (Sundays), Crunchyroll/AnimeSchedule dub sync + synthetic re-seed, then a read-only multi-source schedule audit with alarm thresholds (see `docs/runbooks/schedule-audit.md`).
-- See **[`docs/DEPLOYMENT.md`](docs/DEPLOYMENT.md)** for the full runbook (including the Ollama‑over‑Cloudflare‑Access tunnel).
-
----
-
-## 🎨 Design system
-
-A bespoke dark, glassmorphic aesthetic defined by design tokens in `frontend/src/design/tokens.ts`:
-
-- **Palette** — near‑black violet background (`#080510`), warm **amber** accent (`#e6a680`), with peach/gold accents for the schedule.
-- **Type** — an elegant serif display (Instrument Serif / Fraunces), clean sans body (Geist / Inter), and a mono for labels (Geist Mono / JetBrains Mono).
-- **Surfaces** — film stills and poster artwork on a dark background, warm amber controls, and translucent cards. Title details use a WebGL surface with a static fallback.
-- **Motion** — Framer Motion springs and eased transitions, with reusable variants and a shared motion vocabulary.
-- **Responsive** — a shared header across screen sizes, bottom tabs on phones, and desktop navigation from 768px.
-
----
-
-## 🗺️ Roadmap & data sources
-
-Bingery aggregates and credits these open data sources:
-- **[AniList](https://anilist.co)** — catalog, metadata, scores (GraphQL API).
-- **Crunchyroll** (public release RSS) & **[AnimeSchedule.net](https://animeschedule.net)** — dub release timing.
-
-Design specs and phased implementation plans live under [`docs/superpowers/`](docs/superpowers/) — the project was built feature‑by‑feature with written specs and TDD.
-
----
-
-## 📄 License
-
-© 2026 Parusan Natheeswaran. Personal project — all rights reserved. (No open‑source license is currently granted; add a `LICENSE` file to set redistribution terms.)
-
-<div align="center">
-
-**[▶ Open the live app](https://bingery.fly.dev)**
-
-</div>
+© 2026 Parusan Natheeswaran. All rights reserved.
